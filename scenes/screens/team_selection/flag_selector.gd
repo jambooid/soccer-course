@@ -20,6 +20,6 @@ func _process(_delta: float) -> void:
 		animation_player.play("selected")
 		SoundPlayer.play(SoundPlayer.Sound.UI_SELECT)
 		selected.emit()
-	elif is_selected and KeyUtils.is_action_just_pressed(control_scheme, KeyUtils.Action.PASS):
+	elif is_selected and KeyUtils.is_action_just_pressed(control_scheme, KeyUtils.Action.SHORT_PASS):
 		is_selected = false
 		animation_player.play("selecting")

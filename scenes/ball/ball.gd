@@ -8,7 +8,7 @@ const DURATION_PASS_LOCK := 500
 const KICKOFF_PASS_DISTANCE := 30.0
 const TUMBLE_HEIGHT_VELOCITY := 3.0
 
-enum State {CARRIED, FREEFORM, SHOT}
+enum State {CARRIED, FREEFORM, SHOT, KICKED, SAVED, DEFLECTED, HELD_BY_GOALKEEPER}
 
 @export var friction_air : float
 @export var friction_ground : float
@@ -52,27 +52,140 @@ func shoot(shot_velocity : Vector2) -> void:
 	carrier = null
 	switch_state(Ball.State.SHOT)
 
-func tumble(tumble_velocity: Vector2) -> void:
+func tumble(tumble_velocity: Vector2, p_kicker: Player = null) -> void:
 	velocity = tumble_velocity
+	var kicker_ref := p_kicker if p_kicker != null else carrier
 	carrier = null
 	height_velocity = TUMBLE_HEIGHT_VELOCITY
-	switch_state(Ball.State.FREEFORM, BallStateData.build().set_lock_duration(DURATION_TUMBLE_LOCK))
+	switch_state(Ball.State.KICKED, BallStateData.build()
+		.set_lock_duration(DURATION_TUMBLE_LOCK)
+		.set_kicker(kicker_ref))
 
-func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK) -> void:
+func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_kicker: Player = null) -> void:
 	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
 	var intensity := sqrt(2 * distance * friction_ground)
 	velocity = intensity * direction
 	if distance > DISTANCE_HIGH_PASS:
 		height_velocity = BallState.GRAVITY * distance / (1.85 * intensity)
+	var kicker_ref := p_kicker if p_kicker != null else carrier
 	carrier = null
-	switch_state(Ball.State.FREEFORM, BallStateData.build().set_lock_duration(lock_duration))
+	switch_state(Ball.State.KICKED, BallStateData.build()
+		.set_lock_duration(lock_duration)
+		.set_kicker(kicker_ref))
+
+## === 三种传球 ===
+
+func short_pass(destination: Vector2, p_kicker: Player, lock_duration: int = DURATION_PASS_LOCK) -> void:
+	## 短传：贴地直线，速度适中，精准
+	var direction := position.direction_to(destination)
+	var distance := position.distance_to(destination)
+	var intensity := sqrt(2.0 * distance * friction_ground)
+	velocity = direction * intensity
+	height = 0.0
+	height_velocity = 0.0
+	carrier = null
+	switch_state(State.KICKED, BallStateData.build()
+		.set_lock_duration(lock_duration)
+		.set_kicker(p_kicker))
+
+func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_duration: int = DURATION_PASS_LOCK) -> void:
+	## 长传：高空抛物线，距离远
+	var direction := position.direction_to(destination)
+	var distance := position.distance_to(destination)
+	power = clamp(power, 0.3, 1.5)
+	var intensity := sqrt(2.0 * distance * friction_ground * 0.7) * power
+	velocity = direction * intensity
+	height = 0.0
+	# 抛物线：根据距离和速度计算初始竖直速度，使球落在目标附近
+	height_velocity = BallState.GRAVITY * distance / (1.5 * intensity)
+	carrier = null
+	switch_state(State.KICKED, BallStateData.build()
+		.set_lock_duration(lock_duration)
+		.set_kicker(p_kicker))
+
+func through_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_duration: int = DURATION_PASS_LOCK) -> void:
+	## 直塞：贴地快速直线，穿透力强
+	var direction := position.direction_to(destination)
+	power = clamp(power, 0.7, 1.3)
+	var intensity := lerp(180.0, 320.0, power)
+	velocity = direction * intensity
+	height = 0.0
+	height_velocity = 0.0
+	carrier = null
+	switch_state(State.KICKED, BallStateData.build()
+		.set_lock_duration(lock_duration)
+		.set_kicker(p_kicker))
+
+## === 守门员相关 ===
+
+func save_by(goalie: Player, direction: Vector2, speed_factor: float = 0.4) -> void:
+	## 被门将扑出：球改变方向并减速
+	velocity = direction * velocity.length() * speed_factor
+	if height < 5.0:
+		height_velocity = 4.0
+	carrier = null
+	switch_state(State.SAVED, BallStateData.build().set_kicker(goalie))
+
+func deflect_by(deflector: Player, new_velocity: Vector2) -> void:
+	## 折射：球碰到身体改变方向
+	velocity = new_velocity
+	carrier = null
+	switch_state(State.DEFLECTED, BallStateData.build().set_kicker(deflector))
+
+func hold_by_goalkeeper(goalie: Player) -> void:
+	## 门将抱住球
+	carrier = goalie
+	switch_state(State.HELD_BY_GOALKEEPER)
 
 func stop() -> void:
 	velocity = Vector2.ZERO
 
 func can_air_interact() -> bool:
 	return current_state != null and current_state.can_air_interact()
+
+func is_ball_free() -> bool:
+	## 球是否处于可被抢断的"离脚"窗口（带球步点系统）
+	return current_state != null and current_state.is_ball_free()
+
+## === 落地预测 API（解析式）===
+
+func predict_landing_time() -> float:
+	## 预测球落地所需时间（秒）。
+	## 如果球已经在地面或正在上升且高度>0，返回 0（已落地）或上升到最高点再下落的总时间。
+	## 使用闭式解：h + v0*t - 0.5*g*t² = 0
+	if height <= 0.0 and height_velocity <= 0.0:
+		return 0.0
+	var g := BallState.GRAVITY
+	var h := height
+	var v0 := height_velocity
+	# 解 t = (v0 + sqrt(v0^2 + 2gh)) / g
+	var discriminant := v0 * v0 + 2.0 * g * h
+	if discriminant < 0.0:
+		return 0.0
+	var t := (v0 + sqrt(discriminant)) / g
+	return max(t, 0.0)
+
+func predict_landing_position() -> Vector2:
+	## 预测球落地时的水平位置。
+	## 简化假设：水平方向速度恒定（忽略空气阻力，M1 精度足够）。
+	## 对于 AI 决策和落点提示已经够用。
+	if height <= 0.0 and height_velocity <= 0.0:
+		return position
+	var t_land := predict_landing_time()
+	# 水平方向匀速近似
+	return position + velocity * t_land
+
+func predict_position_at_time(t: float) -> Vector2:
+	## 预测 t 秒后球的水平位置（匀速近似）。
+	## 用于 AI 预判截球时机。
+	return position + velocity * t
+
+func predict_height_at_time(t: float) -> float:
+	## 预测 t 秒后球的高度。
+	## h(t) = h0 + v0*t - 0.5*g*t²
+	var h := height + height_velocity * t - 0.5 * BallState.GRAVITY * t * t
+	return max(h, 0.0)
 
 func can_air_connect(air_connect_min_height: float, air_connect_max_height: float) -> bool:
 	return height >= air_connect_min_height and height <= air_connect_max_height

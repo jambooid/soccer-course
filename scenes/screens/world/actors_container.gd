@@ -22,6 +22,7 @@ func _init() -> void:
 	GameEvents.impact_received.connect(on_impact_received.bind())
 
 func _ready() -> void:
+	add_to_group("actors_container")
 	squad_home = spawn_players(GameManager.current_match.country_home, goal_home)
 	goal_home.initialize(GameManager.current_match.country_home)
 	spawns.scale.x = -1
@@ -119,3 +120,35 @@ func on_impact_received(impact_position: Vector2, _is_high_impact: bool) -> void
 	var spark := SPARK_PREFAB.instantiate()
 	spark.position = impact_position
 	add_child(spark)
+
+## === 越位判定 ===
+
+func check_pass_offside(passer: Player) -> Dictionary:
+	## 判断传球是否造成越位，返回 OffsideJudge 的结果字典
+	var attacker_squad := squad_home if passer.country == squad_home[0].country else squad_away
+	var defender_squad := squad_away if attacker_squad == squad_home else squad_home
+
+	# 进攻方向：home 队向右攻（x+），away 队向左攻（x-）
+	var attacking_dir_x := 1 if attacker_squad == squad_home else -1
+
+	return OffsideJudge.check_offside_at_pass(
+		passer,
+		attacker_squad,
+		defender_squad,
+		ball.position,
+		attacking_dir_x
+	)
+
+func handle_offside(offender: Player, offside_position: Vector2) -> void:
+	## 处理越位判罚：球变为自由球，放在越位位置
+	GameEvents.offside_called.emit(offender, offside_position)
+	# 让球停在越位位置（FREEFORM 状态，速度为 0）
+	if ball.has_method("release_to_position"):
+		ball.release_to_position(offside_position)
+	else:
+		ball.position = offside_position
+		ball.velocity = Vector2.ZERO
+		if ball.has_method("set_state_freeform"):
+			ball.set_state_freeform()
+	SoundPlayer.play(SoundPlayer.Sound.WHISTLE)
+

@@ -28,7 +28,7 @@ func _process(_delta: float) -> void:
 			for action : KeyUtils.Action in move_dirs.keys():
 				if KeyUtils.is_action_just_pressed(selector.control_scheme, action):
 					try_navigate(i, move_dirs[action])
-	if not selectors[0].is_selected and KeyUtils.is_action_just_pressed(Player.ControlScheme.P1, KeyUtils.Action.PASS):
+	if not selectors[0].is_selected and KeyUtils.is_action_just_pressed(Player.ControlScheme.P1, KeyUtils.Action.SHORT_PASS):
 		SoundPlayer.play(SoundPlayer.Sound.UI_NAV)
 		transition_screen(SoccerGame.ScreenType.MAIN_MENU)
 

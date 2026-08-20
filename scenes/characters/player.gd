@@ -20,8 +20,14 @@ enum State {MOVING, TACKLING, RECOVERING, PREPPING_SHOT, SHOOTING, PASSING, HEAD
 @export var ball : Ball
 @export var control_scheme : ControlScheme
 @export var own_goal : Goal
-@export var power : float
-@export var speed : float
+@export var power : float = 50.0
+@export var speed : float = 50.0
+@export var technique : float = 50.0
+@export var shooting : float = 50.0
+@export var defense : float = 50.0
+@export var jump : float = 50.0
+@export var stamina : float = 50.0
+@export var jersey_number : int = 0
 @export var target_goal : Goal
 
 @onready var animation_player : AnimationPlayer = %AnimationPlayer
@@ -86,6 +92,12 @@ func initialize(context_position: Vector2, context_kickoff_position: Vector2, co
 	target_goal = context_target_goal
 	speed = context_player_data.speed
 	power = context_player_data.power
+	technique = context_player_data.technique
+	shooting = context_player_data.shooting
+	defense = context_player_data.defense
+	jump = context_player_data.jump
+	stamina = context_player_data.stamina
+	jersey_number = context_player_data.number
 	role = context_player_data.role
 	skin_color = context_player_data.skin_color
 	fullname = context_player_data.full_name

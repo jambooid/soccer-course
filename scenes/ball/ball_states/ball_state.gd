@@ -54,3 +54,12 @@ func move_and_bounce(delta: float) -> void:
 
 func can_air_interact() -> bool:
 	return false
+
+func is_ball_free() -> bool:
+	## 球是否处于"离脚/自由"状态（可被抢断的窗口）
+	return false
+
+func is_ball_free() -> bool:
+	## 球是否处于"离脚/自由"状态（可被抢断的窗口）
+	## 由各状态子类重写，默认 false
+	return false

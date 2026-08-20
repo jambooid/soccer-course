@@ -7,6 +7,10 @@ func _init() -> void:
 		Ball.State.CARRIED: BallStateCarried,
 		Ball.State.FREEFORM: BallStateFreeform,
 		Ball.State.SHOT: BallStateShot,
+		Ball.State.KICKED: BallStateKicked,
+		Ball.State.SAVED: BallStateSaved,
+		Ball.State.DEFLECTED: BallStateDeflected,
+		Ball.State.HELD_BY_GOALKEEPER: BallStateHeldByGoalkeeper,
 	}
 
 func get_fresh_state(state: Ball.State) -> BallState:
