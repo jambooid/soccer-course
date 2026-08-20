@@ -65,7 +65,7 @@ The owner (e.g. `Player`, `Ball`, `GameManager`) holds `switch_state(enum, data)
 - **Node access**: `%UniqueNodeName` (`@onready`) for scene-internal refs; `@export` for editor-wired dependencies (ball, goals, control scheme).
 - **Files**: each script gets its own `.gd` + an auto-generated `.gd.uid` (Godot 4 UID). Never hand-edit `.uid`/`.import` files.
 - **Communication**: prefer the `GameEvents` bus and the `state_transition_requested`/`setup` pattern over ad-hoc `get_node()`/signal wiring. Context is passed *into* states via `setup(...)`, not read from the parent tree.
-- **Assets**: `res://assets/{art,sfx,music,fonts,json}/`. Squads data is `assets/json/squads.json` (array of `{country, players:[{name, skin, role, speed, power}]}` × 6 players, indices map to `Player.SkinColor`/`Player.Role` enums). Flags: `assets/art/ui/flags/flag-<COUNTRY_LOWER>.png`, cached by `FlagHelper`.
+- **Assets**: `res://assets/{art,sfx,music,fonts,json}/`. Squads data is `assets/json/squads.json` (array of `{country, players:[{name, skin, role, speed, power, technique, shooting, defense, jump, stamina, number}]}` × 11 players per team in 4-3-3 formation: GK + 4 DEF + 3 MID + 3 FWD, indices map to `Player.SkinColor`/`Player.Role` enums). Flags: `assets/art/ui/flags/flag-<COUNTRY_LOWER>.png`, cached by `FlagHelper`.
 - **Physics layers** (see `[layer_names]`): `PitchWalls`, `Player`, `Ball`, `InvisibleWalls`, `ScoringArea`, `GoalKeeperHands`.
 - **Input map** (`project.godot` `[input]`): P1 = arrow keys + `[` (pass) / `]` (shoot); P2 = WASD + `0` (pass) / `1` (shoot). Game modes: single-player (P2 empty), versus, co-op (both pick the same country).
 
@@ -73,5 +73,5 @@ The owner (e.g. `Player`, `Ball`, `GameManager`) holds `switch_state(enum, data)
 
 - Adding a new **state**: create the `*State` subclass, register `Enum → Class` in the matching `*StateFactory._init()`, add the enum value to the owner's `State` enum. If it needs payload, extend the `*StateData` builder.
 - Adding a **screen**: add to `SoccerGame.ScreenType` + `ScreenFactory`, extend `Screen`, set its `music` export.
-- Adding a **team/country**: add to `squads.json` (6 players), drop a `flag-<name>.png`, and note that `Tournament` slices `countries[1..9]` (index 0 is `"DEFAULT"` placeholder) — keep 8 real teams after DEFAULT for the bracket.
+- Adding a **team/country**: add to `squads.json` (11 players, 4-3-3 formation), drop a `flag-<name>.png`, and note that `Tournament` slices `countries[1..9]` (index 0 is `"DEFAULT"` placeholder) — keep 8 real teams after DEFAULT for the bracket.
 - Keep the viewport/scaling and nearest-filter settings intact — they define the pixel-art look.

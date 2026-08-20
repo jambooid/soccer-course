@@ -16,16 +16,16 @@
         "number": 1
       },
       {
-        "name": "J. KOUNDE",
-        "skin": 2,
+        "name": "C. NKUNKU",
+        "skin": 3,
         "role": 1,
-        "speed": 75,
-        "power": 165,
-        "technique": 56,
-        "shooting": 33,
-        "defense": 79,
-        "jump": 79,
-        "stamina": 85,
+        "speed": 80,
+        "power": 162,
+        "technique": 58,
+        "shooting": 28,
+        "defense": 78,
+        "jump": 72,
+        "stamina": 86,
         "number": 2
       },
       {
@@ -39,6 +39,32 @@
         "defense": 80,
         "jump": 74,
         "stamina": 83,
+        "number": 5
+      },
+      {
+        "name": "J. KOUNDE",
+        "skin": 2,
+        "role": 1,
+        "speed": 75,
+        "power": 165,
+        "technique": 56,
+        "shooting": 33,
+        "defense": 79,
+        "jump": 79,
+        "stamina": 85,
+        "number": 4
+      },
+      {
+        "name": "K. KONATE",
+        "skin": 2,
+        "role": 1,
+        "speed": 73,
+        "power": 160,
+        "technique": 57,
+        "shooting": 34,
+        "defense": 80,
+        "jump": 69,
+        "stamina": 87,
         "number": 3
       },
       {
@@ -55,6 +81,32 @@
         "number": 6
       },
       {
+        "name": "N. KANTE",
+        "skin": 3,
+        "role": 2,
+        "speed": 77,
+        "power": 177,
+        "technique": 86,
+        "shooting": 72,
+        "defense": 60,
+        "jump": 58,
+        "stamina": 91,
+        "number": 8
+      },
+      {
+        "name": "Y. FOFANA",
+        "skin": 1,
+        "role": 2,
+        "speed": 84,
+        "power": 155,
+        "technique": 90,
+        "shooting": 56,
+        "defense": 63,
+        "jump": 55,
+        "stamina": 92,
+        "number": 10
+      },
+      {
         "name": "K. MBAPPE",
         "skin": 1,
         "role": 3,
@@ -65,7 +117,7 @@
         "defense": 47,
         "jump": 82,
         "stamina": 86,
-        "number": 9
+        "number": 7
       },
       {
         "name": "O. GIROUD",
@@ -78,6 +130,19 @@
         "defense": 42,
         "jump": 72,
         "stamina": 81,
+        "number": 9
+      },
+      {
+        "name": "T. HERNANDEZ",
+        "skin": 0,
+        "role": 3,
+        "speed": 79,
+        "power": 177,
+        "technique": 96,
+        "shooting": 97,
+        "defense": 39,
+        "jump": 70,
+        "stamina": 86,
         "number": 11
       }
     ]
@@ -99,6 +164,19 @@
         "number": 1
       },
       {
+        "name": "F. ARMANI",
+        "skin": 3,
+        "role": 1,
+        "speed": 73,
+        "power": 189,
+        "technique": 55,
+        "shooting": 64,
+        "defense": 93,
+        "jump": 90,
+        "stamina": 88,
+        "number": 2
+      },
+      {
         "name": "N. MOLINA",
         "skin": 0,
         "role": 1,
@@ -109,7 +187,7 @@
         "defense": 92,
         "jump": 81,
         "stamina": 94,
-        "number": 2
+        "number": 5
       },
       {
         "name": "N. OTAMENDI",
@@ -121,6 +199,19 @@
         "shooting": 41,
         "defense": 94,
         "jump": 82,
+        "stamina": 86,
+        "number": 4
+      },
+      {
+        "name": "P. DE PAUL",
+        "skin": 0,
+        "role": 1,
+        "speed": 81,
+        "power": 166,
+        "technique": 58,
+        "shooting": 38,
+        "defense": 86,
+        "jump": 71,
         "stamina": 86,
         "number": 3
       },
@@ -138,17 +229,43 @@
         "number": 6
       },
       {
-        "name": "L. MESSI",
+        "name": "C. RODRIGUEZ",
+        "skin": 3,
+        "role": 2,
+        "speed": 81,
+        "power": 163,
+        "technique": 88,
+        "shooting": 59,
+        "defense": 62,
+        "jump": 54,
+        "stamina": 90,
+        "number": 8
+      },
+      {
+        "name": "L. MARTINEZ",
         "skin": 0,
+        "role": 2,
+        "speed": 85,
+        "power": 175,
+        "technique": 86,
+        "shooting": 82,
+        "defense": 62,
+        "jump": 56,
+        "stamina": 96,
+        "number": 10
+      },
+      {
+        "name": "E. FERNANDEZ",
+        "skin": 1,
         "role": 3,
-        "speed": 84,
-        "power": 188,
+        "speed": 82,
+        "power": 194,
         "technique": 98,
         "shooting": 98,
-        "defense": 40,
+        "defense": 42,
         "jump": 75,
-        "stamina": 82,
-        "number": 9
+        "stamina": 88,
+        "number": 7
       },
       {
         "name": "J. ALVAREZ",
@@ -161,6 +278,19 @@
         "defense": 32,
         "jump": 72,
         "stamina": 79,
+        "number": 9
+      },
+      {
+        "name": "L. MESSI",
+        "skin": 0,
+        "role": 3,
+        "speed": 84,
+        "power": 188,
+        "technique": 98,
+        "shooting": 98,
+        "defense": 40,
+        "jump": 75,
+        "stamina": 82,
         "number": 11
       }
     ]
@@ -182,16 +312,16 @@
         "number": 1
       },
       {
-        "name": "T. SILVA",
+        "name": "BRUNO G.",
         "skin": 1,
         "role": 1,
-        "speed": 75,
-        "power": 185,
-        "technique": 60,
-        "shooting": 56,
-        "defense": 94,
-        "jump": 81,
-        "stamina": 90,
+        "speed": 74,
+        "power": 168,
+        "technique": 58,
+        "shooting": 49,
+        "defense": 86,
+        "jump": 80,
+        "stamina": 84,
         "number": 2
       },
       {
@@ -205,7 +335,46 @@
         "defense": 84,
         "jump": 86,
         "stamina": 95,
+        "number": 5
+      },
+      {
+        "name": "R. LEWANDOWSKI",
+        "skin": 1,
+        "role": 1,
+        "speed": 76,
+        "power": 162,
+        "technique": 63,
+        "shooting": 34,
+        "defense": 91,
+        "jump": 75,
+        "stamina": 90,
+        "number": 4
+      },
+      {
+        "name": "T. SILVA",
+        "skin": 1,
+        "role": 1,
+        "speed": 75,
+        "power": 185,
+        "technique": 60,
+        "shooting": 56,
+        "defense": 94,
+        "jump": 81,
+        "stamina": 90,
         "number": 3
+      },
+      {
+        "name": "ANTONY",
+        "skin": 1,
+        "role": 2,
+        "speed": 81,
+        "power": 166,
+        "technique": 81,
+        "shooting": 72,
+        "defense": 67,
+        "jump": 51,
+        "stamina": 88,
+        "number": 6
       },
       {
         "name": "CASEMIRO",
@@ -218,7 +387,33 @@
         "defense": 64,
         "jump": 59,
         "stamina": 98,
-        "number": 6
+        "number": 8
+      },
+      {
+        "name": "CASIMIRO",
+        "skin": 1,
+        "role": 2,
+        "speed": 77,
+        "power": 175,
+        "technique": 88,
+        "shooting": 81,
+        "defense": 57,
+        "jump": 60,
+        "stamina": 92,
+        "number": 10
+      },
+      {
+        "name": "DANILO",
+        "skin": 2,
+        "role": 3,
+        "speed": 85,
+        "power": 181,
+        "technique": 88,
+        "shooting": 94,
+        "defense": 40,
+        "jump": 81,
+        "stamina": 86,
+        "number": 7
       },
       {
         "name": "NEYMAR",
@@ -265,6 +460,19 @@
         "number": 1
       },
       {
+        "name": "C. POPE",
+        "skin": 2,
+        "role": 1,
+        "speed": 73,
+        "power": 187,
+        "technique": 68,
+        "shooting": 64,
+        "defense": 90,
+        "jump": 81,
+        "stamina": 83,
+        "number": 2
+      },
+      {
         "name": "H. MAGUIRE",
         "skin": 0,
         "role": 1,
@@ -275,7 +483,7 @@
         "defense": 92,
         "jump": 76,
         "stamina": 85,
-        "number": 2
+        "number": 5
       },
       {
         "name": "L. SHAW",
@@ -288,7 +496,46 @@
         "defense": 87,
         "jump": 74,
         "stamina": 82,
+        "number": 4
+      },
+      {
+        "name": "M. RASHFORD",
+        "skin": 1,
+        "role": 1,
+        "speed": 76,
+        "power": 173,
+        "technique": 67,
+        "shooting": 35,
+        "defense": 87,
+        "jump": 81,
+        "stamina": 82,
         "number": 3
+      },
+      {
+        "name": "B. CHILWELL",
+        "skin": 0,
+        "role": 2,
+        "speed": 83,
+        "power": 179,
+        "technique": 93,
+        "shooting": 84,
+        "defense": 56,
+        "jump": 57,
+        "stamina": 95,
+        "number": 6
+      },
+      {
+        "name": "J. SANCHO",
+        "skin": 1,
+        "role": 2,
+        "speed": 78,
+        "power": 156,
+        "technique": 77,
+        "shooting": 52,
+        "defense": 64,
+        "jump": 47,
+        "stamina": 94,
+        "number": 8
       },
       {
         "name": "P. FODEN",
@@ -301,7 +548,7 @@
         "defense": 65,
         "jump": 59,
         "stamina": 90,
-        "number": 6
+        "number": 10
       },
       {
         "name": "H. KANE",
@@ -314,6 +561,19 @@
         "defense": 36,
         "jump": 80,
         "stamina": 86,
+        "number": 7
+      },
+      {
+        "name": "K. TRIPPIER",
+        "skin": 3,
+        "role": 3,
+        "speed": 80,
+        "power": 186,
+        "technique": 95,
+        "shooting": 98,
+        "defense": 49,
+        "jump": 82,
+        "stamina": 88,
         "number": 9
       },
       {
@@ -371,6 +631,32 @@
         "defense": 86,
         "jump": 82,
         "stamina": 84,
+        "number": 5
+      },
+      {
+        "name": "J. BRANDT",
+        "skin": 1,
+        "role": 1,
+        "speed": 73,
+        "power": 167,
+        "technique": 52,
+        "shooting": 41,
+        "defense": 78,
+        "jump": 80,
+        "stamina": 85,
+        "number": 4
+      },
+      {
+        "name": "M. HUMMELS",
+        "skin": 1,
+        "role": 1,
+        "speed": 80,
+        "power": 184,
+        "technique": 74,
+        "shooting": 61,
+        "defense": 94,
+        "jump": 85,
+        "stamina": 94,
         "number": 3
       },
       {
@@ -387,17 +673,43 @@
         "number": 6
       },
       {
-        "name": "T. MULLER",
+        "name": "M. REUS",
+        "skin": 1,
+        "role": 2,
+        "speed": 80,
+        "power": 157,
+        "technique": 85,
+        "shooting": 65,
+        "defense": 56,
+        "jump": 55,
+        "stamina": 90,
+        "number": 8
+      },
+      {
+        "name": "N. SULE",
         "skin": 0,
+        "role": 2,
+        "speed": 84,
+        "power": 162,
+        "technique": 79,
+        "shooting": 73,
+        "defense": 52,
+        "jump": 52,
+        "stamina": 88,
+        "number": 10
+      },
+      {
+        "name": "R. GOSENS",
+        "skin": 3,
         "role": 3,
         "speed": 81,
-        "power": 183,
-        "technique": 89,
+        "power": 190,
+        "technique": 98,
         "shooting": 98,
-        "defense": 48,
-        "jump": 74,
-        "stamina": 89,
-        "number": 9
+        "defense": 38,
+        "jump": 76,
+        "stamina": 92,
+        "number": 7
       },
       {
         "name": "S. GNABRY",
@@ -410,6 +722,19 @@
         "defense": 40,
         "jump": 80,
         "stamina": 88,
+        "number": 9
+      },
+      {
+        "name": "T. MULLER",
+        "skin": 0,
+        "role": 3,
+        "speed": 81,
+        "power": 183,
+        "technique": 89,
+        "shooting": 98,
+        "defense": 48,
+        "jump": 74,
+        "stamina": 89,
         "number": 11
       }
     ]
@@ -431,19 +756,6 @@
         "number": 1
       },
       {
-        "name": "F. DIMARCO",
-        "skin": 0,
-        "role": 1,
-        "speed": 80,
-        "power": 170,
-        "technique": 75,
-        "shooting": 35,
-        "defense": 88,
-        "jump": 79,
-        "stamina": 84,
-        "number": 2
-      },
-      {
         "name": "F. ACERBI",
         "skin": 0,
         "role": 1,
@@ -454,6 +766,45 @@
         "defense": 85,
         "jump": 72,
         "stamina": 78,
+        "number": 2
+      },
+      {
+        "name": "F. DIMARCO",
+        "skin": 0,
+        "role": 1,
+        "speed": 80,
+        "power": 170,
+        "technique": 75,
+        "shooting": 35,
+        "defense": 88,
+        "jump": 79,
+        "stamina": 84,
+        "number": 5
+      },
+      {
+        "name": "F. TORRES",
+        "skin": 3,
+        "role": 1,
+        "speed": 77,
+        "power": 173,
+        "technique": 68,
+        "shooting": 36,
+        "defense": 82,
+        "jump": 73,
+        "stamina": 86,
+        "number": 4
+      },
+      {
+        "name": "G. DI LORENZO",
+        "skin": 0,
+        "role": 1,
+        "speed": 77,
+        "power": 185,
+        "technique": 66,
+        "shooting": 53,
+        "defense": 89,
+        "jump": 86,
+        "stamina": 90,
         "number": 3
       },
       {
@@ -470,6 +821,32 @@
         "number": 6
       },
       {
+        "name": "JORGINHO",
+        "skin": 2,
+        "role": 2,
+        "speed": 81,
+        "power": 160,
+        "technique": 91,
+        "shooting": 59,
+        "defense": 52,
+        "jump": 55,
+        "stamina": 96,
+        "number": 8
+      },
+      {
+        "name": "L. INSIGNE",
+        "skin": 0,
+        "role": 2,
+        "speed": 75,
+        "power": 175,
+        "technique": 74,
+        "shooting": 68,
+        "defense": 60,
+        "jump": 60,
+        "stamina": 91,
+        "number": 10
+      },
+      {
         "name": "F. CHIESA",
         "skin": 0,
         "role": 3,
@@ -480,6 +857,19 @@
         "defense": 33,
         "jump": 70,
         "stamina": 84,
+        "number": 7
+      },
+      {
+        "name": "G. MANCINI",
+        "skin": 3,
+        "role": 3,
+        "speed": 81,
+        "power": 192,
+        "technique": 93,
+        "shooting": 98,
+        "defense": 46,
+        "jump": 75,
+        "stamina": 88,
         "number": 9
       },
       {
@@ -514,19 +904,6 @@
         "number": 1
       },
       {
-        "name": "J. ALBA",
-        "skin": 0,
-        "role": 1,
-        "speed": 80,
-        "power": 167,
-        "technique": 69,
-        "shooting": 46,
-        "defense": 94,
-        "jump": 78,
-        "stamina": 84,
-        "number": 2
-      },
-      {
         "name": "A. BALDE",
         "skin": 2,
         "role": 1,
@@ -537,6 +914,45 @@
         "defense": 79,
         "jump": 75,
         "stamina": 80,
+        "number": 2
+      },
+      {
+        "name": "J. ALBA",
+        "skin": 0,
+        "role": 1,
+        "speed": 80,
+        "power": 167,
+        "technique": 69,
+        "shooting": 46,
+        "defense": 94,
+        "jump": 78,
+        "stamina": 84,
+        "number": 5
+      },
+      {
+        "name": "R. LAPORTE",
+        "skin": 3,
+        "role": 1,
+        "speed": 79,
+        "power": 169,
+        "technique": 72,
+        "shooting": 37,
+        "defense": 84,
+        "jump": 76,
+        "stamina": 85,
+        "number": 4
+      },
+      {
+        "name": "S. BUSQUETS",
+        "skin": 0,
+        "role": 1,
+        "speed": 81,
+        "power": 183,
+        "technique": 74,
+        "shooting": 49,
+        "defense": 83,
+        "jump": 86,
+        "stamina": 93,
         "number": 3
       },
       {
@@ -553,6 +969,32 @@
         "number": 6
       },
       {
+        "name": "J. CANCELO",
+        "skin": 0,
+        "role": 2,
+        "speed": 83,
+        "power": 160,
+        "technique": 93,
+        "shooting": 54,
+        "defense": 56,
+        "jump": 49,
+        "stamina": 96,
+        "number": 8
+      },
+      {
+        "name": "PEDRI",
+        "skin": 3,
+        "role": 2,
+        "speed": 85,
+        "power": 162,
+        "technique": 80,
+        "shooting": 71,
+        "defense": 58,
+        "jump": 58,
+        "stamina": 96,
+        "number": 10
+      },
+      {
         "name": "A. MORATA",
         "skin": 0,
         "role": 3,
@@ -563,7 +1005,7 @@
         "defense": 34,
         "jump": 71,
         "stamina": 84,
-        "number": 9
+        "number": 7
       },
       {
         "name": "F. TORRES",
@@ -575,6 +1017,19 @@
         "shooting": 96,
         "defense": 36,
         "jump": 71,
+        "stamina": 88,
+        "number": 9
+      },
+      {
+        "name": "I. GAVI",
+        "skin": 3,
+        "role": 3,
+        "speed": 87,
+        "power": 167,
+        "technique": 98,
+        "shooting": 87,
+        "defense": 36,
+        "jump": 69,
         "stamina": 88,
         "number": 11
       }
@@ -597,17 +1052,30 @@
         "number": 1
       },
       {
-        "name": "M. MCKENZIE",
-        "skin": 1,
+        "name": "A. LENHARDT",
+        "skin": 2,
         "role": 1,
-        "speed": 71,
-        "power": 160,
-        "technique": 63,
-        "shooting": 34,
-        "defense": 90,
-        "jump": 74,
-        "stamina": 79,
+        "speed": 77,
+        "power": 167,
+        "technique": 66,
+        "shooting": 35,
+        "defense": 87,
+        "jump": 78,
+        "stamina": 85,
         "number": 2
+      },
+      {
+        "name": "C. ROBINSON",
+        "skin": 3,
+        "role": 1,
+        "speed": 73,
+        "power": 160,
+        "technique": 53,
+        "shooting": 29,
+        "defense": 82,
+        "jump": 76,
+        "stamina": 81,
+        "number": 5
       },
       {
         "name": "J. SCALLY",
@@ -620,6 +1088,19 @@
         "defense": 89,
         "jump": 73,
         "stamina": 82,
+        "number": 4
+      },
+      {
+        "name": "M. MCKENZIE",
+        "skin": 1,
+        "role": 1,
+        "speed": 71,
+        "power": 160,
+        "technique": 63,
+        "shooting": 34,
+        "defense": 90,
+        "jump": 74,
+        "stamina": 79,
         "number": 3
       },
       {
@@ -636,6 +1117,45 @@
         "number": 6
       },
       {
+        "name": "R. BALOGUN",
+        "skin": 0,
+        "role": 2,
+        "speed": 84,
+        "power": 180,
+        "technique": 92,
+        "shooting": 73,
+        "defense": 60,
+        "jump": 60,
+        "stamina": 92,
+        "number": 8
+      },
+      {
+        "name": "T. ADAMS",
+        "skin": 1,
+        "role": 2,
+        "speed": 80,
+        "power": 157,
+        "technique": 88,
+        "shooting": 59,
+        "defense": 55,
+        "jump": 54,
+        "stamina": 96,
+        "number": 10
+      },
+      {
+        "name": "C. PULISIC",
+        "skin": 0,
+        "role": 3,
+        "speed": 77,
+        "power": 167,
+        "technique": 86,
+        "shooting": 82,
+        "defense": 34,
+        "jump": 74,
+        "stamina": 82,
+        "number": 7
+      },
+      {
         "name": "T. WEAH",
         "skin": 0,
         "role": 3,
@@ -649,16 +1169,16 @@
         "number": 9
       },
       {
-        "name": "C. PULISIC",
-        "skin": 0,
+        "name": "W. MCKENNIE",
+        "skin": 1,
         "role": 3,
-        "speed": 77,
-        "power": 167,
-        "technique": 86,
-        "shooting": 82,
-        "defense": 34,
-        "jump": 74,
-        "stamina": 82,
+        "speed": 89,
+        "power": 182,
+        "technique": 97,
+        "shooting": 98,
+        "defense": 38,
+        "jump": 77,
+        "stamina": 84,
         "number": 11
       }
     ]
@@ -680,19 +1200,6 @@
         "number": 1
       },
       {
-        "name": "A. JOHNSTON",
-        "skin": 0,
-        "role": 1,
-        "speed": 70,
-        "power": 140,
-        "technique": 54,
-        "shooting": 20,
-        "defense": 84,
-        "jump": 68,
-        "stamina": 76,
-        "number": 2
-      },
-      {
         "name": "A. DAVIES",
         "skin": 2,
         "role": 1,
@@ -703,6 +1210,45 @@
         "defense": 74,
         "jump": 67,
         "stamina": 74,
+        "number": 2
+      },
+      {
+        "name": "A. JOHNSTON",
+        "skin": 0,
+        "role": 1,
+        "speed": 70,
+        "power": 140,
+        "technique": 54,
+        "shooting": 20,
+        "defense": 84,
+        "jump": 68,
+        "stamina": 76,
+        "number": 5
+      },
+      {
+        "name": "B. OSMAN",
+        "skin": 2,
+        "role": 1,
+        "speed": 78,
+        "power": 186,
+        "technique": 62,
+        "shooting": 49,
+        "defense": 93,
+        "jump": 80,
+        "stamina": 94,
+        "number": 4
+      },
+      {
+        "name": "D. WATERS",
+        "skin": 2,
+        "role": 1,
+        "speed": 82,
+        "power": 187,
+        "technique": 82,
+        "shooting": 67,
+        "defense": 92,
+        "jump": 79,
+        "stamina": 88,
         "number": 3
       },
       {
@@ -719,17 +1265,43 @@
         "number": 6
       },
       {
-        "name": "T. BUCHANAN",
-        "skin": 1,
+        "name": "A. HUTCHINSON",
+        "skin": 3,
+        "role": 2,
+        "speed": 77,
+        "power": 178,
+        "technique": 89,
+        "shooting": 82,
+        "defense": 56,
+        "jump": 56,
+        "stamina": 87,
+        "number": 8
+      },
+      {
+        "name": "S. VITORIA",
+        "skin": 2,
+        "role": 2,
+        "speed": 83,
+        "power": 156,
+        "technique": 81,
+        "shooting": 63,
+        "defense": 53,
+        "jump": 46,
+        "stamina": 92,
+        "number": 10
+      },
+      {
+        "name": "I. KONE",
+        "skin": 0,
         "role": 3,
-        "speed": 65,
-        "power": 125,
-        "technique": 79,
-        "shooting": 61,
-        "defense": 24,
-        "jump": 61,
-        "stamina": 66,
-        "number": 9
+        "speed": 90,
+        "power": 192,
+        "technique": 98,
+        "shooting": 98,
+        "defense": 42,
+        "jump": 85,
+        "stamina": 84,
+        "number": 7
       },
       {
         "name": "J. DAVID",
@@ -742,6 +1314,19 @@
         "defense": 36,
         "jump": 63,
         "stamina": 80,
+        "number": 9
+      },
+      {
+        "name": "T. BUCHANAN",
+        "skin": 1,
+        "role": 3,
+        "speed": 65,
+        "power": 125,
+        "technique": 79,
+        "shooting": 61,
+        "defense": 24,
+        "jump": 61,
+        "stamina": 66,
         "number": 11
       }
     ]

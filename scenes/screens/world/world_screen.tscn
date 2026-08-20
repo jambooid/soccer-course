@@ -61,19 +61,34 @@ position = Vector2(425, 180)
 position = Vector2(-345, 1)
 
 [node name="DefensePosition" type="Node2D" parent="ActorsContainer/Spawns"]
-position = Vector2(-235, -30)
+position = Vector2(-260, -70)
 
 [node name="DefensePosition2" type="Node2D" parent="ActorsContainer/Spawns"]
-position = Vector2(-235, 30)
+position = Vector2(-240, -25)
+
+[node name="DefensePosition3" type="Node2D" parent="ActorsContainer/Spawns"]
+position = Vector2(-240, 25)
+
+[node name="DefensePosition4" type="Node2D" parent="ActorsContainer/Spawns"]
+position = Vector2(-260, 70)
 
 [node name="MidfieldPosition" type="Node2D" parent="ActorsContainer/Spawns"]
-position = Vector2(-125, 0)
+position = Vector2(-150, -45)
+
+[node name="MidfieldPosition2" type="Node2D" parent="ActorsContainer/Spawns"]
+position = Vector2(-140, 0)
+
+[node name="MidfieldPosition3" type="Node2D" parent="ActorsContainer/Spawns"]
+position = Vector2(-150, 45)
 
 [node name="OffensePosition" type="Node2D" parent="ActorsContainer/Spawns"]
-position = Vector2(-25, -80)
+position = Vector2(-50, -75)
 
 [node name="OffensePosition2" type="Node2D" parent="ActorsContainer/Spawns"]
-position = Vector2(-25, 80)
+position = Vector2(-30, 0)
+
+[node name="OffensePosition3" type="Node2D" parent="ActorsContainer/Spawns"]
+position = Vector2(-50, 75)
 
 [node name="KickOffs" type="Node2D" parent="ActorsContainer"]
 unique_name_in_owner = true
@@ -84,6 +99,21 @@ position = Vector2(-10, 0)
 
 [node name="KickOffPosition2" type="Node2D" parent="ActorsContainer/KickOffs"]
 position = Vector2(-5, 30)
+
+[node name="KickOffPosition3" type="Node2D" parent="ActorsContainer/KickOffs"]
+position = Vector2(-30, -40)
+
+[node name="KickOffPosition4" type="Node2D" parent="ActorsContainer/KickOffs"]
+position = Vector2(-25, 50)
+
+[node name="KickOffPosition5" type="Node2D" parent="ActorsContainer/KickOffs"]
+position = Vector2(-80, -20)
+
+[node name="KickOffPosition6" type="Node2D" parent="ActorsContainer/KickOffs"]
+position = Vector2(-80, 20)
+
+[node name="KickOffPosition7" type="Node2D" parent="ActorsContainer/KickOffs"]
+position = Vector2(-120, 0)
 
 [node name="PitchObjects" type="Node2D" parent="ActorsContainer"]
 y_sort_enabled = true

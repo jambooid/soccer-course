@@ -46,8 +46,8 @@ func spawn_players(country: String, own_goal: Goal) -> Array[Player]:
 		var player_position := spawns.get_child(i).global_position as Vector2
 		var player_data := players[i] as PlayerResource
 		var kickoff_position := player_position
-		if i > 3:
-			kickoff_position = kickoffs.get_child(i - 4).global_position as Vector2
+		if i > 4:
+			kickoff_position = kickoffs.get_child(i - 5).global_position as Vector2
 		var player := spawn_player(player_position, kickoff_position, own_goal, target_goal, player_data, country)
 		player_nodes.append(player)
 		add_child(player)
@@ -97,16 +97,22 @@ func setup_control_schemes() -> void:
 	var p1_country := GameManager.player_setup[0]
 	if GameManager.is_coop():
 		var player_squad := squad_home if squad_home[0].country == p1_country else squad_away
-		player_squad[4].set_control_scheme(Player.ControlScheme.P1)
-		player_squad[5].set_control_scheme(Player.ControlScheme.P2)
+		# 控制最后两个进攻球员（通常是前锋）
+		var last_idx := player_squad.size() - 1
+		player_squad[last_idx - 1].set_control_scheme(Player.ControlScheme.P1)
+		player_squad[last_idx].set_control_scheme(Player.ControlScheme.P2)
 	elif GameManager.is_single_player():
 		var player_squad := squad_home if squad_home[0].country == p1_country else squad_away
-		player_squad[5].set_control_scheme(Player.ControlScheme.P1)
+		# 控制最后一个球员（中锋/主要前锋）
+		var last_idx := player_squad.size() - 1
+		player_squad[last_idx].set_control_scheme(Player.ControlScheme.P1)
 	else: # versus
 		var p1_squad := squad_home if squad_home[0].country == p1_country else squad_away
 		var p2_squad := squad_home if p1_squad == squad_away else squad_away
-		p1_squad[5].set_control_scheme(Player.ControlScheme.P1)
-		p2_squad[5].set_control_scheme(Player.ControlScheme.P2)
+		var p1_last := p1_squad.size() - 1
+		var p2_last := p2_squad.size() - 1
+		p1_squad[p1_last].set_control_scheme(Player.ControlScheme.P1)
+		p2_squad[p2_last].set_control_scheme(Player.ControlScheme.P2)
 
 func reset_control_schemes() -> void:
 	for squad in [squad_home, squad_away]:

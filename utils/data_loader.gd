@@ -38,7 +38,7 @@ func _init() -> void:
 			player_resource.stamina = stamina
 			player_resource.number = number
 			squads.get(country_name).append(player_resource)
-		assert(players.size() >= 6)
+		assert(players.size() >= 11)
 	json_file.close()
 	
 func get_squad(country: String) -> Array:
