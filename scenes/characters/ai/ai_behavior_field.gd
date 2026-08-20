@@ -40,20 +40,166 @@ func perform_ai_movement() -> void:
 	player.velocity = total_steering_force * player.speed
 
 func perform_ai_decisions() -> void:
+	# 防守时的断球决策
 	if is_ball_possessed_by_opponent() and player.position.distance_to(ball.position) < TACKLE_DISTANCE and randf() < TACKLE_PROBABILITY:
 		player.switch_state(Player.State.TACKLING)
+		return
+
+	# 持球时的进攻决策树
 	if ball.carrier == player:
-		var target := player.target_goal.get_center_target_position()
-		var shot_probability := SHOT_PROBABILITY
-		if GameManager.player_setup[0] == player.country or GameManager.player_setup[1] == player.country:
-			shot_probability = shot_probability / 10.0
-		if player.position.distance_to(target) < SHOT_DISTANCE and randf() < SHOT_PROBABILITY:
-			player.face_towards_target_goal()
-			var shot_direction := player.position.direction_to(player.target_goal.get_random_target_position())
-			var data := PlayerStateData.build().set_shot_power(player.power).set_shot_direction(shot_direction)
-			player.switch_state(Player.State.SHOOTING, data)
-		elif randf() < PASS_PROBABILITY and has_opponents_nearby() and has_teammate_in_view():
-			player.switch_state(Player.State.PASSING)
+		_make_carrier_decision()
+
+func _make_carrier_decision() -> void:
+	## CPU 持球决策树
+	## 根据场上形势、属性、位置决定：射门 / 传球(短/长/直塞) / 带球
+	var target_goal_pos := player.target_goal.get_center_target_position()
+	var dist_to_goal := player.position.distance_to(target_goal_pos)
+	var own_goal_pos := player.own_goal.get_center_target_position()
+	var dist_to_own_goal := player.position.distance_to(own_goal_pos)
+
+	# 场上区域判断
+	var in_attacking_third := dist_to_goal < SHOT_DISTANCE * 1.5
+	var in_midfield := dist_to_goal > SHOT_DISTANCE and dist_to_own_goal > SHOT_DISTANCE
+	var in_own_half := dist_to_own_goal < dist_to_goal
+
+	# 防守压力（附近对手数量）
+	var opponent_count := _count_nearby_opponents()
+	var under_pressure := opponent_count >= 2
+
+	# 玩家队伍的 AI 减少射门/传球频率（把球权交给玩家主导）
+	var is_player_team := GameManager.player_setup[0] == player.country \
+		or GameManager.player_setup[1] == player.country
+	var decision_multiplier := 0.1 if is_player_team else 1.0
+
+	# === 决策优先级 ===
+
+	# 1. 禁区内有机会 → 射门（最高优先级）
+	if in_attacking_third and dist_to_goal < SHOT_DISTANCE:
+		var shoot_prob := SHOT_PROBABILITY
+		# 射门属性高的球员更倾向射门
+		shoot_prob *= 0.5 + (player.shooting / 100.0) * 0.8
+		# 防守压力大时降低射门概率（更难起脚）
+		if under_pressure:
+			shoot_prob *= 0.5
+		if randf() < shoot_prob * decision_multiplier:
+			_execute_shot(target_goal_pos)
+			return
+
+	# 2. 防守压力大 → 传球（出球）
+	if under_pressure and randf() < 0.6 * decision_multiplier:
+		var pass_result := _find_best_pass_option()
+		if pass_result.target != null:
+			_execute_pass(pass_result.target, pass_result.pass_type)
+			return
+
+	# 3. 有好的直塞/长传机会 → 传威胁球
+	if not in_own_half:
+		var pass_result := _find_best_pass_option()
+		if pass_result.target != null and pass_result.quality > 0.7:
+			var threat_pass_prob := 0.15 + (player.technique / 100.0) * 0.2
+			if randf() < threat_pass_prob * decision_multiplier:
+				_execute_pass(pass_result.target, pass_result.pass_type)
+				return
+
+	# 4. 中场区域，前面没人 → 偶尔长传找前锋
+	if in_midfield and opponent_count == 0 and randf() < 0.05 * decision_multiplier:
+		var forward_target := _find_most_forward_teammate()
+		if forward_target != null:
+			_execute_pass(forward_target, PlayerStateData.PassType.LONG)
+			return
+
+	# 5. 默认：继续带球（不做决策，movement 系统负责推进）
+	# 技术好的球员更愿意带球推进（这里不做任何事 = 继续带球）
+
+func _count_nearby_opponents() -> int:
+	## 统计附近的对手数量
+	var count := 0
+	for body in opponent_detection_area.get_overlapping_bodies():
+		if body is Player and body.country != player.country:
+			count += 1
+	return count
+
+func _find_best_pass_option() -> Dictionary:
+	## 寻找最佳传球选项，返回 {target, pass_type, quality}
+	var best_target: Player = null
+	var best_quality := -1.0
+	var best_pass_type := PlayerStateData.PassType.SHORT
+
+	var goal_pos := player.target_goal.get_center_target_position()
+
+	for body in teammate_detection_area.get_overlapping_bodies():
+		if not (body is Player):
+			continue
+		var teammate: Player = body
+		if teammate == player or teammate.country != player.country:
+			continue
+
+		var dist := player.position.distance_to(teammate.position)
+		if dist < 10.0 or dist > 250.0:
+			continue
+
+		# 计算传球质量
+		var to_teammate := teammate.position - player.position
+		var to_goal := goal_pos - player.position
+		var angle_to_goal := abs(to_teammate.angle_to(to_goal))
+		var angle_score := 1.0 - clamp(angle_to_goal / PI, 0.0, 1.0)  # 朝向球门的传球更好
+
+		var dist_score := 1.0 - clamp(dist / 250.0, 0.0, 1.0)
+
+		# 前方队友更有威胁
+		var forward_factor := 1.0 if to_teammate.dot(to_goal) > 0 else 0.5
+
+		var quality := angle_score * 0.4 + dist_score * 0.3 + forward_factor * 0.3
+
+		# 决定传球类型
+		var pass_type := PlayerStateData.PassType.SHORT
+		if dist > 120.0:
+			pass_type = PlayerStateData.PassType.LONG
+		elif dist > 60.0 and angle_to_goal < 0.5:  # 正对前方的中距离 → 直塞
+			pass_type = PlayerStateData.PassType.THROUGH
+
+		if quality > best_quality:
+			best_quality = quality
+			best_target = teammate
+			best_pass_type = pass_type
+
+	return {"target": best_target, "quality": best_quality, "pass_type": best_pass_type}
+
+func _find_most_forward_teammate() -> Player:
+	## 找到最靠前的队友（用于长传冲吊）
+	var goal_pos := player.target_goal.get_center_target_position()
+	var most_forward: Player = null
+	var best_dist := 0.0
+
+	for body in teammate_detection_area.get_overlapping_bodies():
+		if not (body is Player):
+			continue
+		var teammate: Player = body
+		if teammate == player or teammate.country != player.country:
+			continue
+		if teammate.role != Player.Role.OFFENSE:
+			continue  # 只找前锋
+		var dist := teammate.position.distance_to(goal_pos)
+		if most_forward == null or dist < best_dist:
+			best_dist = dist
+			most_forward = teammate
+
+	return most_forward
+
+func _execute_shot(target_pos: Vector2) -> void:
+	## 执行射门
+	player.face_towards_target_goal()
+	var shot_direction := player.position.direction_to(player.target_goal.get_random_target_position())
+	var data := PlayerStateData.build().set_shot_power(player.power).set_shot_direction(shot_direction)
+	player.switch_state(Player.State.SHOOTING, data)
+
+func _execute_pass(target: Player, pass_type: int) -> void:
+	## 执行传球
+	var direction := player.position.direction_to(target.position)
+	if sign(player.heading.x) != sign(direction.x):
+		player.heading *= -1
+	var data := PlayerStateData.build().set_pass_type(pass_type).set_pass_target(target)
+	player.switch_state(Player.State.PASSING, data)
 
 func _is_carrier_human_controlled() -> bool:
 	## 判断球的持有者是否是人类玩家（P1 或 P2）
