@@ -138,6 +138,18 @@ func hold_by_goalkeeper(goalie: Player) -> void:
 	carrier = goalie
 	switch_state(State.HELD_BY_GOALKEEPER)
 
+func release_with_throw(target_pos: Vector2) -> void:
+	## 门将手抛球发球
+	if current_state == null:
+		return
+	current_state.release_with_throw(target_pos)
+
+func release_with_kick(target_pos: Vector2) -> void:
+	## 门将大脚开球
+	if current_state == null:
+		return
+	current_state.release_with_kick(target_pos)
+
 func stop() -> void:
 	velocity = Vector2.ZERO
 
