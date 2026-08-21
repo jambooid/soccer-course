@@ -1,9 +1,12 @@
 extends Node
 
 const DURATION_IMPACT_PAUSE := 100
-const DURATION_GAME_SEC := 2 * 60
+const DURATION_HALF_SEC := 60  # 半场 1 分钟（默认全场 2 分钟）
 
-enum State {IN_PLAY, SCORED, RESET, KICKOFF, OVERTIME, GAMEOVER}
+enum State {FIRST_HALF, SECOND_HALF, HALFTIME, SCORED, RESET, KICKOFF, OVERTIME, GAMEOVER}
+
+## 当前半场：1 = 上半场，2 = 下半场
+var current_half := 1
 
 var current_match : Match = null
 var current_state : GameState = null
@@ -31,8 +34,9 @@ func _process(_delta: float) -> void:
 		get_tree().paused = false
 
 func start_game() -> void:
-	time_left = DURATION_GAME_SEC
-	switch_state(State.RESET)
+	current_half = 1
+	time_left = DURATION_HALF_SEC
+	switch_state(State.RESET, GameStateData.build().set_half(1))
 
 func switch_state(state: State, data: GameStateData = GameStateData.new()) -> void:
 	if current_state != null:

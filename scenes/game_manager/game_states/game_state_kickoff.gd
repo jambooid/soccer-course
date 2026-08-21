@@ -19,4 +19,6 @@ func _process(_delta: float) -> void:
 		if KeyUtils.is_action_just_pressed(control_scheme, KeyUtils.Action.SHORT_PASS):
 			GameEvents.kickoff_started.emit()
 			SoundPlayer.play(SoundPlayer.Sound.WHISTLE)
-			transition_state(GameManager.State.IN_PLAY)
+			# 根据当前半场跳转到对应状态
+			var play_state := GameManager.State.FIRST_HALF if state_data.half == 1 else GameManager.State.SECOND_HALF
+			transition_state(play_state, state_data)

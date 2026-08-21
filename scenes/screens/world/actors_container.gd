@@ -145,6 +145,38 @@ func check_pass_offside(passer: Player) -> Dictionary:
 		attacking_dir_x
 	)
 
+## === 半场交换场地 ===
+
+const PITCH_CENTER_X := 425.0  # 球场中线 x 坐标
+
+func swap_sides() -> void:
+	## 半场结束时交换场地：所有球员以中线为轴左右镜像
+	## 同时交换 own_goal / target_goal 引用，球员切到 RESETING 跑回开球位置
+	for squad in [squad_home, squad_away]:
+		for player in squad:
+			# 镜像归位点
+			player.spawn_position.x = PITCH_CENTER_X * 2 - player.spawn_position.x
+			player.kickoff_position.x = PITCH_CENTER_X * 2 - player.kickoff_position.x
+			# 交换球门引用（AI 和射门方向依赖此引用）
+			var old_own := player.own_goal
+			player.own_goal = player.target_goal
+			player.target_goal = old_own
+			# 翻转默认朝向
+			player.heading.x *= -1
+			# 所有球员切到 RESETING 状态，跑回开球位置
+			player.switch_state(Player.State.RESETING,
+				PlayerStateData.build().set_reset_position(player.kickoff_position))
+
+	# 球重置到中圈
+	ball.position = Vector2(PITCH_CENTER_X, ball.position.y)
+	ball.velocity = Vector2.ZERO
+	if ball.has_method("set_state_freeform"):
+		ball.set_state_freeform()
+
+	# 重置控球权统计
+	GameManager.reset_possession()
+
+
 func handle_offside(offender: Player, offside_position: Vector2) -> void:
 	## 处理越位判罚：球变为自由球，放在越位位置
 	GameEvents.offside_called.emit(offender, offside_position)
