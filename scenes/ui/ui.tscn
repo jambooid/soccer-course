@@ -1,6 +1,7 @@
-[gd_scene load_steps=10 format=3 uid="uid://clkoq0xwqsx4d"]
+[gd_scene load_steps=11 format=3 uid="uid://clkoq0xwqsx4d"]
 
 [ext_resource type="Script" uid="uid://w23oxk21u45o" path="res://scenes/ui/ui.gd" id="1_f5cxw"]
+[ext_resource type="Script" uid="uid://b5vq3z8r2m7k9" path="res://scenes/ui/radar_minimap.gd" id="2_radar"]
 [ext_resource type="Texture2D" uid="uid://dijw3l31picu5" path="res://assets/art/ui/flags/flag-placeholder.png" id="1_u7n8c"]
 [ext_resource type="Texture2D" uid="uid://d22013wapcssk" path="res://assets/art/ui/goal.png" id="3_aac20"]
 [ext_resource type="Texture2D" uid="uid://8c1xmc3crbje" path="res://assets/art/ui/times-up.png" id="4_g5kmx"]
@@ -258,6 +259,23 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
+[node name="RadarMinimap" type="Control" parent="UIContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(80, 34)
+layout_mode = 1
+anchors_preset = 2
+anchor_left = 0.0
+anchor_top = 1.0
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_left = 4.0
+offset_top = -38.0
+offset_right = 84.0
+offset_bottom = -4.0
+grow_horizontal = 2
+grow_vertical = 0
+script = ExtResource("2_radar")
+
 [node name="Mask" type="ColorRect" parent="UIContainer"]
 modulate = Color(1, 1, 1, 0)
 layout_mode = 1
@@ -270,14 +288,14 @@ color = Color(0, 0, 0, 1)
 
 [node name="ColorRect" type="ColorRect" parent="UIContainer"]
 layout_mode = 1
-anchors_preset = 7
+anchors_preset = 5
 anchor_left = 0.5
-anchor_top = 1.0
+anchor_top = 0.0
 anchor_right = 0.5
-anchor_bottom = 1.0
+anchor_bottom = 0.0
 offset_left = -100.0
-offset_top = -14.0
 offset_right = 100.0
+offset_bottom = 14.0
 grow_horizontal = 2
 grow_vertical = 0
 color = Color(0.133333, 0.133333, 0.133333, 1)
@@ -321,12 +339,20 @@ layout_mode = 2
 texture = ExtResource("1_u7n8c")
 stretch_mode = 2
 
+[node name="HalfLabel" type="Label" parent="UIContainer/ColorRect/HBoxContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(24, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.6, 0.8, 1.0, 1)
+text = "1ST"
+horizontal_alignment = 1
+
 [node name="TimeLabel" type="Label" parent="UIContainer/ColorRect/HBoxContainer"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(60, 0)
+custom_minimum_size = Vector2(40, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.807843, 0.807843, 0.807843, 1)
-text = "01 : 34"
+text = "01 : 00"
 horizontal_alignment = 2
 
 [node name="GoalTexture" type="TextureRect" parent="UIContainer"]

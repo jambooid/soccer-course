@@ -8,6 +8,8 @@ extends CanvasLayer
 @onready var score_info_label : Label = %ScoreInfoLabel
 @onready var score_label : Label = %ScoreLabel
 @onready var time_label : Label = %TimeLabel
+@onready var half_label : Label = %HalfLabel
+@onready var radar : Control = %RadarMinimap
 
 var last_ball_carrier := ""
 
@@ -16,11 +18,18 @@ func _ready() -> void:
 	update_flags()
 	update_clock()
 	player_label.text = ""
+	_setup_radar()
 	GameEvents.ball_possessed.connect(on_ball_possessed.bind())
 	GameEvents.ball_released.connect(on_ball_released.bind())
 	GameEvents.score_changed.connect(on_score_changed.bind())
 	GameEvents.team_reset.connect(on_team_reset.bind())
 	GameEvents.game_over.connect(on_game_over.bind())
+
+
+func _setup_radar() -> void:
+	var actors := get_tree().get_first_node_in_group("actors_container")
+	if actors != null:
+		radar.setup(actors, GameManager.current_match.country_home, GameManager.current_match.country_away)
 
 func _process(_delta: float) -> void:
 	update_clock()
@@ -37,6 +46,11 @@ func update_clock() -> void:
 	if GameManager.time_left < 0:
 		time_label.modulate = Color.YELLOW
 	time_label.text = TimeHelper.get_time_text(GameManager.time_left)
+	# 更新半场显示
+	if GameManager.current_half == 1:
+		half_label.text = "1ST"
+	else:
+		half_label.text = "2ND"
 	
 func on_ball_possessed(player_name: String) -> void:
 	player_label.text = player_name
