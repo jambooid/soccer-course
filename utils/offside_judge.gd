@@ -18,13 +18,15 @@ const OFFSIDE_TOLERANCE := 2.0
 ## defenders: 守方所有球员数组
 ## ball_pos: 传球瞬间球的位置
 ## attacking_dir_x: 进攻方向（1 = 向右攻，-1 = 向左攻）
+## pitch_center_x: 球场中线的 x 坐标（用于判断本方半场）
 ## 返回 {is_offside: bool, offender: Player, offside_position: Vector2}
 static func check_offside_at_pass(
 	passer: Player,
 	attackers: Array,
 	defenders: Array,
 	ball_pos: Vector2,
-	attacking_dir_x: int
+	attacking_dir_x: int,
+	pitch_center_x: float = 0.0
 ) -> Dictionary:
 	# 找倒数第二名防守球员的位置（第二最后方的防守者 = 越位线）
 	var second_last_def_x := _get_second_last_defender_x(defenders, attacking_dir_x)
@@ -51,7 +53,7 @@ static func check_offside_at_pass(
 		if attacker.role == Player.Role.GOALIE:
 			continue  # 门将不会越位
 
-		var attacker_x := attacker.global_position.x
+		var attacker_x: float = attacker.global_position.x
 
 		var is_in_offside_position := false
 		var offside_amount := 0.0
@@ -70,7 +72,7 @@ static func check_offside_at_pass(
 
 		if is_in_offside_position:
 			# 检查是否在本方半场（本方半场内不越位）
-			if _is_in_own_half(attacker_x, attacking_dir_x):
+			if _is_in_own_half(attacker_x, attacking_dir_x, pitch_center_x):
 				continue
 
 			if offside_amount > worst_offside_amount:
@@ -116,23 +118,21 @@ static func _get_second_last_defender_x(defenders: Array, attacking_dir_x: int) 
 		return x_positions[x_positions.size() - 1] if x_positions.size() < 2 else x_positions[x_positions.size() - 2]
 
 ## 判断是否在本方半场
-static func _is_in_own_half(player_x: float, attacking_dir_x: int) -> bool:
-	# 假设球场中心在 x=0（以球场中心为原点的坐标系）
-	# 如果用的是全局坐标，请调用方自行调整
-	# 这里用 0 作为中线
+static func _is_in_own_half(player_x: float, attacking_dir_x: int, pitch_center_x: float) -> bool:
 	if attacking_dir_x == 1:
-		# 向右攻 → 本方半场是 x < 0
-		return player_x < 0
+		# 向右攻 → 本方半场是 x < pitch_center_x（中线左侧）
+		return player_x < pitch_center_x
 	else:
-		# 向左攻 → 本方半场是 x > 0
-		return player_x > 0
+		# 向左攻 → 本方半场是 x > pitch_center_x（中线右侧）
+		return player_x > pitch_center_x
 
 ## 判断传球目标是否越位（简化版：直接检查目标位置是否越位）
 static func is_target_offside(
 	target_pos: Vector2,
 	defenders: Array,
 	ball_pos: Vector2,
-	attacking_dir_x: int
+	attacking_dir_x: int,
+	pitch_center_x: float = 0.0
 ) -> bool:
 	var second_last_def_x := _get_second_last_defender_x(defenders, attacking_dir_x)
 	var offside_line_x: float
@@ -140,8 +140,8 @@ static func is_target_offside(
 	if attacking_dir_x == 1:
 		offside_line_x = min(second_last_def_x, ball_pos.x)
 		var offside_amount = target_pos.x - offside_line_x
-		return offside_amount > OFFSIDE_TOLERANCE and target_pos.x > 0
+		return offside_amount > OFFSIDE_TOLERANCE and target_pos.x > pitch_center_x
 	else:
 		offside_line_x = max(second_last_def_x, ball_pos.x)
 		var offside_amount = offside_line_x - target_pos.x
-		return offside_amount > OFFSIDE_TOLERANCE and target_pos.x < 0
+		return offside_amount > OFFSIDE_TOLERANCE and target_pos.x < pitch_center_x

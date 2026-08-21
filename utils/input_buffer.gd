@@ -1,4 +1,3 @@
-class_name InputBuffer
 extends Node
 ## 输入缓冲系统
 ## 玩家在动画播放期间按下的按键，会进入缓冲队列（窗口约 200ms）

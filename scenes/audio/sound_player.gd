@@ -1,6 +1,6 @@
 extends Node
 
-enum Sound {BOUNCE, HURT, PASS, POWERSHOT, SHOT, TACKLING, UI_NAV, UI_SELECT, WHISTLE}
+enum Sound {BOUNCE, HURT, PASS, POWERSHOT, SAVE, SHOT, TACKLING, UI_NAV, UI_SELECT, WHISTLE}
 
 const NB_CHANNELS := 4
 const SFX_MAP: Dictionary[Sound, AudioStream] = {
@@ -8,6 +8,7 @@ const SFX_MAP: Dictionary[Sound, AudioStream] = {
 	Sound.HURT: preload("res://assets/sfx/hurt.wav"),
 	Sound.PASS: preload("res://assets/sfx/pass.wav"),
 	Sound.POWERSHOT: preload("res://assets/sfx/power-shot.wav"),
+	Sound.SAVE: preload("res://assets/sfx/bounce.wav"),
 	Sound.SHOT: preload("res://assets/sfx/shoot.wav"),
 	Sound.TACKLING: preload("res://assets/sfx/tackle.wav"),
 	Sound.UI_NAV: preload("res://assets/sfx/ui-navigate.wav"),

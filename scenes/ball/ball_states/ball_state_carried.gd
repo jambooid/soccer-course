@@ -13,18 +13,18 @@ const BALL_SPEED_MULTIPLIER := 1.15
 
 var touch_timer := 0.0
 var touch_interval := 0.25
-var is_ball_free := false
+var _is_ball_free := false
 var free_ball_timer := 0.0
 
 func _enter_tree() -> void:
 	assert(carrier != null)
 	GameEvents.ball_possessed.emit(carrier.fullname)
 	GameEvents.ball_possessed_by.emit(carrier)
-	var technique_factor := clamp(carrier.technique / 100.0, 0.0, 1.0)
+	var technique_factor: float = clamp(carrier.technique / 100.0, 0.0, 1.0)
 	touch_interval = lerp(TOUCH_INTERVAL_MAX, TOUCH_INTERVAL_MIN, technique_factor)
 	var offset := carrier.heading * TOUCH_OFFSET_MIN
 	ball.position = carrier.position + offset
-	is_ball_free = false
+	_is_ball_free = false
 	touch_timer = 0.0
 	free_ball_timer = 0.0
 	# 连接对手检测（仅在离脚窗口生效）
@@ -49,13 +49,13 @@ func _process(delta: float) -> void:
 func _process_idle(_delta: float) -> void:
 	var offset := Vector2(carrier.heading.x * TOUCH_OFFSET_MIN, 4.0)
 	ball.position = carrier.position + offset
-	is_ball_free = false
+	_is_ball_free = false
 	touch_timer = 0.0
 
 func _process_running(delta: float) -> void:
 	touch_timer += delta
 
-	if is_ball_free:
+	if _is_ball_free:
 		free_ball_timer -= delta
 		ball.position += ball.velocity * delta
 		ball.velocity = ball.velocity.move_toward(Vector2.ZERO, carrier.speed * 0.3 * delta)
@@ -65,29 +65,29 @@ func _process_running(delta: float) -> void:
 		_check_auto_intercept()
 
 		if free_ball_timer <= 0.0:
-			is_ball_free = false
+			_is_ball_free = false
 			ball.velocity = Vector2.ZERO
 			player_detection_area.monitoring = false
 	else:
 		player_detection_area.monitoring = false
 
-	if touch_timer >= touch_interval and not is_ball_free:
+	if touch_timer >= touch_interval and not _is_ball_free:
 		touch_timer = 0.0
 		_perform_touch()
 
 func _perform_touch() -> void:
 	var speed := carrier.velocity.length()
-	var speed_factor := clamp(speed / carrier.speed, 0.0, 1.0)
-	var touch_distance := lerp(TOUCH_OFFSET_MIN, TOUCH_OFFSET_MAX, speed_factor)
+	var speed_factor: float = clamp(speed / carrier.speed, 0.0, 1.0)
+	var touch_distance: float = lerp(TOUCH_OFFSET_MIN, TOUCH_OFFSET_MAX, speed_factor)
 
 	ball.position = carrier.position + carrier.heading * touch_distance
 	ball.velocity = carrier.heading * speed * BALL_SPEED_MULTIPLIER
 
-	is_ball_free = true
+	_is_ball_free = true
 	free_ball_timer = FREE_BALL_DURATION
 
 func is_ball_free() -> bool:
-	return is_ball_free
+	return _is_ball_free
 
 func _check_auto_intercept() -> void:
 	## 检查检测区内的对手球员是否能自动断球
@@ -130,7 +130,7 @@ func _trigger_intercept(defender: Player, quality: float) -> void:
 
 func _on_player_opponent_near(body: Node) -> void:
 	## 对手球员刚进入检测区（作为补充触发）
-	if not is_ball_free:
+	if not _is_ball_free:
 		return
 	if not (body is Player):
 		return

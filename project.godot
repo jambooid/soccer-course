@@ -27,6 +27,7 @@ MusicPlayer="*res://scenes/audio/music_player.gd"
 [debug]
 
 gdscript/warnings/unused_signal=0
+gdscript/warnings/treat_warnings_as_errors=false
 
 [display]
 

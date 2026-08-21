@@ -51,7 +51,7 @@ static func check_auto_intercept(defender: Player, ball: Ball) -> Dictionary:
 	# quality = 断球质量（越高 = 越干净的断球）
 	var dist_quality := 1.0 - dist / effective_radius
 	var angle_quality := 1.0 - angle_diff / INTERCEPT_ANGLE_TOLERANCE
-	var quality := clamp(dist_quality * 0.6 + angle_quality * 0.4, 0.0, 1.0)
+	var quality: float = clamp(dist_quality * 0.6 + angle_quality * 0.4, 0.0, 1.0)
 
 	return {
 		"success": true,
@@ -62,7 +62,7 @@ static func check_auto_intercept(defender: Player, ball: Ball) -> Dictionary:
 ## 在一组防守球员中找最可能断球的那个
 ## 返回 {defender: Player, quality: float} 或 null
 static func find_best_interceptor(defenders: Array, ball: Ball) -> Dictionary:
-	var best := null
+	var best: Player = null
 	var best_quality := -1.0
 
 	for defender in defenders:
@@ -75,4 +75,4 @@ static func find_best_interceptor(defenders: Array, ball: Ball) -> Dictionary:
 
 	if best != null:
 		return {"defender": best, "quality": best_quality}
-	return null
+	return {}

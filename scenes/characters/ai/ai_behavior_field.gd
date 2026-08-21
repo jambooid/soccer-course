@@ -141,15 +141,15 @@ func _find_best_pass_option() -> Dictionary:
 		# 计算传球质量
 		var to_teammate := teammate.position - player.position
 		var to_goal := goal_pos - player.position
-		var angle_to_goal := abs(to_teammate.angle_to(to_goal))
-		var angle_score := 1.0 - clamp(angle_to_goal / PI, 0.0, 1.0)  # 朝向球门的传球更好
+		var angle_to_goal: float = abs(to_teammate.angle_to(to_goal))
+		var angle_score: float = 1.0 - clamp(angle_to_goal / PI, 0.0, 1.0)  # 朝向球门的传球更好
 
-		var dist_score := 1.0 - clamp(dist / 250.0, 0.0, 1.0)
+		var dist_score: float = 1.0 - clamp(dist / 250.0, 0.0, 1.0)
 
 		# 前方队友更有威胁
 		var forward_factor := 1.0 if to_teammate.dot(to_goal) > 0 else 0.5
 
-		var quality := angle_score * 0.4 + dist_score * 0.3 + forward_factor * 0.3
+		var quality: float = angle_score * 0.4 + dist_score * 0.3 + forward_factor * 0.3
 
 		# 决定传球类型
 		var pass_type := PlayerStateData.PassType.SHORT
@@ -187,9 +187,13 @@ func _find_most_forward_teammate() -> Player:
 	return most_forward
 
 func _execute_shot(target_pos: Vector2) -> void:
-	## 执行射门
+	## 执行射门：以 target_pos 为基准，根据射门精度添加随机偏差
 	player.face_towards_target_goal()
-	var shot_direction := player.position.direction_to(player.target_goal.get_random_target_position())
+	# 根据射门属性计算偏差：属性越低，偏差越大
+	var inaccuracy: float = (1.0 - player.shooting / 100.0) * 15.0
+	var offset_y: float = randf_range(-inaccuracy, inaccuracy)
+	var shot_target := target_pos + Vector2(0, offset_y)
+	var shot_direction := player.position.direction_to(shot_target)
 	var data := PlayerStateData.build().set_shot_power(player.power).set_shot_direction(shot_direction)
 	player.switch_state(Player.State.SHOOTING, data)
 
@@ -233,7 +237,7 @@ func get_offensive_support_steering_force() -> Vector2:
 	var weight := get_bicircular_weight(player.position, target_pos, 20, 0.1, 50, 1.0)
 
 	# 离球越近，跑位越积极
-	var proximity_factor := clamp(1.0 - dist_to_ball / SUPPORT_RUN_ACTIVATION_DIST, 0.3, 1.0)
+	var proximity_factor: float = clamp(1.0 - dist_to_ball / SUPPORT_RUN_ACTIVATION_DIST, 0.3, 1.0)
 
 	return weight * direction * proximity_factor
 
@@ -246,7 +250,7 @@ func _compute_support_target(carrier: Player) -> Vector2:
 
 	# 计算球员在阵型中的横向位置（相对于中线的偏侧）
 	var spawn_y_offset := player.spawn_position.y - carrier.spawn_position.y
-	var is_wide_player := abs(spawn_y_offset) > 40  # 离中线远的就是边路球员
+	var is_wide_player: bool = abs(spawn_y_offset) > 40  # 离中线远的就是边路球员
 
 	match player.role:
 		Player.Role.OFFENSE:
@@ -254,7 +258,7 @@ func _compute_support_target(carrier: Player) -> Vector2:
 			var forward_push := SUPPORT_RUN_FORWARD_PUSH
 			# 边路前锋拉边，中路前锋插禁区
 			if is_wide_player:
-				var wide_amount := sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.7
+				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.7
 				return carrier_pos + attack_dir * forward_push + lateral_dir * wide_amount
 			else:
 				# 中路前锋直接插向球门方向
@@ -265,7 +269,7 @@ func _compute_support_target(carrier: Player) -> Vector2:
 			var mid_push := SUPPORT_MID_PUSH
 			if is_wide_player:
 				# 边中场稍微拉边
-				var wide_amount := sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.5
+				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.5
 				return carrier_pos + attack_dir * mid_push + lateral_dir * wide_amount
 			else:
 				# 中路中场在球前方不远处接应
@@ -276,7 +280,7 @@ func _compute_support_target(carrier: Player) -> Vector2:
 			if is_wide_player:
 				# 边后卫：沿边路插上
 				var fb_push := SUPPORT_FULLBACK_PUSH
-				var wide_amount := sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
+				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
 				return carrier_pos + attack_dir * fb_push + lateral_dir * wide_amount
 			else:
 				# 中后卫：留在后方，跟球保持距离

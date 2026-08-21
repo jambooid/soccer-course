@@ -142,7 +142,8 @@ func check_pass_offside(passer: Player) -> Dictionary:
 		attacker_squad,
 		defender_squad,
 		ball.position,
-		attacking_dir_x
+		attacking_dir_x,
+		PITCH_CENTER_X
 	)
 
 ## === 半场交换场地 ===
@@ -158,7 +159,7 @@ func swap_sides() -> void:
 			player.spawn_position.x = PITCH_CENTER_X * 2 - player.spawn_position.x
 			player.kickoff_position.x = PITCH_CENTER_X * 2 - player.kickoff_position.x
 			# 交换球门引用（AI 和射门方向依赖此引用）
-			var old_own := player.own_goal
+			var old_own: Goal = player.own_goal
 			player.own_goal = player.target_goal
 			player.target_goal = old_own
 			# 翻转默认朝向
@@ -181,12 +182,6 @@ func handle_offside(offender: Player, offside_position: Vector2) -> void:
 	## 处理越位判罚：球变为自由球，放在越位位置
 	GameEvents.offside_called.emit(offender, offside_position)
 	# 让球停在越位位置（FREEFORM 状态，速度为 0）
-	if ball.has_method("release_to_position"):
-		ball.release_to_position(offside_position)
-	else:
-		ball.position = offside_position
-		ball.velocity = Vector2.ZERO
-		if ball.has_method("set_state_freeform"):
-			ball.set_state_freeform()
+	ball.place_at(offside_position)
 	SoundPlayer.play(SoundPlayer.Sound.WHISTLE)
 

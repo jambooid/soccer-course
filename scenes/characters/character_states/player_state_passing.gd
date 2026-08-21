@@ -86,14 +86,14 @@ func _find_assisted_target(p_type: int) -> Player:
 		if dist > magnet_range or dist < 5.0:
 			continue
 		# 计算与朝向方向的夹角
-		var angle_to_target := heading_dir.angle_to(to_target.normalized())
-		var angle_deg := abs(angle_to_target) * 180.0 / PI
+		var angle_to_target: float = heading_dir.angle_to(to_target.normalized())
+		var angle_deg: float = abs(angle_to_target) * 180.0 / PI
 		if angle_deg > magnet_angle:
 			continue
 		# 评分：角度越正前方越好，距离越近越好
-		var angle_score := 1.0 - (angle_deg / magnet_angle)
-		var dist_score := 1.0 - (dist / magnet_range)
-		var score := angle_score * 0.7 + dist_score * 0.3
+		var angle_score: float = 1.0 - (angle_deg / magnet_angle)
+		var dist_score: float = 1.0 - (dist / magnet_range)
+		var score: float = angle_score * 0.7 + dist_score * 0.3
 		if score > best_score:
 			best_score = score
 			best_target = p
@@ -112,7 +112,7 @@ func _compute_lead_target(target: Player, p_type: int) -> Vector2:
 			return target.position + relative_vel * 0.8
 		PlayerStateData.PassType.THROUGH:
 			# 直塞提前量大（球速快，要送到队友身前）
-			return target.position + relative_velocity_to_goal(target) * 0.6
+			return target.position + _velocity_to_goal(target) * 0.6
 		_:
 			return target.position + relative_vel * 0.4
 
@@ -130,7 +130,7 @@ func _check_offside(target: Player) -> bool:
 		return false
 	if not container.has_method("check_pass_offside"):
 		return false
-	var result := container.check_pass_offside(player)
+	var result: Dictionary = container.check_pass_offside(player)
 	return result.is_offside and result.offender == target
 
 func find_teammate_in_view() -> Player:

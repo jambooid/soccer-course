@@ -57,17 +57,13 @@ func can_air_interact() -> bool:
 
 func is_ball_free() -> bool:
 	## 球是否处于"离脚/自由"状态（可被抢断的窗口）
-	return false
-
-func is_ball_free() -> bool:
-	## 球是否处于"离脚/自由"状态（可被抢断的窗口）
 	## 由各状态子类重写，默认 false
 	return false
 
-	func release_with_throw(_target_pos: Vector2) -> void:
-		## 手抛球发球（默认空实现，HELD_BY_GOALKEEPER 状态重写）
-		pass
+func release_with_throw(_target_pos: Vector2) -> void:
+	## 手抛球发球（默认空实现，HELD_BY_GOALKEEPER 状态重写）
+	pass
 
-	func release_with_kick(_target_pos: Vector2) -> void:
-		## 大脚开球（默认空实现，HELD_BY_GOALKEEPER 状态重写）
-		pass
+func release_with_kick(_target_pos: Vector2) -> void:
+	## 大脚开球（默认空实现，HELD_BY_GOALKEEPER 状态重写）
+	pass

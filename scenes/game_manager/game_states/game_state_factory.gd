@@ -8,7 +8,6 @@ func _init() -> void:
 		GameManager.State.SECOND_HALF: GameStateSecondHalf,
 		GameManager.State.HALFTIME: GameStateHalftime,
 		GameManager.State.GAMEOVER: GameStateGameOver,
-		GameManager.State.IN_PLAY: GameStateInPlay,  # 保留兼容，实际不再使用
 		GameManager.State.KICKOFF: GameStateKickoff,
 		GameManager.State.OVERTIME: GameStateOvertime,
 		GameManager.State.RESET: GameStateReset,

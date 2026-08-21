@@ -108,7 +108,7 @@ func through_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lo
 	## 直塞：贴地快速直线，穿透力强
 	var direction := position.direction_to(destination)
 	power = clamp(power, 0.7, 1.3)
-	var intensity := lerp(180.0, 320.0, power)
+	var intensity: float = lerp(180.0, 320.0, power)
 	velocity = direction * intensity
 	height = 0.0
 	height_velocity = 0.0
@@ -152,6 +152,16 @@ func release_with_kick(target_pos: Vector2) -> void:
 
 func stop() -> void:
 	velocity = Vector2.ZERO
+
+func place_at(pos: Vector2) -> void:
+	## Place ball at given position and switch to FREEFORM (for offside/free-kick resets)
+	position = pos
+	velocity = Vector2.ZERO
+	height = 0.0
+	height_velocity = 0.0
+	carrier = null
+	switch_state(State.FREEFORM)
+
 
 func can_air_interact() -> bool:
 	return current_state != null and current_state.can_air_interact()

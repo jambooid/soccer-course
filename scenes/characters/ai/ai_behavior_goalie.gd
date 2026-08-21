@@ -123,7 +123,7 @@ func _find_distribution_target() -> Player:
 		# 越靠前的队友越优先（更靠近对方球门）
 		var goal_pos := player.target_goal.get_center_target_position()
 		var dist_to_opponent_goal := teammate.position.distance_to(goal_pos)
-		var score := 1.0 - clamp(dist_to_opponent_goal / 300.0, 0.0, 1.0)
+		var score: float = 1.0 - clamp(dist_to_opponent_goal / 300.0, 0.0, 1.0)
 
 		if score > best_score:
 			best_score = score
@@ -163,8 +163,8 @@ func _get_rush_out_steering_force() -> Vector2:
 	if dist_ball_to_goal < 1.0:
 		return Vector2.ZERO
 
-	var rush_distance := min(dist_ball_to_goal * 0.4, RUSH_OUT_DISTANCE)
-	var target_pos := goal_center + goal_to_ball.normalized() * rush_distance
+	var rush_distance: float = min(dist_ball_to_goal * 0.4, RUSH_OUT_DISTANCE)
+	var target_pos: Vector2 = goal_center + goal_to_ball.normalized() * rush_distance
 
 	# 同时调整 Y 轴对齐球
 	target_pos.y = clamp(ball_pos.y,
@@ -173,7 +173,7 @@ func _get_rush_out_steering_force() -> Vector2:
 
 	var direction := player.position.direction_to(target_pos)
 	var dist_to_target := player.position.distance_to(target_pos)
-	var weight := clamp(dist_to_target / 20.0, 0.0, 1.0)
+	var weight: float = clamp(dist_to_target / 20.0, 0.0, 1.0)
 
 	return weight * direction
 
@@ -181,9 +181,9 @@ func get_goalie_steering_force() -> Vector2:
 	var top := player.own_goal.get_top_target_position()
 	var bottom := player.own_goal.get_bottom_target_position()
 	var center := player.spawn_position
-	var target_y := clampf(ball.position.y, top.y, bottom.y)
+	var target_y: float = clampf(ball.position.y, top.y, bottom.y)
 	var destination := Vector2(center.x, target_y)
 	var direction := player.position.direction_to(destination)
 	var distance_to_destination := player.position.distance_to(destination)
-	var weight := clampf(distance_to_destination / PROXIMITY_CONCERN, 0, 1)
+	var weight: float = clampf(distance_to_destination / PROXIMITY_CONCERN, 0, 1)
 	return weight * direction
