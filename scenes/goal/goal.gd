@@ -1,6 +1,8 @@
 class_name Goal
 extends Node2D
 
+const CROSSBAR_HEIGHT := 30.0  ## 球门横梁等效高度，超过此高度的球不算进球（2.5D 高度检测）
+
 @onready var back_net_area := %BackNetArea
 @onready var scoring_area := %ScoringArea
 @onready var targets := %Targets
@@ -9,15 +11,15 @@ var country := ""
 
 func _ready() -> void:
 	back_net_area.body_entered.connect(on_ball_enter_back_net.bind())
-	scoring_area.body_entered.connect(on_ball_enter_scoring_area.bind())
 
 func initialize(context_country: String) -> void:
 	country = context_country
 
 func on_ball_enter_back_net(ball: Ball) -> void:
 	ball.stop()
-
-func on_ball_enter_scoring_area(_ball: Ball) -> void:
+	# 球必须完全进入球网且高度低于横梁才算进球
+	if ball.height > CROSSBAR_HEIGHT:
+		return  # 球高出横梁，从球门上方飞过，不算进球
 	SoundPlayer.play(SoundPlayer.Sound.WHISTLE)
 	GameEvents.team_scored.emit(country)
 
