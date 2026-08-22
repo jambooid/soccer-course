@@ -19,7 +19,9 @@ func _process(delta: float) -> void:
 	if Time.get_ticks_msec() - time_since_shot > DURATION_SHOT:
 		transition_state(Ball.State.FREEFORM)
 	else:
-		move_and_bounce(delta)
+		if move_and_bounce(delta):
+			# 射门撞到障碍物（门柱/墙）→ 转自由球
+			transition_state(Ball.State.FREEFORM)
 
 func _exit_tree() -> void:
 	sprite.scale.y = 1.0

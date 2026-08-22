@@ -3,16 +3,19 @@ extends BallState
 
 ## 带球状态：球按步点节奏跟随球员，不是胶水式粘附
 ## 核心机制：每步触一次球，两次触球之间球"离脚"=抢断窗口
+## 球始终在运动，非离脚窗口时平滑跟随球员
 
 const TOUCH_INTERVAL_MIN := 0.14
 const TOUCH_INTERVAL_MAX := 0.32
 const TOUCH_OFFSET_MIN := 5.0
 const TOUCH_OFFSET_MAX := 16.0
-const FREE_BALL_DURATION := 0.10
+const FREE_BALL_RATIO := 0.7          ## 离脚窗口占触球间隔的比例
 const BALL_SPEED_MULTIPLIER := 1.15
+const FOLLOW_LERP_FACTOR := 12.0      ## 非离脚窗口时球跟随球员的 lerp 系数
 
 var touch_timer := 0.0
 var touch_interval := 0.25
+var free_ball_duration := 0.1
 var _is_ball_free := false
 var free_ball_timer := 0.0
 
@@ -22,8 +25,10 @@ func _enter_tree() -> void:
 	GameEvents.ball_possessed_by.emit(carrier)
 	var technique_factor: float = clamp(carrier.technique / 100.0, 0.0, 1.0)
 	touch_interval = lerp(TOUCH_INTERVAL_MAX, TOUCH_INTERVAL_MIN, technique_factor)
+	free_ball_duration = touch_interval * FREE_BALL_RATIO
 	var offset := carrier.heading * TOUCH_OFFSET_MIN
 	ball.position = carrier.position + offset
+	ball.velocity = carrier.heading * carrier.velocity.length()
 	_is_ball_free = false
 	touch_timer = 0.0
 	free_ball_timer = 0.0
@@ -47,8 +52,10 @@ func _process(delta: float) -> void:
 		animation_player.advance(0)
 
 func _process_idle(_delta: float) -> void:
+	# 静止时：球贴在球员脚边
 	var offset := Vector2(carrier.heading.x * TOUCH_OFFSET_MIN, 4.0)
 	ball.position = carrier.position + offset
+	ball.velocity = Vector2.ZERO
 	_is_ball_free = false
 	touch_timer = 0.0
 
@@ -56,35 +63,50 @@ func _process_running(delta: float) -> void:
 	touch_timer += delta
 
 	if _is_ball_free:
+		# 离脚窗口：球自由滚动（同时也是抢断窗口）
 		free_ball_timer -= delta
 		ball.position += ball.velocity * delta
 		ball.velocity = ball.velocity.move_toward(Vector2.ZERO, carrier.speed * 0.3 * delta)
-		# 离脚窗口 = 抢断窗口，打开检测区
+		# 打开检测区，可被断球
 		player_detection_area.monitoring = true
-		# 每帧检查一次自动断球（对检测区内的对手）
+		# 每帧检查一次自动断球
 		_check_auto_intercept()
 
 		if free_ball_timer <= 0.0:
 			_is_ball_free = false
-			ball.velocity = Vector2.ZERO
 			player_detection_area.monitoring = false
 	else:
+		# 非离脚窗口：球平滑跟随球员前方，保持运动连续性
 		player_detection_area.monitoring = false
+		var speed := carrier.velocity.length()
+		var speed_factor: float = clamp(speed / carrier.speed, 0.0, 1.0)
+		var touch_distance: float = lerp(TOUCH_OFFSET_MIN, TOUCH_OFFSET_MAX, speed_factor)
+		var target_pos := carrier.position + carrier.heading * touch_distance
+		# 平滑 lerp 到目标位置，避免瞬移
+		ball.position = ball.position.lerp(target_pos, delta * FOLLOW_LERP_FACTOR)
+		# 速度也跟随球员，保持运动感
+		ball.velocity = ball.velocity.lerp(carrier.velocity, delta * FOLLOW_LERP_FACTOR)
 
 	if touch_timer >= touch_interval and not _is_ball_free:
 		touch_timer = 0.0
 		_perform_touch()
 
 func _perform_touch() -> void:
+	# 球员触球：给球一个向前的速度脉冲
 	var speed := carrier.velocity.length()
 	var speed_factor: float = clamp(speed / carrier.speed, 0.0, 1.0)
 	var touch_distance: float = lerp(TOUCH_OFFSET_MIN, TOUCH_OFFSET_MAX, speed_factor)
 
-	ball.position = carrier.position + carrier.heading * touch_distance
+	# 将球位置微调到触球点（小范围调整，不是瞬移）
+	var touch_pos := carrier.position + carrier.heading * touch_distance
+	ball.position = ball.position.lerp(touch_pos, 0.6)
+
+	# 给球一个向前的速度脉冲（略快于球员速度）
 	ball.velocity = carrier.heading * speed * BALL_SPEED_MULTIPLIER
 
+	# 进入离脚窗口 = 抢断窗口
 	_is_ball_free = true
-	free_ball_timer = FREE_BALL_DURATION
+	free_ball_timer = free_ball_duration
 
 func is_ball_free() -> bool:
 	return _is_ball_free

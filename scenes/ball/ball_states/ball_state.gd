@@ -45,12 +45,14 @@ func process_gravity(delta: float, bounciness: float = 0.0) -> void:
 				ball.height_velocity = -ball.height_velocity * bounciness
 				ball.velocity *= bounciness
 
-func move_and_bounce(delta: float) -> void:
+func move_and_bounce(delta: float) -> bool:
+	## 返回是否发生了碰撞，供子类决定是否切换状态
 	var collision := ball.move_and_collide(ball.velocity * delta)
 	if collision != null:
 		ball.velocity = ball.velocity.bounce(collision.get_normal()) * ball.BOUNCINESS
 		SoundPlayer.play(SoundPlayer.Sound.BOUNCE)
-		ball.switch_state(Ball.State.FREEFORM)
+		return true
+	return false
 
 func can_air_interact() -> bool:
 	return false
