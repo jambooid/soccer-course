@@ -285,8 +285,8 @@ func check_pass_offside(passer: Player) -> Dictionary:
 	var attacker_squad := squad_home if passer.country == squad_home[0].country else squad_away
 	var defender_squad := squad_away if attacker_squad == squad_home else squad_home
 
-	# 进攻方向：home 队向右攻（x+），away 队向左攻（x-）
-	var attacking_dir_x := 1 if attacker_squad == squad_home else -1
+	# 进攻方向：根据传球者的 target_goal 位置推导（不受半场交换影响）
+	var attacking_dir_x := 1 if passer.target_goal.position.x > passer.position.x else -1
 
 	return OffsideJudge.check_offside_at_pass(
 		passer,
@@ -299,7 +299,7 @@ func check_pass_offside(passer: Player) -> Dictionary:
 
 ## === 半场交换场地 ===
 
-const PITCH_CENTER_X := 425.0  # 球场中线 x 坐标
+const PITCH_CENTER_X := PitchConstants.CENTER_X  ## 球场中线 x 坐标（引用统一常量）
 
 func swap_sides() -> void:
 	## 半场结束时交换场地：所有球员以中线为轴左右镜像
