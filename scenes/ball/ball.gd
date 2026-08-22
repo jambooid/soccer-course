@@ -228,6 +228,42 @@ func is_headed_for_scoring_area(scoring_area: Area2D) -> bool:
 		return false
 	return scoring_raycast.get_collider() == scoring_area
 
+func predict_goal_line_y(goal_x: float) -> float:
+	## 预测球到达球门线（x=goal_x）时的 y 坐标
+	## 使用匀速近似 + 摩擦力修正，返回球门线处的 y 值
+	## 如果球不会到达球门线（速度不够或方向相反），返回 INF
+	if abs(velocity.x) < 1.0:
+		return INF
+
+	var dx := goal_x - position.x
+	# 球不是朝球门方向移动
+	if dx * velocity.x <= 0:
+		return INF
+
+	# 估算到达球门线的时间（考虑地面摩擦减速）
+	var speed_x: float = abs(velocity.x)
+	var time_to_goal: float
+	if friction_ground > 0.0:
+		# v = v0 - a*t，s = v0*t - 0.5*a*t²
+		# 简化：用平均速度估算时间
+		var avg_speed: float = speed_x * 0.7  # 摩擦衰减后的平均速度近似
+		time_to_goal = abs(dx) / max(avg_speed, 1.0)
+	else:
+		time_to_goal = abs(dx) / speed_x
+
+	# 估算 y 方向的位移（考虑摩擦）
+	var y_offset: float = velocity.y * time_to_goal * 0.7  # y 方向也有摩擦衰减
+	return position.y + y_offset
+
+func will_reach_goal_area(goal_x: float, goal_top_y: float, goal_bottom_y: float) -> bool:
+	## 判断球是否会飞入球门范围内
+	## goal_x: 球门线的 x 坐标
+	## goal_top_y / goal_bottom_y: 球门上下沿的 y 坐标
+	var goal_y: float = predict_goal_line_y(goal_x)
+	if goal_y == INF:
+		return false
+	return goal_y >= goal_top_y and goal_y <= goal_bottom_y
+
 func get_proximity_teammates_count(country: String) -> int:
 	var players := player_proximity_area.get_overlapping_bodies()
 	return players.filter(func(p: Player): return p.country == country).size()

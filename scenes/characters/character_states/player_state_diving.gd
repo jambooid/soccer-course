@@ -29,8 +29,15 @@ func _on_ball_entered(_body: Node) -> void:
 		return
 	if player.role != Player.Role.GOALIE:
 		return
-	# 守门员触球：将球扑出
 	has_saved = true
+
+	# 如果球速不快且高度合适 → 直接抱住（不用扑出去）
+	if ball.velocity.length() < 180.0 \
+			and ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
+		ball.hold_by_goalkeeper(player)
+		return
+
+	# 快球/高球 → 扑出
 	# 扑救方向：朝向球场前方（远离自己球门），加上侧向分量
 	var forward := player.heading  # 守门员面朝球场方向
 	# 侧向：球在守门员哪一侧就往哪一侧扑出

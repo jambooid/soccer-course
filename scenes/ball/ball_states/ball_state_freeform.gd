@@ -10,6 +10,13 @@ func _enter_tree() -> void:
 	time_since_freeform = Time.get_ticks_msec()
 
 func on_player_enter(body: Player) -> void:
+	# 守门员专用抱球逻辑
+	if body.role == Player.Role.GOALIE:
+		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
+			ball.hold_by_goalkeeper(body)
+			transition_state(Ball.State.HELD_BY_GOALKEEPER)
+		return
+
 	if body.can_carry_ball() and ball.height < MAX_CAPTURE_HEIGHT:
 		ball.carrier = body
 		body.control_ball()

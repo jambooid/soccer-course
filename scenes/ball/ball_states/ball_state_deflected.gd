@@ -37,6 +37,13 @@ func _process(delta: float) -> void:
 		transition_state(Ball.State.FREEFORM)
 
 func on_player_enter(body: Player) -> void:
+	# 守门员专用抱球逻辑（高度阈值比普通球员高）
+	if body.role == Player.Role.GOALIE:
+		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
+			ball.hold_by_goalkeeper(body)
+			transition_state(Ball.State.HELD_BY_GOALKEEPER)
+		return
+
 	if not body.can_carry_ball():
 		return
 	if ball.height > PitchConstants.HEIGHT_DEFLECTED_PICKUP_MAX:
