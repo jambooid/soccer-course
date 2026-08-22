@@ -8,6 +8,7 @@ var initial_delay := randi_range(200, 500)
 var time_since_celebrating := Time.get_ticks_msec()
 
 func _enter_tree() -> void:
+	time_since_celebrating = Time.get_ticks_msec()
 	GameEvents.team_reset.connect(on_team_reset.bind())
 
 func _process(delta: float) -> void:

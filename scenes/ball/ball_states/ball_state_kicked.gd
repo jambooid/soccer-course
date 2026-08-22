@@ -42,7 +42,7 @@ func _process(delta: float) -> void:
 
 	var prev_height := ball.height
 	process_gravity(delta, ball.BOUNCINESS)
-	if prev_height > 0 and ball.height == 0 and ball.height_velocity == 0:
+	if prev_height > 0 and ball.height == 0 and ball.height_velocity > 0:
 		bounce_count += 1
 
 	move_and_bounce_kicked(delta)

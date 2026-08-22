@@ -33,6 +33,7 @@ func _auto_kick() -> void:
 	ball.height_velocity = 6.0
 	var gk_ref := carrier
 	carrier = null
+	ball.carrier = null
 	transition_state(Ball.State.KICKED, BallStateData.build().set_kicker(gk_ref))
 
 func release_with_throw(target_pos: Vector2) -> void:
@@ -42,6 +43,7 @@ func release_with_throw(target_pos: Vector2) -> void:
 	ball.velocity = direction * intensity
 	var gk_ref := carrier
 	carrier = null
+	ball.carrier = null
 	transition_state(Ball.State.KICKED, BallStateData.build().set_kicker(gk_ref))
 
 func release_with_kick(target_pos: Vector2) -> void:
@@ -52,6 +54,7 @@ func release_with_kick(target_pos: Vector2) -> void:
 	ball.height_velocity = BallState.GRAVITY * distance / (1.5 * intensity)
 	var gk_ref := carrier
 	carrier = null
+	ball.carrier = null
 	transition_state(Ball.State.KICKED, BallStateData.build().set_kicker(gk_ref))
 
 func put_down() -> void:

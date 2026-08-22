@@ -66,7 +66,7 @@ func handle_human_movement() -> void:
 			else:
 				transition_state(Player.State.HEADER)
 		elif player.velocity != Vector2.ZERO:
-			state_transition_requested.emit(Player.State.TACKLING)
+			transition_state(Player.State.TACKLING)
 		return
 
 	# 特殊键：切换球员（无球时） / 假动作（持球时，M2 实现）

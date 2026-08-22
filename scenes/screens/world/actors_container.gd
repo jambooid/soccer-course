@@ -74,7 +74,9 @@ func on_player_swap_request(requester: Player) -> void:
 	var squad := squad_home if requester.country == squad_home[0].country else squad_away
 	var cpu_players : Array[Player] = squad.filter(
 		func(p: Player): return p.control_scheme == Player.ControlScheme.CPU and p.role != Player.Role.GOALIE
-	)		
+	)
+	if cpu_players.is_empty():
+		return
 	cpu_players.sort_custom(func(p1: Player, p2: Player):
 		return p1.position.distance_squared_to(ball.position) < p2.position.distance_squared_to(ball.position))
 	var closest_cpu_to_ball : Player = cpu_players[0]

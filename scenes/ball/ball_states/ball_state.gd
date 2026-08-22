@@ -3,7 +3,7 @@ extends Node
 
 const GRAVITY := 10.0
 
-signal state_transition_requested(new_state: BallState)
+signal state_transition_requested(new_state: Ball.State, data: BallStateData)
 
 var animation_player : AnimationPlayer = null
 var ball : Ball = null
