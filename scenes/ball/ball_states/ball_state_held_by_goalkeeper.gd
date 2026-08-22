@@ -5,7 +5,8 @@ extends BallState
 ## 球跟随门将，不能被抢断，有持球时间限制
 
 const HOLD_DURATION_MAX_MS := 3000
-const HOLD_OFFSET := Vector2(0, -6)
+const HOLD_OFFSET_Y := -10.0   ## 抱球高度（相对于球员脚部，负值=向上）
+const HOLD_OFFSET_X := 6.0     ## 抱球水平偏移（身前距离）
 
 var time_held := 0
 
@@ -21,7 +22,9 @@ func _enter_tree() -> void:
 	animation_player.play("idle")
 
 func _process(_delta: float) -> void:
-	ball.position = carrier.position + HOLD_OFFSET
+	# 球在守门员身前（手中），根据朝向调整水平偏移
+	var offset := Vector2(carrier.heading.x * HOLD_OFFSET_X, HOLD_OFFSET_Y)
+	ball.position = carrier.position + offset
 
 	if Time.get_ticks_msec() - time_held > HOLD_DURATION_MAX_MS:
 		_auto_kick()

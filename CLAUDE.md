@@ -13,9 +13,14 @@ Low-res pixel art: internal viewport is **560×360**, integer-scaled up to 2240�
 Open in the Godot 4.4 editor and press Play, or from CLI:
 
 ```sh
-godot --path .          # open editor
-godot --path . --main   # run the game (if your godot build supports --main)
+# macOS: Godot 4.4.1 位于 ~/Downloads/Godot.app 或 ~/project/Godot.app
+GODOT="$HOME/Downloads/Godot.app/Contents/MacOS/Godot"
+$GODOT --path .          # open editor
+$GODOT --path . -e       # open editor in headless mode
+$GODOT --path . --main   # run the game
 ```
+
+If `godot` is on your PATH you can just use `godot --path .`.
 
 There is no linter or build step. Tests live in `tools/` (see **Testing** below). `.godot/` and `.import/` are gitignored (generated).
 
@@ -121,7 +126,7 @@ Test scenes live in `tools/`. Run from editor or CLI:
 - **Communication**: prefer the `GameEvents` bus and the `state_transition_requested`/`setup` pattern over ad-hoc `get_node()`/signal wiring. Context is passed *into* states via `setup(...)`, not read from the parent tree.
 - **Assets**: `res://assets/{art,sfx,music,fonts,json}/`. Squads data is `assets/json/squads.json` (array of `{country, players:[{name, skin, role, speed, power, technique, shooting, defense, jump, stamina, number}]}` × 11 players per team in 4-3-3 formation: GK + 4 DEF + 3 MID + 3 FWD, indices map to `Player.SkinColor`/`Player.Role` enums). Flags: `assets/art/ui/flags/flag-<COUNTRY_LOWER>.png`, cached by `FlagHelper`.
 - **Physics layers** (see `[layer_names]`): `PitchWalls`, `Player`, `Ball`, `InvisibleWalls`, `ScoringArea`, `GoalKeeperHands`.
-- **Input map** (`project.godot` `[input]`): P1 = arrow keys + `[` (short pass) / `]` (shoot) / `'` (long pass) / `\` (through pass) / RShift (sprint) / RCtrl (special). P2 = WASD + `0` (short pass) / `1` (shoot) / `2` (long pass) / `3` (through pass) / Shift (sprint) / Q (special). Game modes: single-player (P2 empty), versus, co-op (both pick the same country).
+- **Input map** (`project.godot` `[input]`): P1 = WASD (move) + J (shoot) / K (short pass) / O (long pass) / L (through pass) / I (sprint) / U (switch player / special). P2 = arrow keys + 7 (shoot) / 8 (short pass) / 9 (through pass) / 0 (long pass) / - (sprint) / = (switch player / special). Game modes: single-player (P2 empty), versus, co-op (both pick the same country).
 - **Input abstraction**: `KeyUtils` provides `Action {LEFT, RIGHT, UP, DOWN, SHOOT, SHORT_PASS, LONG_PASS, THROUGH_PASS, SPRINT, SPECIAL}` and methods like `is_action_just_pressed(control_scheme, action)` — use this instead of raw `Input.is_action_just_pressed()`.
 
 ## When making changes

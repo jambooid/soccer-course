@@ -7,8 +7,8 @@ extends BallState
 
 const TOUCH_INTERVAL_MIN := 0.14
 const TOUCH_INTERVAL_MAX := 0.32
-const TOUCH_OFFSET_MIN := 5.0
-const TOUCH_OFFSET_MAX := 16.0
+const TOUCH_OFFSET_MIN := 8.0
+const TOUCH_OFFSET_MAX := 20.0
 const FREE_BALL_RATIO := 0.7          ## 离脚窗口占触球间隔的比例
 const BALL_SPEED_MULTIPLIER := 1.15
 const FOLLOW_LERP_FACTOR := 12.0      ## 非离脚窗口时球跟随球员的 lerp 系数
@@ -53,7 +53,7 @@ func _process(delta: float) -> void:
 
 func _process_idle(_delta: float) -> void:
 	# 静止时：球贴在球员脚边
-	var offset := Vector2(carrier.heading.x * TOUCH_OFFSET_MIN, 4.0)
+	var offset := Vector2(carrier.heading.x * TOUCH_OFFSET_MIN, 2.0)
 	ball.position = carrier.position + offset
 	ball.velocity = Vector2.ZERO
 	_is_ball_free = false
