@@ -9,8 +9,8 @@ var has_saved := false  ## 是否已触球（避免重复触发）
 func _enter_tree() -> void:
 	# 扑救方向：以当前位置为起点，侧向（y 方向）朝球扑出，
 	# 同时加一点向前分量（朝向球场内部，即 heading 方向）
-	var lateral := sign(ball.position.y - player.position.y)
-	var dive_direction := (player.heading * 0.4 + Vector2(0, lateral)).normalized()
+	var lateral: float = sign(ball.position.y - player.position.y)
+	var dive_direction: Vector2 = (player.heading * 0.4 + Vector2(0, lateral)).normalized()
 	if dive_direction.y > 0:
 		animation_player.play("dive_down")
 	else:
@@ -34,8 +34,8 @@ func _on_ball_entered(_body: Node) -> void:
 	# 扑救方向：朝向球场前方（远离自己球门），加上侧向分量
 	var forward := player.heading  # 守门员面朝球场方向
 	# 侧向：球在守门员哪一侧就往哪一侧扑出
-	var lateral_dir := sign(ball.position.y - player.position.y)
-	var save_dir := (forward + Vector2(0, lateral_dir) * 0.5).normalized()
+	var lateral_dir: float = sign(ball.position.y - player.position.y)
+	var save_dir: Vector2 = (forward + Vector2(0, lateral_dir) * 0.5).normalized()
 	# 如果球比较高，给一个向上的分量
 	if ball.height > 10.0:
 		save_dir.y -= 0.3
