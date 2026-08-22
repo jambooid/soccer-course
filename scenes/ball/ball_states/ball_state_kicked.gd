@@ -42,12 +42,12 @@ func _process(delta: float) -> void:
 
 	var prev_height := ball.height
 	process_gravity(delta, ball.BOUNCINESS)
-	if prev_height > 0 and ball.height == 0 and ball.height_velocity > 0:
+	if prev_height > 0 and ball.height <= 0.001 and ball.height_velocity > 0:
 		bounce_count += 1
 
 	move_and_bounce_kicked(delta)
 
-	if ball.velocity.length() < TRANSITION_TO_FREEFORM_SPEED and ball.height == 0:
+	if ball.velocity.length() < TRANSITION_TO_FREEFORM_SPEED and ball.height <= 0.001:
 		transition_state(Ball.State.FREEFORM)
 	elif bounce_count >= MAX_BOUNCES_BEFORE_FREEFORM:
 		transition_state(Ball.State.FREEFORM)
@@ -61,7 +61,7 @@ func move_and_bounce_kicked(delta: float) -> void:
 func on_player_enter(body: Player) -> void:
 	if not body.can_carry_ball():
 		return
-	if ball.height > 12.0:
+	if ball.height > PitchConstants.HEIGHT_KICKED_PICKUP_MAX:
 		return
 
 	if kicker == null:
