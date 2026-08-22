@@ -7,13 +7,15 @@ var time_start_dive := Time.get_ticks_msec()
 var has_saved := false  ## 是否已触球（避免重复触发）
 
 func _enter_tree() -> void:
-	var target_dive := Vector2(player.spawn_position.x, ball.position.y)
-	var direction := player.position.direction_to(target_dive)
-	if direction.y > 0:
+	# 扑救方向：以当前位置为起点，侧向（y 方向）朝球扑出，
+	# 同时加一点向前分量（朝向球场内部，即 heading 方向）
+	var lateral := sign(ball.position.y - player.position.y)
+	var dive_direction := (player.heading * 0.4 + Vector2(0, lateral)).normalized()
+	if dive_direction.y > 0:
 		animation_player.play("dive_down")
 	else:
 		animation_player.play("dive_up")
-	player.velocity = direction * player.speed
+	player.velocity = dive_direction * player.speed
 	time_start_dive = Time.get_ticks_msec()
 	# 连接球检测区域，用于扑救触球
 	ball_detection_area.body_entered.connect(_on_ball_entered.bind())
