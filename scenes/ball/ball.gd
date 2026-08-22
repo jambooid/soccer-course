@@ -71,7 +71,7 @@ func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_ki
 	height = 0.0
 	height_velocity = 0.0
 	if distance > DISTANCE_HIGH_PASS:
-		height_velocity = BallState.GRAVITY * distance / (1.85 * intensity)
+		height_velocity = PitchConstants.GRAVITY * distance / (1.85 * intensity)
 	var kicker_ref := p_kicker if p_kicker != null else carrier
 	carrier = null
 	switch_state(Ball.State.KICKED, BallStateData.build()
@@ -106,7 +106,7 @@ func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_
 	velocity = direction * intensity
 	height = 0.0
 	# 抛物线：根据距离和速度计算初始竖直速度，使球落在目标附近
-	height_velocity = BallState.GRAVITY * distance / (1.5 * intensity)
+	height_velocity = PitchConstants.GRAVITY * distance / (1.5 * intensity)
 	carrier = null
 	switch_state(State.KICKED, BallStateData.build()
 		.set_lock_duration(lock_duration)
@@ -189,7 +189,7 @@ func predict_landing_time() -> float:
 	## 使用闭式解：h + v0*t - 0.5*g*t² = 0
 	if height <= 0.0 and height_velocity <= 0.0:
 		return 0.0
-	var g := BallState.GRAVITY
+	var g := PitchConstants.GRAVITY
 	var h := height
 	var v0 := height_velocity
 	# 解 t = (v0 + sqrt(v0^2 + 2gh)) / g
@@ -217,7 +217,7 @@ func predict_position_at_time(t: float) -> Vector2:
 func predict_height_at_time(t: float) -> float:
 	## 预测 t 秒后球的高度。
 	## h(t) = h0 + v0*t - 0.5*g*t²
-	var h := height + height_velocity * t - 0.5 * BallState.GRAVITY * t * t
+	var h := height + height_velocity * t - 0.5 * PitchConstants.GRAVITY * t * t
 	return max(h, 0.0)
 
 func can_air_connect(air_connect_min_height: float, air_connect_max_height: float) -> bool:

@@ -9,7 +9,6 @@ const CONTROL_SCHEME_MAP : Dictionary = {
 	ControlScheme.P1: preload("res://assets/art/props/1p.png"),
 	ControlScheme.P2: preload("res://assets/art/props/2p.png"),
 }
-const GRAVITY := 600.0  ## px/s²，2.5D 竖直重力（与球一致）
 const WALK_ANIM_THRESHOLD := 0.6
 
 enum ControlScheme {CPU, P1, P2}
@@ -130,7 +129,7 @@ func set_movement_animation() -> void:
 
 func process_gravity(delta: float) -> void:
 	if height > 0:
-		height_velocity -= GRAVITY * delta
+		height_velocity -= PitchConstants.GRAVITY * delta
 		height += height_velocity * delta
 		if height <= 0:
 			height = 0

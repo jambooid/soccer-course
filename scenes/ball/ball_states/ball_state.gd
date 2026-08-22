@@ -1,8 +1,6 @@
 class_name BallState
 extends Node
 
-const GRAVITY := 10.0
-
 signal state_transition_requested(new_state: Ball.State, data: BallStateData)
 
 var animation_player : AnimationPlayer = null
@@ -37,8 +35,8 @@ func set_ball_animation_from_velocity() -> void:
 
 func process_gravity(delta: float, bounciness: float = 0.0) -> void:
 	if ball.height > 0 or ball.height_velocity > 0:
-		ball.height_velocity -= GRAVITY * delta
-		ball.height += ball.height_velocity
+		ball.height_velocity -= PitchConstants.GRAVITY * delta
+		ball.height += ball.height_velocity * delta
 		if ball.height < 0:
 			ball.height = 0
 			if bounciness > 0 and ball.height_velocity < 0:

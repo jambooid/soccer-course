@@ -54,7 +54,7 @@ func release_with_kick(target_pos: Vector2) -> void:
 	var distance := ball.position.distance_to(target_pos)
 	var intensity := sqrt(2 * distance * ball.friction_ground * 0.7)
 	ball.velocity = direction * intensity
-	ball.height_velocity = BallState.GRAVITY * distance / (1.5 * intensity)
+	ball.height_velocity = PitchConstants.GRAVITY * distance / (1.5 * intensity)
 	var gk_ref := carrier
 	carrier = null
 	ball.carrier = null
