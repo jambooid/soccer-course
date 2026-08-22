@@ -78,6 +78,8 @@ func _find_assisted_target(p_type: int) -> Player:
 
 	# 在队友检测区域中找
 	for body in teammate_detection_area.get_overlapping_bodies():
+		if not (body is Player):
+			continue
 		var p: Player = body
 		if p == player or p.country != player.country:
 			continue
