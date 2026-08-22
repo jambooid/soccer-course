@@ -69,6 +69,7 @@ func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_ki
 	var intensity := sqrt(2 * distance * friction_ground)
 	velocity = intensity * direction
 	height = 0.0
+	height_velocity = 0.0
 	if distance > DISTANCE_HIGH_PASS:
 		height_velocity = BallState.GRAVITY * distance / (1.85 * intensity)
 	var kicker_ref := p_kicker if p_kicker != null else carrier
