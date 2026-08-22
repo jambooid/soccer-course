@@ -22,8 +22,8 @@ func handle_human_movement() -> void:
 	if player.velocity != Vector2.ZERO:
 		teammate_detection_area.rotation = player.velocity.angle()
 
-	# 短传：最常用，优先级高
-	if KeyUtils.is_action_just_pressed(player.control_scheme, KeyUtils.Action.SHORT_PASS):
+	# 短传：最常用，优先级高（从输入缓冲消费，提升跟手感）
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHORT_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
 				.set_pass_type(PlayerStateData.PassType.SHORT))
@@ -33,8 +33,8 @@ func handle_human_movement() -> void:
 			player.swap_requested.emit(player)
 		return
 
-	# 长传：高球/传中
-	if KeyUtils.is_action_just_pressed(player.control_scheme, KeyUtils.Action.LONG_PASS):
+	# 长传：高球/传中（从输入缓冲消费）
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.LONG_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
 				.set_pass_type(PlayerStateData.PassType.LONG))
@@ -44,8 +44,8 @@ func handle_human_movement() -> void:
 			player.swap_requested.emit(player)
 		return
 
-	# 直塞：地面穿透球
-	if KeyUtils.is_action_just_pressed(player.control_scheme, KeyUtils.Action.THROUGH_PASS):
+	# 直塞：地面穿透球（从输入缓冲消费）
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.THROUGH_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
 				.set_pass_type(PlayerStateData.PassType.THROUGH))
@@ -53,8 +53,8 @@ func handle_human_movement() -> void:
 			ball.carrier.get_pass_request(player)
 		return
 
-	# 射门
-	if KeyUtils.is_action_just_pressed(player.control_scheme, KeyUtils.Action.SHOOT):
+	# 射门（从输入缓冲消费）
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHOOT):
 		if player.has_ball():
 			transition_state(Player.State.PREPPING_SHOT)
 		elif ball.can_air_interact():
@@ -69,8 +69,8 @@ func handle_human_movement() -> void:
 			transition_state(Player.State.TACKLING)
 		return
 
-	# 特殊键：切换球员（无球时） / 假动作（持球时，M2 实现）
-	if KeyUtils.is_action_just_pressed(player.control_scheme, KeyUtils.Action.SPECIAL):
+	# 特殊键：切换球员（无球时） / 假动作（持球时，M2 实现）（从输入缓冲消费）
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SPECIAL):
 		if not player.has_ball():
 			player.swap_requested.emit(player)
 

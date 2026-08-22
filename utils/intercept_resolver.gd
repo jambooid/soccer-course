@@ -6,7 +6,7 @@ extends RefCounted
 ## 过人 = 在球进入断球范围的一瞬间变向，让球的运动方向偏离防守者
 
 const AUTO_INTERCEPT_RADIUS := 12.0       ## 基础自动断球半径（像素）
-const INTERCEPT_ANGLE_TOLERANCE := 40.0  ## 断球角度容差（度），球朝向防守者±这个角度内才能断
+const INTERCEPT_ANGLE_TOLERANCE := 35.0  ## 断球角度容差（度），球朝向防守者±这个角度内才能断 — 规格 35°
 const TECHNIQUE_EVASION_BONUS := 15.0    ## 技术属性带来的"过人角度减免"（技术越好，越小角度也算变向成功）
 
 ## 检测防守球员是否能自动断下带球队员的球

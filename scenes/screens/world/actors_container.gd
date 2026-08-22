@@ -5,6 +5,11 @@ const DURATION_WEIGHT_CACHE := 200
 const PLAYER_PREFAB := preload("res://scenes/characters/player.tscn")
 const SPARK_PREFAB := preload("res://scenes/spark/spark.tscn")
 
+## === AI LOD 分级 ===
+const LOD_CORE_COUNT := 3     ## 核心层人数（最近的 2-3 人，每 50ms 决策）
+const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms 决策）
+## 远端 = 其余球员（每 1000ms 决策）
+
 ## === 控球权自动切换（PossessionManager）===
 const SWAP_COOLDOWN_MS := 400          ## 自动切换冷却时间，防止频繁跳变
 const DEFENSE_SWAP_DIST_THRESHOLD := 25.0  ## 防守时切换的距离阈值（当前球员比最近的远多少才切）
@@ -76,7 +81,16 @@ func set_on_duty_weights() -> void:
 
 		for i in range(cpu_players.size()):
 			cpu_players[i].weight_on_duty_steering = 1 - ease(float(i)/10.0, 0.1)
-	
+			# 同时分配 LOD 级别：影响 AI 决策频率
+			var lod_level: int
+			if i < LOD_CORE_COUNT:
+				lod_level = AIBehavior.LODLevel.CORE
+			elif i < LOD_CORE_COUNT + LOD_MID_COUNT:
+				lod_level = AIBehavior.LODLevel.MID
+			else:
+				lod_level = AIBehavior.LODLevel.FAR
+			if cpu_players[i].current_ai_behavior != null:
+				cpu_players[i].current_ai_behavior.set_lod_level(lod_level)
 func on_player_swap_request(requester: Player) -> void:
 	var squad := squad_home if requester.country == squad_home[0].country else squad_away
 	var cpu_players : Array[Player] = squad.filter(

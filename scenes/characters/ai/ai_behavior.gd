@@ -1,7 +1,14 @@
 class_name AIBehavior
 extends Node
 
-const DURATION_AI_TICK_FREQUENCY := 200
+const DURATION_AI_TICK_FREQUENCY := 200  ## 默认 AI tick 间隔（毫秒）
+const LOD_CORE_TICK_MS := 50      ## 核心层 tick：50ms（约每 3 帧 @60fps）
+const LOD_MID_TICK_MS := 200      ## 中间层 tick：200ms（约每 12 帧）
+const LOD_FAR_TICK_MS := 1000     ## 远端层 tick：1000ms（约每 60 帧）
+
+enum LODLevel { CORE, MID, FAR }
+
+var ai_lod_level : int = LODLevel.MID  ## 当前 LOD 级别（默认中间层）
 
 var ball : Ball = null
 var opponent_detection_area : Area2D = null
@@ -17,9 +24,25 @@ func setup(context_player: Player, context_ball: Ball, context_opponent_detectio
 	ball = context_ball
 	opponent_detection_area = context_opponent_detection_area
 	teammate_detection_area = context_teammate_detection_area
-	
+
+func set_lod_level(level: int) -> void:
+	## 设置 AI 的 LOD 级别，影响决策频率
+	ai_lod_level = level
+
+func _get_tick_interval_ms() -> int:
+	## 获取当前 LOD 级别的 tick 间隔
+	match ai_lod_level:
+		LODLevel.CORE:
+			return LOD_CORE_TICK_MS
+		LODLevel.MID:
+			return LOD_MID_TICK_MS
+		LODLevel.FAR:
+			return LOD_FAR_TICK_MS
+		_:
+			return LOD_MID_TICK_MS
+
 func process_ai() -> void:
-	if Time.get_ticks_msec() - time_since_last_ai_tick > DURATION_AI_TICK_FREQUENCY:
+	if Time.get_ticks_msec() - time_since_last_ai_tick > _get_tick_interval_ms():
 		time_since_last_ai_tick = Time.get_ticks_msec()
 		perform_ai_movement()
 		perform_ai_decisions()

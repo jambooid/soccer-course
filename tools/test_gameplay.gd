@@ -106,10 +106,8 @@ func _setup_and_start_match():
 	# 进入游戏界面
 	if soccer_game.has_method("switch_screen"):
 		var sd = load("res://scenes/screens/screen_data.gd").new()
-		# IN_GAME = 最后一个？试试找
-		var in_game_type = 3  # 猜测
-		if soccer_game.has("ScreenType"):
-			in_game_type = soccer_game.ScreenType.IN_GAME
+		# 使用 SoccerGame.ScreenType.IN_GAME 枚举值
+		var in_game_type := soccer_game.ScreenType.IN_GAME
 		soccer_game.switch_screen.call_deferred(in_game_type, sd)
 		print("  Transitioning to IN_GAME...")
 

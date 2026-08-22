@@ -2,11 +2,11 @@ class_name PlayerStatePassing
 extends PlayerState
 
 ## 辅助瞄准参数（按传球类型）
-const ASSIST_MAGNET_ANGLE_SHORT := 35.0    ## 短传吸附角度（度）
+const ASSIST_MAGNET_ANGLE_SHORT := 40.0    ## 短传吸附角度（度）— 规格 40°
 const ASSIST_MAGNET_RANGE_SHORT := 180.0   ## 短传吸附最大距离（px）
-const ASSIST_MAGNET_ANGLE_LONG := 22.0     ## 长传吸附角度
+const ASSIST_MAGNET_ANGLE_LONG := 60.0     ## 长传吸附角度 — 规格 60°
 const ASSIST_MAGNET_RANGE_LONG := 300.0    ## 长传吸附最大距离
-const ASSIST_MAGNET_ANGLE_THROUGH := 12.0  ## 直塞吸附角度（最严格）
+const ASSIST_MAGNET_ANGLE_THROUGH := 30.0  ## 直塞吸附角度 — 规格 30°
 const ASSIST_MAGNET_RANGE_THROUGH := 220.0 ## 直塞吸附最大距离
 
 func _enter_tree() -> void:

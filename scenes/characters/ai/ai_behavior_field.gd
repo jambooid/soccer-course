@@ -16,6 +16,19 @@ const SUPPORT_FULLBACK_PUSH := 60.0       ## 边后卫插上距离
 const SUPPORT_CENTRAL_HOLD_DIST := 80.0   ## 后腰保持的距离（球后方）
 const SUPPORT_RUN_ACTIVATION_DIST := 200.0 ## 离球多远以内开始跑位
 
+## 无球跑位状态机
+enum OffBallRunState {
+	HOLD_POSITION,   ## 保持位置
+	BREAK_OFFSIDE,   ## 反越位前插
+	PULL_WIDE,       ## 拉边
+	DROP_DEEP,       ## 回撤接应
+	OVERLAP_RUN      ## 套边助攻
+}
+const RUN_STATE_COOLDOWN_MS := 800    ## 跑位状态切换冷却（毫秒），防止抖动
+var current_run_state : int = OffBallRunState.HOLD_POSITION
+var run_state_cooldown_ms := 0.0       ## 剩余冷却时间
+var cached_run_target := Vector2.ZERO ## 缓存的跑位目标位置（冷却期内使用）
+
 func perform_ai_movement() -> void:
 	var total_steering_force := Vector2.ZERO
 	if player.has_ball():
@@ -213,13 +226,8 @@ func _is_carrier_human_controlled() -> bool:
 		or ball.carrier.control_scheme == Player.ControlScheme.P2
 
 func get_offensive_support_steering_force() -> Vector2:
-	## 人类队友持球时的无球跑位
-	## 根据角色不同，做出不同类型的支援跑动：
-	## - 前锋：向禁区/对方球门方向插入（反越位跑）
-	## - 边锋/边前卫：拉边，创造宽度
-	## - 中场：前插支援 + 保持阵型层次
-	## - 边后卫：沿边路插上
-	## - 中后卫：留在后方，不贸然压上
+	## 人类队友持球时的无球跑位（状态机驱动，带冷却防抖）
+	## 跑位状态每 800ms 重新评估一次，冷却期内维持当前跑位目标
 	var carrier := ball.carrier
 	if carrier == null:
 		return Vector2.ZERO
@@ -227,9 +235,20 @@ func get_offensive_support_steering_force() -> Vector2:
 	# 太远了就先回到阵型位置（防止乱跑）
 	var dist_to_ball := player.position.distance_to(carrier.position)
 	if dist_to_ball > SUPPORT_RUN_ACTIVATION_DIST:
+		current_run_state = OffBallRunState.HOLD_POSITION
 		return get_assist_formation_steering_force()
 
-	var target_pos := _compute_support_target(carrier)
+	# 更新冷却 + 判断是否需要重新选择跑位状态
+	if run_state_cooldown_ms <= 0:
+		# 冷却结束，重新选择跑位状态
+		_select_run_state(carrier)
+		# 根据新状态计算目标位置
+		cached_run_target = _compute_run_target_for_state(carrier, current_run_state)
+		run_state_cooldown_ms = RUN_STATE_COOLDOWN_MS
+	else:
+		run_state_cooldown_ms -= _get_tick_interval_ms()
+
+	var target_pos := cached_run_target
 	var direction := player.position.direction_to(target_pos)
 	var dist_to_target := player.position.distance_to(target_pos)
 
@@ -241,56 +260,80 @@ func get_offensive_support_steering_force() -> Vector2:
 
 	return weight * direction * proximity_factor
 
-func _compute_support_target(carrier: Player) -> Vector2:
-	## 根据角色计算支援跑位的目标位置
+func _select_run_state(carrier: Player) -> void:
+	## 根据场上形势选择跑位状态
 	var goal_pos := player.target_goal.get_center_target_position()
-	var carrier_pos := carrier.position
-	var attack_dir := carrier_pos.direction_to(goal_pos)
-	var lateral_dir := Vector2(-attack_dir.y, attack_dir.x)  # 垂直于进攻方向
+	var dist_to_goal := player.position.distance_to(goal_pos)
+	var dist_to_ball := player.position.distance_to(carrier.position)
+	var attack_dir := carrier.position.direction_to(goal_pos)
 
-	# 计算球员在阵型中的横向位置（相对于中线的偏侧）
+	# 计算球员在阵型中的横向位置
 	var spawn_y_offset := player.spawn_position.y - carrier.spawn_position.y
-	var is_wide_player: bool = abs(spawn_y_offset) > 40  # 离中线远的就是边路球员
+	var is_wide_player: bool = abs(spawn_y_offset) > 40
 
 	match player.role:
 		Player.Role.OFFENSE:
-			# 前锋：向前插，跑到球和球门之间的位置
-			var forward_push := SUPPORT_RUN_FORWARD_PUSH
-			# 边路前锋拉边，中路前锋插禁区
-			if is_wide_player:
-				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.7
-				return carrier_pos + attack_dir * forward_push + lateral_dir * wide_amount
+			# 前锋：大部分时间尝试反越位前插，偶尔拉边
+			if is_wide_player and randf() < 0.4:
+				current_run_state = OffBallRunState.PULL_WIDE
 			else:
-				# 中路前锋直接插向球门方向
-				return carrier_pos + attack_dir * forward_push
+				current_run_state = OffBallRunState.BREAK_OFFSIDE
 
 		Player.Role.MIDFIELD:
-			# 中场：向前支援，但保持一定距离作为传球选项
-			var mid_push := SUPPORT_MID_PUSH
-			if is_wide_player:
-				# 边中场稍微拉边
-				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH * 0.5
-				return carrier_pos + attack_dir * mid_push + lateral_dir * wide_amount
+			# 中场：根据距离选择回撤或前插
+			if dist_to_ball > 120.0:
+				current_run_state = OffBallRunState.DROP_DEEP
+			elif is_wide_player and randf() < 0.3:
+				current_run_state = OffBallRunState.PULL_WIDE
 			else:
-				# 中路中场在球前方不远处接应
-				return carrier_pos + attack_dir * mid_push
+				current_run_state = OffBallRunState.BREAK_OFFSIDE
 
 		Player.Role.DEFENSE:
-			# 后卫：边后卫可以插上，中后卫留守
-			if is_wide_player:
-				# 边后卫：沿边路插上
-				var fb_push := SUPPORT_FULLBACK_PUSH
-				var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
-				return carrier_pos + attack_dir * fb_push + lateral_dir * wide_amount
+			# 后卫：边后卫套边，中后卫留守
+			if is_wide_player and dist_to_goal > 150.0:
+				current_run_state = OffBallRunState.OVERLAP_RUN
 			else:
-				# 中后卫：留在后方，跟球保持距离
-				var hold_back := SUPPORT_CENTRAL_HOLD_DIST
-				return carrier_pos - attack_dir * hold_back * 0.5
+				current_run_state = OffBallRunState.HOLD_POSITION
 
 		_:
-			return carrier.position
+			current_run_state = OffBallRunState.HOLD_POSITION
 
-	return carrier.position
+func _compute_run_target_for_state(carrier: Player, state: int) -> Vector2:
+	## 根据跑位状态计算目标位置
+	var goal_pos := player.target_goal.get_center_target_position()
+	var carrier_pos := carrier.position
+	var attack_dir := carrier_pos.direction_to(goal_pos)
+	var lateral_dir := Vector2(-attack_dir.y, attack_dir.x)
+	var spawn_y_offset := player.spawn_position.y - carrier.spawn_position.y
+
+	match state:
+		OffBallRunState.BREAK_OFFSIDE:
+			# 反越位：向球门方向前插
+			var forward_push := SUPPORT_RUN_FORWARD_PUSH
+			return carrier_pos + attack_dir * forward_push
+
+		OffBallRunState.PULL_WIDE:
+			# 拉边：向边路拉开宽度
+			var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
+			var mid_push := SUPPORT_MID_PUSH * 0.5
+			return carrier_pos + attack_dir * mid_push + lateral_dir * wide_amount
+
+		OffBallRunState.DROP_DEEP:
+			# 回撤：回到球后方接应
+			var drop_back := SUPPORT_CENTRAL_HOLD_DIST * 0.8
+			return carrier_pos - attack_dir * drop_back
+
+		OffBallRunState.OVERLAP_RUN:
+			# 套边：沿边路插上
+			var fb_push := SUPPORT_FULLBACK_PUSH
+			var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
+			return carrier_pos + attack_dir * fb_push + lateral_dir * wide_amount
+
+		_:  # HOLD_POSITION
+			# 保持位置：停在当前位置附近
+			return player.position + attack_dir * 20.0
+
+
 
 func get_onduty_steering_force() -> Vector2:
 	return player.weight_on_duty_steering * player.position.direction_to(ball.position)

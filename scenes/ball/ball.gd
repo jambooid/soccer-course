@@ -44,7 +44,7 @@ func switch_state(state: Ball.State, data: BallStateData = BallStateData.new()) 
 	current_state = state_factory.get_fresh_state(state)
 	current_state.setup(self, data, player_detection_area, carrier, animation_player, ball_sprite, shot_particles)
 	current_state.state_transition_requested.connect(switch_state.bind())
-	current_state.name = "BallStateMachine"
+	current_state.name = "BallStateMachine: " + str(state)
 	call_deferred("add_child", current_state)
 
 func shoot(shot_velocity : Vector2) -> void:
