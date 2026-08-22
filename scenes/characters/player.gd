@@ -3,13 +3,13 @@ extends CharacterBody2D
 
 signal swap_requested(player: Player)
 
-const BALL_CONTROL_HEIGHT_MAX := 10.0
+const BALL_CONTROL_HEIGHT_MAX := PitchConstants.HEIGHT_BALL_CONTROL_MAX
 const CONTROL_SCHEME_MAP : Dictionary = {
 	ControlScheme.CPU: preload("res://assets/art/props/cpu.png"),
 	ControlScheme.P1: preload("res://assets/art/props/1p.png"),
 	ControlScheme.P2: preload("res://assets/art/props/2p.png"),
 }
-const GRAVITY := 8.0
+const GRAVITY := 600.0  ## px/s²，2.5D 竖直重力（与球一致）
 const WALK_ANIM_THRESHOLD := 0.6
 
 enum ControlScheme {CPU, P1, P2}
@@ -131,9 +131,10 @@ func set_movement_animation() -> void:
 func process_gravity(delta: float) -> void:
 	if height > 0:
 		height_velocity -= GRAVITY * delta
-		height += height_velocity
+		height += height_velocity * delta
 		if height <= 0:
 			height = 0
+			height_velocity = 0.0
 	player_sprite.position = Vector2.UP * height
 
 func set_heading() -> void:
