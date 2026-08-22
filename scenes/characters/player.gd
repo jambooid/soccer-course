@@ -164,7 +164,7 @@ func set_control_scheme(scheme: ControlScheme) -> void:
 
 func set_sprite_visibility() -> void:
 	control_sprite.visible = has_ball() or not control_scheme == ControlScheme.CPU
-	run_particles.emitting = velocity.length() == speed
+	run_particles.emitting = velocity.length() >= speed * 0.9
 
 func get_hurt(hurt_origin: Vector2) -> void:
 	switch_state(Player.State.HURT, PlayerStateData.build().set_hurt_direction(hurt_origin))
