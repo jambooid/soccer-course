@@ -6,7 +6,7 @@ const DISTANCE_HIGH_PASS := 90
 const DURATION_TUMBLE_LOCK := 200
 const DURATION_PASS_LOCK := 500
 const KICKOFF_PASS_DISTANCE := 30.0
-const TUMBLE_HEIGHT_VELOCITY := 3.0
+const TUMBLE_HEIGHT_VELOCITY := 180.0  ## px/s，被撞后弹起的初始竖直速度
 
 enum State {CARRIED, FREEFORM, SHOT, KICKED, SAVED, DEFLECTED, HELD_BY_GOALKEEPER}
 
@@ -64,8 +64,11 @@ func tumble(tumble_velocity: Vector2, p_kicker: Player = null) -> void:
 func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_kicker: Player = null) -> void:
 	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
+	if distance < 0.1:
+		return
 	var intensity := sqrt(2 * distance * friction_ground)
 	velocity = intensity * direction
+	height = 0.0
 	if distance > DISTANCE_HIGH_PASS:
 		height_velocity = BallState.GRAVITY * distance / (1.85 * intensity)
 	var kicker_ref := p_kicker if p_kicker != null else carrier
@@ -80,6 +83,8 @@ func short_pass(destination: Vector2, p_kicker: Player, lock_duration: int = DUR
 	## 短传：贴地直线，速度适中，精准
 	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
+	if distance < 0.1:
+		return
 	var intensity := sqrt(2.0 * distance * friction_ground)
 	velocity = direction * intensity
 	height = 0.0
@@ -93,6 +98,8 @@ func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_
 	## 长传：高空抛物线，距离远
 	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
+	if distance < 0.1:
+		return
 	power = clamp(power, 0.3, 1.5)
 	var intensity := sqrt(2.0 * distance * friction_ground * 0.7) * power
 	velocity = direction * intensity
@@ -107,6 +114,9 @@ func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_
 func through_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_duration: int = DURATION_PASS_LOCK) -> void:
 	## 直塞：贴地快速直线，穿透力强
 	var direction := position.direction_to(destination)
+	var distance := position.distance_to(destination)
+	if distance < 0.1:
+		return
 	power = clamp(power, 0.7, 1.3)
 	var intensity: float = lerp(180.0, 320.0, power)
 	velocity = direction * intensity
@@ -123,7 +133,7 @@ func save_by(goalie: Player, direction: Vector2, speed_factor: float = 0.4) -> v
 	## 被门将扑出：球改变方向并减速
 	velocity = direction * velocity.length() * speed_factor
 	if height < 5.0:
-		height_velocity = 4.0
+		height_velocity = 240.0  ## px/s，低球扑救后向上弹起
 	carrier = null
 	switch_state(State.SAVED, BallStateData.build().set_kicker(goalie))
 
