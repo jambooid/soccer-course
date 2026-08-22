@@ -20,7 +20,10 @@ func _process(delta: float) -> void:
 		var ease_time := duration_press / DURATION_MAX_BONUS
 		var bonus := ease(ease_time, EASE_REWARD_FACTOR)
 		var shot_power := player.power * (1 + bonus)
-		shot_direction = shot_direction.normalized()
+		if shot_direction.length() < 0.001:
+			shot_direction = player.heading
+		else:
+			shot_direction = shot_direction.normalized()
 		var data = PlayerStateData.build().set_shot_power(shot_power).set_shot_direction(shot_direction)
 		transition_state(Player.State.SHOOTING, data)
 		
