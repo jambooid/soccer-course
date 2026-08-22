@@ -39,7 +39,7 @@ func _process(delta: float) -> void:
 func on_player_enter(body: Player) -> void:
 	if not body.can_carry_ball():
 		return
-	if ball.height > 10.0:
+	if ball.height > PitchConstants.HEIGHT_DEFLECTED_PICKUP_MAX:
 		return
 	ball.carrier = body
 	body.control_ball()

@@ -54,7 +54,7 @@ func _can_catch_ball() -> bool:
 	if ball.carrier != null and ball.carrier.country == player.country and ball.carrier != player:
 		return false  # 队友带的球不能抢
 	# 球太高抱不到
-	if ball.height > 25.0:
+	if ball.height > PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
 		return false
 	var dist := player.position.distance_to(ball.position)
 	return dist < CATCH_RADIUS

@@ -5,8 +5,8 @@ extends Control
 ## 位于屏幕左下角，每 3 帧重绘一次
 
 const UPDATE_FRAME_INTERVAL := 3
-const PITCH_MIN := Vector2(0, 0)
-const PITCH_MAX := Vector2(850, 360)
+const PITCH_MIN := Vector2(PitchConstants.MIN_X, PitchConstants.MIN_Y)
+const PITCH_MAX := Vector2(PitchConstants.MAX_X, PitchConstants.MAX_Y)
 
 const COLOR_PITCH_BG := Color(0.1, 0.25, 0.08, 0.9)
 const COLOR_PITCH_LINE := Color(0.9, 0.9, 0.9, 0.6)

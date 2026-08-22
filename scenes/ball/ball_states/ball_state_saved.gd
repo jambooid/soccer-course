@@ -37,11 +37,11 @@ func _process(delta: float) -> void:
 
 func on_player_enter(body: Player) -> void:
 	if body.role == Player.Role.GOALIE and goalie != null and body == goalie:
-		if ball.height < 15.0:
+		if ball.height < PitchConstants.HEIGHT_SAVED_GOALIE_CATCH:
 			ball.carrier = body
 			carrier = body
 			transition_state(Ball.State.HELD_BY_GOALKEEPER)
-	elif body.can_carry_ball() and ball.height < 8.0:
+	elif body.can_carry_ball() and ball.height < PitchConstants.HEIGHT_SAVED_PLAYER_PICKUP:
 		ball.carrier = body
 		body.control_ball()
 		transition_state(Ball.State.CARRIED)

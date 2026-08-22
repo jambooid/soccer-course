@@ -29,6 +29,8 @@ func _enter_tree() -> void:
 	var offset := carrier.heading * TOUCH_OFFSET_MIN
 	ball.position = carrier.position + offset
 	ball.velocity = carrier.heading * carrier.velocity.length()
+	ball.height = 0.0
+	ball.height_velocity = 0.0
 	_is_ball_free = false
 	touch_timer = 0.0
 	free_ball_timer = 0.0

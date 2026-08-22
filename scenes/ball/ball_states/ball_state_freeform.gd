@@ -1,7 +1,7 @@
 class_name BallStateFreeform
 extends BallState
 
-const MAX_CAPTURE_HEIGHT := 25
+const MAX_CAPTURE_HEIGHT := PitchConstants.HEIGHT_FREEFORM_PICKUP_MAX
 
 var time_since_freeform := Time.get_ticks_msec()
 

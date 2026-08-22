@@ -1,7 +1,7 @@
 class_name Goal
 extends Node2D
 
-const CROSSBAR_HEIGHT := 30.0  ## 球门横梁等效高度，超过此高度的球不算进球（2.5D 高度检测）
+const CROSSBAR_HEIGHT := PitchConstants.CROSSBAR_HEIGHT  ## 球门横梁等效高度（引用统一常量）
 
 @onready var back_net_area := %BackNetArea
 @onready var scoring_area := %ScoringArea
