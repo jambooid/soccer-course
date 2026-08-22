@@ -100,7 +100,7 @@ func initialize(context_position: Vector2, context_kickoff_position: Vector2, co
 	role = context_player_data.role
 	skin_color = context_player_data.skin_color
 	fullname = context_player_data.full_name
-	heading = Vector2.LEFT if target_goal.position.x < position.x else Vector2.RIGHT
+	heading = Vector2.LEFT if target_goal.get_center_target_position().x < position.x else Vector2.RIGHT
 	country = context_country
 
 func setup_ai_behavior() -> void:
@@ -183,7 +183,7 @@ func get_pass_request(player: Player) -> void:
 		switch_state(Player.State.PASSING, PlayerStateData.build().set_pass_target(player))
 
 func is_facing_target_goal() -> bool:
-	var direction_to_target_goal := position.direction_to(target_goal.position)
+	var direction_to_target_goal := position.direction_to(target_goal.get_center_target_position())
 	return heading.dot(direction_to_target_goal) > 0
 
 func can_carry_ball() -> bool:
