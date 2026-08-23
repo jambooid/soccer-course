@@ -122,9 +122,9 @@ func _release_ball() -> void:
 	ball.carrier = null
 	transition_state(Ball.State.FREEFORM, BallStateData.build())
 
-# 自动抢断检测：使用现有的 InterceptResolver（二元判定）
-# 从 player_proximity_area 中筛选对方球员，逐个检查是否能断球
-func _check_auto_intercept(_delta: float) -> void:
+# 自动抢断检测：使用概率式 InterceptResolver
+# 从 player_proximity_area 中筛选对方球员，计算抢断概率并按概率判定
+func _check_auto_intercept(delta: float) -> void:
 	if not is_instance_valid(carrier):
 		return
 	# 使用 ball 的 player_proximity_area 获取附近球员
@@ -132,9 +132,8 @@ func _check_auto_intercept(_delta: float) -> void:
 	if area == null:
 		return
 
-	var best_defender: Player = null
-	var best_quality := -1.0
-
+	# 筛选候选防守者
+	var candidates: Array[Player] = []
 	for body in area.get_overlapping_bodies():
 		if not (body is Player):
 			continue
@@ -148,14 +147,26 @@ func _check_auto_intercept(_delta: float) -> void:
 		# 不在控球状态的球员才能断球（正在做其他动作时不行）
 		if not p.can_carry_ball():
 			continue
+		candidates.append(p)
 
-		var result := InterceptResolver.check_auto_intercept(p, ball)
-		if result.success and result.quality > best_quality:
-			best_quality = result.quality
-			best_defender = p
+	if candidates.is_empty():
+		return
 
-	if best_defender != null:
-		_trigger_intercept(best_defender, best_quality)
+	# 找到概率最高的防守者
+	var result := InterceptResolver.find_best_interceptor_probability(
+		candidates, carrier, ball.position, ball.velocity
+	)
+
+	if result.is_empty():
+		return
+
+	var best_defender: Player = result.player
+	var probability: float = result.probability
+
+	# 概率判定：probability 是每秒概率，delta 是时间窗口，概率 × delta 是实际判定阈值
+	var chance := probability * delta
+	if randf() < chance:
+		_trigger_intercept(best_defender, probability)
 
 # 抢断成功：球权转移给防守者，直接切换到新携带者的 DRIBBLING 状态
 # 参考 FREEFORM 状态的 on_player_enter 模式：先设置 ball.carrier，再 transition_state
