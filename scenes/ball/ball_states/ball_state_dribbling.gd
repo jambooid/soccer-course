@@ -17,6 +17,7 @@ func _enter_tree() -> void:
 
 	ball.carrier = carrier
 	GameEvents.ball_possessed.emit(carrier.fullname)
+	GameEvents.ball_possessed_by.emit(carrier)
 
 	# 带球时球在地面
 	ball.height = 0.0

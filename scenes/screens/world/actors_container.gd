@@ -11,8 +11,10 @@ const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms
 ## 远端 = 其余球员（每 1000ms 决策）
 
 ## === 控球权自动切换（PossessionManager）===
-const SWAP_COOLDOWN_MS := 400          ## 自动切换冷却时间，防止频繁跳变
-const DEFENSE_SWAP_DIST_THRESHOLD := 25.0  ## 防守时切换的距离阈值（当前球员比最近的远多少才切）
+const SWAP_COOLDOWN_MS := 800          ## 自动切换冷却时间，防止频繁跳变
+const DEFENSE_SWAP_DIST_THRESHOLD := 45.0  ## 防守时切换的距离阈值（当前球员比最近的远多少才切）
+const DEFENSE_SWAP_HYSTERESIS := 15.0       ## 滞回阈值：切换后新球员必须比旧的近这么多才稳定，防止来回跳
+const DEFENSE_SWAP_MIN_BALL_DIST := 60.0    ## 球离己方球员小于这个距离时不切换（避免贴身缠斗时乱切）
 
 @export var ball : Ball
 @export var goal_home : Goal
@@ -267,6 +269,18 @@ func _auto_swap_defender_for_scheme(squad: Array[Player], scheme: int) -> void:
 	var closest_dist := closest.position.distance_to(ball.position)
 	if current_dist - closest_dist < DEFENSE_SWAP_DIST_THRESHOLD:
 		return
+
+	# 球离当前控制球员很近时不切换（避免贴身缠斗时频繁跳）
+	if current_dist < DEFENSE_SWAP_MIN_BALL_DIST:
+		return
+
+	# 球的运动方向如果是朝向当前控制球员的，不切换
+	# （球正往当前球员飞去，下一秒他可能就是最近的了，避免来回切）
+	if ball.velocity.length() > 10.0:
+		var to_current := (current_player.position - ball.position).normalized()
+		var ball_dir := ball.velocity.normalized()
+		if ball_dir.dot(to_current) > 0.3:  # 球大致朝向当前球员
+			return
 
 	# 不能切到已经被另一个人类玩家控制的球员（合作模式）
 	if closest.control_scheme != Player.ControlScheme.CPU:
