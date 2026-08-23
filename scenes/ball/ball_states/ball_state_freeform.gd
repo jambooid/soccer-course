@@ -20,7 +20,7 @@ func on_player_enter(body: Player) -> void:
 	if body.can_carry_ball() and ball.height < MAX_CAPTURE_HEIGHT:
 		ball.carrier = body
 		body.control_ball()
-		transition_state(Ball.State.CARRIED)
+		transition_state(Ball.State.DRIBBLING)
 
 func _process(delta: float) -> void:
 	player_detection_area.monitoring = (Time.get_ticks_msec() - time_since_freeform > state_data.lock_duration)
