@@ -2,6 +2,21 @@
 
 Guidance for Claude Code working in this repository.
 
+## Documentation
+
+Main reference documents live in `docs/`:
+
+| File | Purpose |
+|------|---------|
+| `docs/requirements-prd.md` | Product requirements — what the game is, features, target scope |
+| `docs/design-document.md` | Design document — mechanics, systems, content plan |
+| `docs/implementation-plan.md` | Implementation roadmap — milestones, module breakdown |
+| `docs/testing-strategy.md` | Testing approach — test files, how to run, what to verify |
+| `docs/we2000-core-techniques.md` | Core technique reference — gameplay patterns inherited from WE2000 |
+| `docs/we2000-implementation-research.md` | Research notes — WE2000 implementation findings |
+
+When planning changes or understanding *why* something is built a certain way, check the relevant doc above before changing course.
+
 ## Project
 
 **Soccer Course** — a 2D arcade soccer game built in **Godot 4.4** (GDScript, GL Compatibility renderer). This repo doubles as a *course* for building a 2D soccer game, so code is written to be readable and instructive rather than maximally terse.
