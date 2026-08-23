@@ -1,0 +1,184 @@
+class_name BallStateDribbling
+extends BallState
+
+## 物理推球式带球状态
+## 核心机制：球有独立的速度和位置，通过摩擦力减速，球员通过周期性触球推动球前进
+## 替换 CARRIED 状态的 lerp 跟随式带球，实现真实的惯性和物理感
+
+# 触球冷却（秒）
+var touch_cooldown := 0.0
+# 抢断检测帧计数（每 3 帧检测一次，降低性能消耗）
+var intercept_check_frame := 0
+
+func _enter_tree() -> void:
+	if carrier == null:
+		transition_state(Ball.State.FREEFORM, BallStateData.build())
+		return
+
+	ball.carrier = carrier
+	GameEvents.ball_possessed.emit(carrier.fullname)
+
+	# 带球时球在地面
+	ball.height = 0.0
+	ball.height_velocity = 0.0
+
+	# 排除与携带者的物理碰撞（带球时球穿过携带者身体）
+	ball.add_collision_exception_with(carrier)
+
+	# 设置初始速度：如果球速太慢且球员在移动，给一个同向的初速度
+	var current_speed := carrier.velocity.length()
+	if ball.velocity.length() < current_speed * 0.3 and current_speed > DribblePhysics.IDLE_SPEED_THRESHOLD:
+		ball.velocity = _get_player_direction() * current_speed * 0.8
+
+func _process(delta: float) -> void:
+	if not is_instance_valid(carrier):
+		_release_ball()
+		return
+
+	# 1. 冷却计时
+	touch_cooldown = max(0.0, touch_cooldown - delta)
+
+	# 预计算：有效技术值 & 球员当前方向（多处复用）
+	var effective_tech := carrier.technique
+	var player_dir := _get_player_direction()
+
+	# 2. 应用地面摩擦力（指数衰减）
+	ball.velocity = DribblePhysics.apply_friction(ball.velocity, delta)
+
+	# 2.5 静止/低速控球：球不会滚远，保持在脚边
+	# 当球员速度很低时，给球一个轻微的"吸回"速度调整，
+	# 让球稳定在触球区内而不是越滚越远
+	var current_speed := carrier.velocity.length()
+	if current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
+		var to_ball_idle := ball.position - carrier.position
+		var forward_dist := to_ball_idle.dot(player_dir)
+		# 球在前方且超过了理想距离 → 轻轻往回拉
+		var zone_len := DribblePhysics.get_touch_zone_length(effective_tech)
+		var ideal_idle_dist := DribblePhysics.TOUCH_ZONE_FRONT_OFFSET + zone_len * 0.3
+		if forward_dist > ideal_idle_dist:
+			var pull_speed := min(ball.velocity.length(), 30.0)  # 最大拉回速度
+			var pull_dir := (carrier.position - ball.position).normalized()
+			ball.velocity = ball.velocity.lerp(pull_dir * pull_speed, 0.1)
+
+	# 3. 物理移动 + 墙壁反弹
+	var collision := ball.move_and_collide(ball.velocity * delta)
+	if collision != null:
+		# 弹开球但保持带球状态（撞墙后仍可能在可控范围内）
+		var normal := collision.get_normal()
+		ball.velocity = ball.velocity.bounce(normal) * ball.BOUNCINESS
+		SoundPlayer.play(SoundPlayer.Sound.BOUNCE)
+
+	# 4. 失控检测：球在球员前方且距离超过可控范围
+	#    身后的球不算失控（球员可以转身回追）
+	var to_ball := ball.position - carrier.position
+	var dist := to_ball.length()
+	var max_control := DribblePhysics.get_max_control_distance(effective_tech)
+	if dist > max_control and to_ball.dot(player_dir) > 0:
+		_release_ball()
+		return
+
+	# 5. 触球检测
+	if touch_cooldown <= 0.0:
+		if DribblePhysics.is_ball_in_touch_zone(
+			ball.position, carrier.position, player_dir, effective_tech
+		):
+			var new_vel := DribblePhysics.compute_touch_impulse(
+				ball.velocity, carrier.velocity, carrier.speed, effective_tech
+			)
+			# 只在推球方向与球员移动方向一致时触球
+			# （防止球从身后被勾回来——即新速度沿球员方向的分量大于当前速度）
+			if new_vel.dot(player_dir) > ball.velocity.dot(player_dir):
+				ball.velocity = new_vel
+				touch_cooldown = DribblePhysics.MIN_TOUCH_INTERVAL
+
+	# 6. 播放球滚动动画
+	set_ball_animation_from_velocity()
+
+	# 7. 自动抢断检测（每 3 帧跑一次，降低性能消耗）
+	intercept_check_frame += 1
+	if intercept_check_frame >= 3:
+		intercept_check_frame = 0
+		_check_auto_intercept(delta * 3.0)
+
+func _exit_tree() -> void:
+	# 恢复与前携带者的碰撞
+	if is_instance_valid(carrier):
+		ball.remove_collision_exception_with(carrier)
+	# 只有当球的当前携带者是自己时才清空 carrier
+	# 防止抢断/球权易主时（DRIBBLING → DRIBBLING 自状态切换），
+	# 旧状态的退出意外清空新状态已经设置的 carrier
+	if ball.carrier == carrier:
+		ball.carrier = null
+	GameEvents.ball_released.emit()
+
+# 获取球员当前方向：速度方向（速度足够大时），否则用 heading
+func _get_player_direction() -> Vector2:
+	if carrier.velocity.length() > 5.0:
+		return carrier.velocity.normalized()
+	return carrier.heading
+
+# 释放球，切换到 FREEFORM 状态
+func _release_ball() -> void:
+	ball.carrier = null
+	transition_state(Ball.State.FREEFORM, BallStateData.build())
+
+# 自动抢断检测：使用现有的 InterceptResolver（二元判定）
+# 从 player_proximity_area 中筛选对方球员，逐个检查是否能断球
+func _check_auto_intercept(_delta: float) -> void:
+	if not is_instance_valid(carrier):
+		return
+	# 使用 ball 的 player_proximity_area 获取附近球员
+	var area := ball.player_proximity_area
+	if area == null:
+		return
+
+	var best_defender: Player = null
+	var best_quality := -1.0
+
+	for body in area.get_overlapping_bodies():
+		if not (body is Player):
+			continue
+		var p: Player = body
+		# 只考虑对手球员
+		if p.country == carrier.country:
+			continue
+		# 门将有专门的抱球逻辑，不走自动断球
+		if p.role == Player.Role.GOALIE:
+			continue
+		# 不在控球状态的球员才能断球（正在做其他动作时不行）
+		if not p.can_carry_ball():
+			continue
+
+		var result := InterceptResolver.check_auto_intercept(p, ball)
+		if result.success and result.quality > best_quality:
+			best_quality = result.quality
+			best_defender = p
+
+	if best_defender != null:
+		_trigger_intercept(best_defender, best_quality)
+
+# 抢断成功：球权转移给防守者，直接切换到新携带者的 DRIBBLING 状态
+# 参考 FREEFORM 状态的 on_player_enter 模式：先设置 ball.carrier，再 transition_state
+func _trigger_intercept(defender: Player, _quality: float) -> void:
+	if not is_instance_valid(defender):
+		return
+
+	# 给球一个轻微的朝向防守者的速度，模拟被捅走的感觉
+	var to_defender := (defender.position - ball.position).normalized()
+	if to_defender == Vector2.ZERO:
+		to_defender = Vector2.RIGHT
+	ball.velocity = to_defender * max(ball.velocity.length() * 0.5, 30.0)
+
+	# 设置新携带者（setup 会在 switch_state 中捕获这个值，传给新状态）
+	ball.carrier = defender
+	defender.control_ball()
+
+	# 状态切换：旧 DRIBBLING 的 _exit_tree 会清理旧碰撞排除并释放信号，
+	# 新 DRIBBLING 的 _enter_tree 会设置新碰撞排除并占用信号。
+	transition_state(Ball.State.DRIBBLING, BallStateData.build())
+
+# 离脚检测：委托给 InterceptResolver.check_auto_intercept 判断
+# DRIBBLING 状态下球不是一直"粘脚"，而是周期性触球，所以总是认为球是"离脚"的
+# （与 CARRIED 状态的触球/离脚窗口不同，DRIBBLING 全程都是物理独立运动）
+func is_ball_free() -> bool:
+	return true
