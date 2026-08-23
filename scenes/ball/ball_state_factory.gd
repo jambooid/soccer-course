@@ -11,6 +11,7 @@ func _init() -> void:
 		Ball.State.SAVED: BallStateSaved,
 		Ball.State.DEFLECTED: BallStateDeflected,
 		Ball.State.HELD_BY_GOALKEEPER: BallStateHeldByGoalkeeper,
+		Ball.State.DRIBBLING: BallStateDribbling,
 	}
 
 func get_fresh_state(state: Ball.State) -> BallState:
