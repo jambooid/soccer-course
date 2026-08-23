@@ -8,7 +8,7 @@ const DURATION_PASS_LOCK := 500
 const KICKOFF_PASS_DISTANCE := 30.0
 const TUMBLE_HEIGHT_VELOCITY := 180.0  ## px/s，被撞后弹起的初始竖直速度
 
-enum State {CARRIED, FREEFORM, SHOT, KICKED, SAVED, DEFLECTED, HELD_BY_GOALKEEPER}
+enum State {CARRIED, FREEFORM, SHOT, KICKED, SAVED, DEFLECTED, HELD_BY_GOALKEEPER, DRIBBLING}
 
 @export var friction_air : float
 @export var friction_ground : float
@@ -46,6 +46,10 @@ func switch_state(state: Ball.State, data: BallStateData = BallStateData.new()) 
 	current_state.state_transition_requested.connect(switch_state.bind())
 	current_state.name = "BallStateMachine: " + str(state)
 	call_deferred("add_child", current_state)
+
+func apply_impulse(impulse: Vector2) -> void:
+	## 直接施加速度冲量（用于带球触球）
+	velocity = impulse
 
 func shoot(shot_velocity : Vector2) -> void:
 	velocity = shot_velocity
