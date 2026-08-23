@@ -75,7 +75,10 @@ func handle_human_movement() -> void:
 			player.swap_requested.emit(player)
 
 func can_carry_ball() -> bool:
-	return player.role != Player.Role.GOALIE
+	# MOVING 状态下所有球员都能与球交互。
+	# 门将（抱球）和场上球员（带球）的交互方式差异由球状态侧处理，
+	# 不在此限制——否则门将 AI 永远无法触发扑救等决策。
+	return true
 
 func can_teammate_pass_ball() -> bool:
 	return ball.carrier != null and ball.carrier.country == player.country and ball.carrier.control_scheme == Player.ControlScheme.CPU
