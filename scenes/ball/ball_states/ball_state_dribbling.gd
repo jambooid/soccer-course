@@ -56,7 +56,7 @@ func _process(delta: float) -> void:
 		var zone_len := DribblePhysics.get_touch_zone_length(effective_tech)
 		var ideal_idle_dist := DribblePhysics.TOUCH_ZONE_FRONT_OFFSET + zone_len * 0.3
 		if forward_dist > ideal_idle_dist:
-			var pull_speed := min(ball.velocity.length(), 30.0)  # 最大拉回速度
+			var pull_speed: float = min(ball.velocity.length(), 30.0)  # 最大拉回速度
 			var pull_dir := (carrier.position - ball.position).normalized()
 			ball.velocity = ball.velocity.lerp(pull_dir * pull_speed, 0.1)
 

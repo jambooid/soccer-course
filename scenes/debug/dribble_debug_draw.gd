@@ -124,7 +124,7 @@ func _draw_velocity_arrow(ball_pos: Vector2, velocity: Vector2) -> void:
 	if velocity.length() < 1.0:
 		return  # 速度太小不画
 
-	var arrow_len := min(velocity.length() * 0.5, 60.0)  # 限制最大长度
+	var arrow_len: float = min(velocity.length() * 0.5, 60.0)  # 限制最大长度
 	var arrow_end := ball_pos + velocity.normalized() * arrow_len
 
 	# 主线

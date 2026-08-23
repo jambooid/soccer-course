@@ -88,7 +88,7 @@ static func is_ball_in_touch_zone(
 	var to_ball := ball_pos - player_pos
 	var local_x := to_ball.dot(dir_norm)
 	var perp := dir_norm.rotated(PI / 2.0)
-	var local_y := abs(to_ball.dot(perp))
+	var local_y: float = abs(to_ball.dot(perp))
 
 	var zone_length := get_touch_zone_length(technique)
 	var zone_start_x := TOUCH_ZONE_FRONT_OFFSET
@@ -116,17 +116,17 @@ static func compute_touch_impulse(
 
 	# 1. 推球方向 = 球员速度方向 + 随机偏移（技术越高越准）
 	var push_direction := player_velocity.normalized()
-	var inaccuracy := lerp(MAX_INACCURACY_RAD, 0.0, t_norm)
+	var inaccuracy: float = lerp(MAX_INACCURACY_RAD, 0.0, t_norm)
 	push_direction = push_direction.rotated(randf_range(-inaccuracy, inaccuracy))
 
 	# 2. 推球目标速度 = 球员速度 × 倍率（速度越高倍率越低）
-	var speed_factor := clamp(player_speed / player_max_speed, 0.0, 1.0)
-	var push_multiplier := lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
+	var speed_factor: float = clamp(player_speed / player_max_speed, 0.0, 1.0)
+	var push_multiplier: float = lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
 	var push_speed := player_speed * push_multiplier
 	var push_velocity := push_direction * push_speed
 
 	# 3. 触球效率（技术越高，球速越接近目标推球速度）
-	var efficiency := lerp(TOUCH_EFFICIENCY_MIN, TOUCH_EFFICIENCY_MAX, t_norm)
+	var efficiency: float = lerp(TOUCH_EFFICIENCY_MIN, TOUCH_EFFICIENCY_MAX, t_norm)
 	return ball_velocity.lerp(push_velocity, efficiency)
 
 # 计算球在指数摩擦下的停止距离（解析解）
@@ -177,12 +177,12 @@ static func estimate_next_touch_interval(
 
 	var t_norm := normalize_technique(technique)
 	var f := GROUND_FRICTION_PER_SEC
-	var efficiency := lerp(TOUCH_EFFICIENCY_MIN, TOUCH_EFFICIENCY_MAX, t_norm)
-	var zone_len := lerp(TOUCH_ZONE_LEN_MIN, TOUCH_ZONE_LEN_MAX, t_norm)
+	var efficiency: float = lerp(TOUCH_EFFICIENCY_MIN, TOUCH_EFFICIENCY_MAX, t_norm)
+	var zone_len: float = lerp(TOUCH_ZONE_LEN_MIN, TOUCH_ZONE_LEN_MAX, t_norm)
 	var zone_end := TOUCH_ZONE_FRONT_OFFSET + zone_len
 
-	var speed_factor := clamp(player_speed / player_max_speed, 0.0, 1.0)
-	var push_mult := lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
+	var speed_factor: float = clamp(player_speed / player_max_speed, 0.0, 1.0)
+	var push_mult: float = lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
 	var v_exit := player_speed * push_mult
 
 	# 简化假设：触球后球以 v_exit 速度离开，衰减后回落到 zone_end

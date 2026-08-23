@@ -46,7 +46,7 @@ static func check_auto_intercept(defender: Player, ball: Ball) -> Dictionary:
 		return {"success": false, "reason": "too_far"}
 
 	var ball_to_defender := defender.position - ball_pos
-	var angle_diff := rad_to_deg(abs(ball_vel.angle_to(ball_to_defender)))
+	var angle_diff: float = rad_to_deg(abs(ball_vel.angle_to(ball_to_defender)))
 
 	if ball.carrier != null:
 		var technique_evasion := (ball.carrier.technique / 100.0) * TECHNIQUE_EVASION_BONUS
@@ -94,14 +94,14 @@ static func compute_intercept_probability(
 	var dist_to_ball := defender.position.distance_to(ball_pos)
 	if dist_to_ball > INTERCEPT_MAX_DISTANCE:
 		return 0.0
-	var dist_score := clamp(1.0 - dist_to_ball / INTERCEPT_MAX_DISTANCE, 0.0, 1.0)
+	var dist_score: float = clamp(1.0 - dist_to_ball / INTERCEPT_MAX_DISTANCE, 0.0, 1.0)
 
 	# 2. 角度分：防守者是否在球的正面方向
-	var angle_score := 1.0
+	var angle_score: float = 1.0
 	var ball_speed := ball_vel.length()
 	if ball_speed >= 5.0:
 		var ball_to_defender := (defender.position - ball_pos).normalized()
-		var angle_diff := abs(ball_vel.angle_to(ball_to_defender))
+		var angle_diff: float = abs(ball_vel.angle_to(ball_to_defender))
 		if angle_diff > PI / 2.0:
 			# 身后（>90°）也能断但概率大幅降低，固定为 15% 角度分
 			angle_score = BEHIND_ANGLE_SCORE
@@ -111,16 +111,16 @@ static func compute_intercept_probability(
 
 	# 3. 相对速度分：接近速度越快越突然（越容易断）
 	var defender_to_ball := (ball_pos - defender.position).normalized()
-	var defender_approach_speed := max(0.0, defender.velocity.dot(defender_to_ball))
+	var defender_approach_speed: float = max(0.0, defender.velocity.dot(defender_to_ball))
 	var total_approach := ball_speed + defender_approach_speed
-	var speed_score := clamp(total_approach / INTERCEPT_SPEED_REF, 0.0, 1.0)
+	var speed_score: float = clamp(total_approach / INTERCEPT_SPEED_REF, 0.0, 1.0)
 
 	# 4. 属性对抗：defense vs technique（真实属性范围）
 	# 归一化到 0-1，然后计算对抗因子
-	var def_norm := clamp((defender.defense - DEFENSE_MIN) / (DEFENSE_MAX - DEFENSE_MIN), 0.0, 1.0)
-	var tech_norm := clamp((dribbler.technique - TECHNIQUE_MIN) / (TECHNIQUE_MAX - TECHNIQUE_MIN), 0.0, 1.0)
+	var def_norm: float = clamp((defender.defense - DEFENSE_MIN) / (DEFENSE_MAX - DEFENSE_MIN), 0.0, 1.0)
+	var tech_norm: float = clamp((dribbler.technique - TECHNIQUE_MIN) / (TECHNIQUE_MAX - TECHNIQUE_MIN), 0.0, 1.0)
 	# stat_factor: 防守高/技术低 → 接近 0.9，防守低/技术高 → 接近 0.2
-	var stat_factor := clamp(0.5 + (def_norm - tech_norm) * 0.4, MIN_TECHNIQUE_PROTECTION, MAX_INTERCEPT_CHANCE)
+	var stat_factor: float = clamp(0.5 + (def_norm - tech_norm) * 0.4, MIN_TECHNIQUE_PROTECTION, MAX_INTERCEPT_CHANCE)
 
 	# 综合：距离 × 角度 × 速度 作为机会分，再 × 属性因子 × 基础概率
 	var opportunity := dist_score * angle_score * (0.5 + speed_score * 0.5)
