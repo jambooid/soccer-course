@@ -334,10 +334,9 @@ func swap_sides() -> void:
 				PlayerStateData.build().set_reset_position(player.kickoff_position))
 
 	# 球重置到中圈
-	ball.position = Vector2(PITCH_CENTER_X, ball.position.y)
-	ball.velocity = Vector2.ZERO
-	if ball.has_method("set_state_freeform"):
-		ball.set_state_freeform()
+	# place_at 会清除 carrier 并切到 FREEFORM 状态，
+	# 防止守门员持球时球跟随门将跑回禁区导致下半场无法开球
+	ball.place_at(Vector2(PITCH_CENTER_X, ball.position.y))
 
 	# 重置控球权统计
 	GameManager.reset_possession()

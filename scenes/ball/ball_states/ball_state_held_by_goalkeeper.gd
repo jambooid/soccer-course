@@ -64,11 +64,14 @@ func release_with_kick(target_pos: Vector2) -> void:
 	transition_state(Ball.State.KICKED, BallStateData.build().set_kicker(gk_ref))
 
 func _exit_tree() -> void:
-	# 非正常释放兜底：如果退出时 carrier 还在（如被 HURT/tumble 等外部强制切换），
-	# 补发射 ball_released 信号，保证控球统计等下游逻辑正确。
+	# 非正常释放兜底：如果退出时 carrier 还在（如被 HURT/tumble/外部强制切换等），
+	# 清除 ball.carrier 引用并补发射 ball_released 信号，保证控球统计等下游逻辑正确。
 	# 正常释放路径（_auto_kick / release_with_throw / release_with_kick）
 	# 在 transition 前已把 carrier 设为 null 并手动发射了信号，因此不会重复。
 	if carrier != null:
+		if ball.carrier == carrier:
+			ball.carrier = null
+		carrier = null
 		GameEvents.ball_released.emit()
 
 func put_down() -> void:

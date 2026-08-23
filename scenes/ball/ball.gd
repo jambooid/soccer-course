@@ -276,6 +276,7 @@ func on_team_reset() -> void:
 	position = spawn_position
 	velocity = Vector2.ZERO
 	height = 0
+	carrier = null
 	switch_state(State.FREEFORM)
 
 func on_kickoff_started() -> void:
