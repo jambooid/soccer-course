@@ -342,7 +342,12 @@ func get_carrier_steering_force() -> Vector2:
 	var target := player.target_goal.get_center_target_position()
 	var direction := player.position.direction_to(target)
 	var weight := get_bicircular_weight(player.position, target, 100, 0, 150, 1)
-	return weight * direction
+	var forward_force := weight * direction
+
+	# 带球修正力：当球处于 DRIBBLING 状态时，AI 需要调整移动方向保持球在可控范围内
+	var ball_correction := _get_ball_correction_force(direction)
+
+	return forward_force + ball_correction
 
 func get_assist_formation_steering_force() -> Vector2:
 	var spawn_difference := ball.carrier.spawn_position - player.spawn_position
@@ -372,3 +377,52 @@ func get_density_around_ball_steering_force() -> Vector2:
 func has_teammate_in_view() -> bool:
 	var players_in_view := teammate_detection_area.get_overlapping_bodies()
 	return players_in_view.find_custom(func(p: Player): return p != player and p.country == player.country) > -1
+
+# ========== 带球物理适配（DRIBBLING 状态） ==========
+
+const BALL_READY_DISTANCE_RATIO := 0.7  ## 出球判定：球在可控距离的 70% 以内认为可控
+
+func _get_ball_correction_force(forward_dir: Vector2) -> Vector2:
+	## 计算带球修正力：让 AI 调整移动方向保持球在理想触球区内
+	## 仅在 DRIBBLING 状态下生效（物理推球模式）
+	if ball == null or forward_dir.length() < 0.001:
+		return Vector2.ZERO
+
+	# 只在 DRIBBLING 状态下修正（CARRIED 状态球会自动跟随，不需要修正）
+	if not (ball.current_state is BallStateDribbling):
+		return Vector2.ZERO
+
+	var to_ball := ball.position - player.position
+
+	# 理想触球点：球员前方触球区中段（50% 处）
+	var zone_length := DribblePhysics.get_touch_zone_length(player.technique)
+	var ideal_distance := DribblePhysics.TOUCH_ZONE_FRONT_OFFSET + zone_length * 0.5
+
+	# 球在前进方向上的偏移（正 = 球在理想点前方，负 = 在理想点后方）
+	var forward_offset := to_ball.dot(forward_dir) - ideal_distance
+	# 球在侧向的偏移（正 = 右侧，负 = 左侧）
+	var side_dir := forward_dir.rotated(PI / 2.0)
+	var side_offset := to_ball.dot(side_dir)
+
+	# 修正力：把球员拉向能让球回到理想位置的方向
+	# forward_offset > 0（球太靠前）→ 球员需要加速追上 → 正的 forward_dir 分量
+	# side_offset > 0（球在右侧）→ 球员需要向右靠 → 正的 side_dir 分量
+	var correction := forward_dir * forward_offset * 0.02 + side_dir * side_offset * 0.04
+	return correction.limit_length(0.3)  # 修正力不超过 0.3（相对于总转向力 1.0）
+
+func _is_ball_ready_for_release() -> bool:
+	## 判断球是否在可控范围内，可以安全传球/射门
+	## 用于 AI 决策：球失控时不应该传球/射门
+	if ball == null or ball.carrier != player:
+		return false
+
+	var to_ball := ball.position - player.position
+	var max_control := DribblePhysics.get_max_control_distance(player.technique)
+
+	# 球在最大可控距离的 70% 以内认为是可控的
+	if to_ball.length() > max_control * BALL_READY_DISTANCE_RATIO:
+		return false
+
+	# 球需要在球员前方（前进方向半球内）
+	var player_dir := player.velocity.normalized() if player.velocity.length() > 5.0 else player.heading
+	return to_ball.dot(player_dir) > 0.0
