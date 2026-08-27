@@ -49,7 +49,7 @@ func on_player_enter(body: Player) -> void:
 		return
 	ball.carrier = body
 	body.control_ball()
-	transition_state(Ball.State.CARRIED)
+	transition_state(Ball.State.DRIBBLING)
 
 func can_air_interact() -> bool:
 	return true

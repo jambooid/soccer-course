@@ -73,19 +73,19 @@ func on_player_enter(body: Player) -> void:
 	if kicker == null:
 		ball.carrier = body
 		body.control_ball()
-		transition_state(Ball.State.CARRIED)
+		transition_state(Ball.State.DRIBBLING)
 		return
 
 	if body.country != kicker.country:
 		ball.carrier = body
 		body.control_ball()
-		transition_state(Ball.State.CARRIED)
+		transition_state(Ball.State.DRIBBLING)
 		return
 
 	if body != kicker:
 		ball.carrier = body
 		body.control_ball()
-		transition_state(Ball.State.CARRIED)
+		transition_state(Ball.State.DRIBBLING)
 
 func can_air_interact() -> bool:
 	return true

@@ -1,6 +1,10 @@
 class_name BallStateCarried
 extends BallState
 
+## LEGACY / DEPRECATED — 已被 BallStateDribbling 取代
+## 此文件保留仅作为回退方案，不再被任何状态引用。
+## 如需回退，将各 ball state 中的 Ball.State.DRIBBLING 改回 Ball.State.CARRIED 即可。
+
 ## ⚠️ LEGACY 带球状态 ⚠️
 ## 本状态使用 lerp 跟随式带球，已被新的物理推球系统（BallStateDribbling）取代。
 ## 保留原因：

@@ -73,7 +73,7 @@ func on_player_enter(body: Player) -> void:
 	elif body.can_carry_ball() and ball.height < PitchConstants.HEIGHT_SAVED_PLAYER_PICKUP:
 		ball.carrier = body
 		body.control_ball()
-		transition_state(Ball.State.CARRIED)
+		transition_state(Ball.State.DRIBBLING)
 
 func can_air_interact() -> bool:
 	return true

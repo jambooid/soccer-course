@@ -77,7 +77,8 @@ func _exit_tree() -> void:
 func put_down() -> void:
 	ball.position = carrier.position + carrier.heading * 8.0
 	ball.velocity = Vector2.ZERO
-	transition_state(Ball.State.CARRIED)
+	ball.carrier = carrier
+	transition_state(Ball.State.DRIBBLING)
 
 func is_ball_free() -> bool:
 	return false
