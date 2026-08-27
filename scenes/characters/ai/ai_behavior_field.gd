@@ -16,6 +16,16 @@ const SUPPORT_FULLBACK_PUSH := 60.0       ## 边后卫插上距离
 const SUPPORT_CENTRAL_HOLD_DIST := 80.0   ## 后腰保持的距离（球后方）
 const SUPPORT_RUN_ACTIVATION_DIST := 200.0 ## 离球多远以内开始跑位
 
+## 带球模式 AI 参数
+const SPRINT_TECH_THRESHOLD := 60.0   ## 技术高于此值的球员才会冲刺带球
+const SPRINT_OPPONENT_MAX := 0         ## 附近对手不超过此数才冲刺
+const SPRINT_DIST_TO_GOAL_MAX := 425.0 ## 过了中线（场地总长约 850）才冲刺
+
+## AI 转向参数（与人类玩家 TurnController 一致）
+const AI_TURN_RATE_LOW := 10.0         # rad/s, 低速
+const AI_TURN_RATE_HIGH := 3.5        # rad/s, 高速
+const AI_SPRINT_TURN_PENALTY := 0.6
+
 ## 无球跑位状态机
 enum OffBallRunState {
 	HOLD_POSITION,   ## 保持位置
@@ -28,6 +38,7 @@ const RUN_STATE_COOLDOWN_MS := 800    ## 跑位状态切换冷却（毫秒），
 var current_run_state : int = OffBallRunState.HOLD_POSITION
 var run_state_cooldown_ms := 0.0       ## 剩余冷却时间
 var cached_run_target := Vector2.ZERO ## 缓存的跑位目标位置（冷却期内使用）
+var _ai_move_direction := Vector2.RIGHT  ## AI 平滑移动方向
 
 func perform_ai_movement() -> void:
 	var total_steering_force := Vector2.ZERO
@@ -50,7 +61,64 @@ func perform_ai_movement() -> void:
 				total_steering_force += get_density_around_ball_steering_force()
 
 	total_steering_force = total_steering_force.limit_length(1.0)
-	player.velocity = total_steering_force * player.speed
+
+	# 带球模式决策（只有持球时才需要）
+	if player.has_ball():
+		_decide_dribble_mode()
+	else:
+		player.dribble_mode = DribblePhysics.Mode.JOG
+
+	# 速度倍率（冲刺时）
+	var speed_mult := 1.0
+	if player.dribble_mode == DribblePhysics.Mode.SPRINT:
+		speed_mult = 1.6
+
+	# AI 转向平滑（与人类玩家 TurnController 一致的手感）
+	var target_dir := total_steering_force
+	if target_dir.length() > 0.1:
+		_ai_apply_turning(target_dir.normalized(), get_process_delta_time())
+		player.velocity = _ai_move_direction * player.speed * speed_mult
+	else:
+		player.velocity = Vector2.ZERO
+
+	# 同步 heading
+	if player.velocity.x > 0:
+		player.heading = Vector2.RIGHT
+	elif player.velocity.x < 0:
+		player.heading = Vector2.LEFT
+
+func _decide_dribble_mode() -> void:
+	var opponent_count := _count_nearby_opponents()
+	var dist_to_goal := player.position.distance_to(player.target_goal.get_center_target_position())
+
+	# 条件：技术足够 + 附近没人 + 在进攻半场
+	if player.technique >= SPRINT_TECH_THRESHOLD \
+			and opponent_count <= SPRINT_OPPONENT_MAX \
+			and dist_to_goal < SPRINT_DIST_TO_GOAL_MAX:
+		player.dribble_mode = DribblePhysics.Mode.SPRINT
+	else:
+		player.dribble_mode = DribblePhysics.Mode.JOG
+
+func _ai_apply_turning(target_direction: Vector2, delta: float) -> void:
+	if target_direction.length() < 0.01:
+		return
+
+	var current_dir: Vector2 = _ai_move_direction.normalized()
+	var target_dir: Vector2 = target_direction.normalized()
+
+	# 转向速率：速度越快转越慢；冲刺时更慢
+	var speed_factor: float = clamp(player.velocity.length() / player.speed, 0.0, 1.0)
+	var turn_rate: float = lerp(AI_TURN_RATE_LOW, AI_TURN_RATE_HIGH, speed_factor)
+	if player.dribble_mode == DribblePhysics.Mode.SPRINT:
+		turn_rate *= AI_SPRINT_TURN_PENALTY
+
+	var angle_diff: float = current_dir.angle_to(target_dir)
+	var max_turn: float = turn_rate * delta
+
+	if abs(angle_diff) <= max_turn:
+		_ai_move_direction = target_dir
+	else:
+		_ai_move_direction = current_dir.rotated(sign(angle_diff) * max_turn)
 
 func perform_ai_decisions() -> void:
 	# 防守时的断球决策
@@ -95,6 +163,7 @@ func _make_carrier_decision() -> void:
 		if under_pressure:
 			shoot_prob *= 0.5
 		if randf() < shoot_prob * decision_multiplier:
+			player.dribble_mode = DribblePhysics.Mode.JOG  # 射门前切回普通模式保证精度
 			_execute_shot(target_goal_pos)
 			return
 
@@ -102,6 +171,7 @@ func _make_carrier_decision() -> void:
 	if under_pressure and randf() < 0.6 * decision_multiplier:
 		var pass_result := _find_best_pass_option()
 		if pass_result.target != null:
+			player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
 			_execute_pass(pass_result.target, pass_result.pass_type)
 			return
 
@@ -111,6 +181,7 @@ func _make_carrier_decision() -> void:
 		if pass_result.target != null and pass_result.quality > 0.7:
 			var threat_pass_prob := 0.15 + (player.technique / 100.0) * 0.2
 			if randf() < threat_pass_prob * decision_multiplier:
+				player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
 				_execute_pass(pass_result.target, pass_result.pass_type)
 				return
 
@@ -118,6 +189,7 @@ func _make_carrier_decision() -> void:
 	if in_midfield and opponent_count == 0 and randf() < 0.05 * decision_multiplier:
 		var forward_target := _find_most_forward_teammate()
 		if forward_target != null:
+			player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
 			_execute_pass(forward_target, PlayerStateData.PassType.LONG)
 			return
 
