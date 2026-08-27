@@ -23,6 +23,10 @@ func _ready() -> void:
 	test_touch_zone_length()
 	test_max_control_distance()
 	test_touch_impulse()
+	test_mode_touch_zone()
+	test_mode_control_distance()
+	test_mode_impulse()
+	test_first_touch_quality()
 
 	print()
 	print("========================================")
@@ -151,17 +155,17 @@ func test_stop_distance() -> void:
 	print("-- Stop Distance Tests --")
 
 	# 停止距离应该是正值
-	var dist_100 := DribblePhysics.compute_stop_distance(100.0)
+	var dist_100 := DribblePhysics.compute_stop_distance(Vector2.RIGHT * 100.0)
 	_assert(dist_100 > 0, "Stop distance is positive for v=100",
 		"dist=%.2f" % dist_100)
 
 	# 零速度停止距离为 0
-	var dist_0 := DribblePhysics.compute_stop_distance(0.0)
+	var dist_0 := DribblePhysics.compute_stop_distance(Vector2.ZERO)
 	_assert(dist_0 == 0.0, "Stop distance is zero for v=0",
 		"dist=%.2f" % dist_0)
 
 	# 速度加倍，停止距离也应该加倍（线性关系）
-	var dist_50 := DribblePhysics.compute_stop_distance(50.0)
+	var dist_50 := DribblePhysics.compute_stop_distance(Vector2.RIGHT * 50.0)
 	_assert(_approx(dist_100, dist_50 * 2.0),
 		"Stop distance scales linearly with speed",
 		"dist_100=%.2f dist_50*2=%.2f" % [dist_100, dist_50 * 2.0])
@@ -174,7 +178,7 @@ func test_stop_distance() -> void:
 		"got=%.4f expected=%.4f" % [dist_100, expected_dist])
 
 	print("    Stop distance at 100px/s = %.2fpx" % dist_100)
-	print("    Stop distance at 80px/s  = %.2fpx" % DribblePhysics.compute_stop_distance(80.0))
+	print("    Stop distance at 80px/s  = %.2fpx" % DribblePhysics.compute_stop_distance(Vector2.RIGHT * 80.0))
 	print()
 
 func test_predict_position() -> void:
@@ -198,7 +202,7 @@ func test_predict_position() -> void:
 		"x=%.2f" % pred_1s.x)
 
 	# 位移应该大于停止距离（不完全停，但接近）
-	var stop_dist := DribblePhysics.compute_stop_distance(100.0)
+	var stop_dist := DribblePhysics.compute_stop_distance(Vector2.RIGHT * 100.0)
 	_assert(pred_1s.x < stop_dist, "Predict at t=1s < stop distance (ball still moving)",
 		"x=%.2f stop_dist=%.2f" % [pred_1s.x, stop_dist])
 
@@ -245,9 +249,10 @@ func test_touch_zone_length() -> void:
 		"Tech 100 -> max touch zone length",
 		"got=%.1f expected=%.1f" % [len_100, DribblePhysics.TOUCH_ZONE_LEN_MAX])
 
-	# 技术 50 应该在中间
+	# 技术 50 应该在中间（注意 normalize_technique 的范围是 30-98）
 	var len_50 := DribblePhysics.get_touch_zone_length(50.0)
-	var expected_50 := lerp(DribblePhysics.TOUCH_ZONE_LEN_MIN, DribblePhysics.TOUCH_ZONE_LEN_MAX, 0.5)
+	var t_norm_50: float = clamp((50.0 - DribblePhysics.TECHNIQUE_MIN) / (DribblePhysics.TECHNIQUE_MAX - DribblePhysics.TECHNIQUE_MIN), 0.0, 1.0)
+	var expected_50: float = lerp(DribblePhysics.TOUCH_ZONE_LEN_MIN, DribblePhysics.TOUCH_ZONE_LEN_MAX, t_norm_50)
 	_assert(_approx(len_50, expected_50),
 		"Tech 50 -> lerp midpoint",
 		"got=%.1f expected=%.1f" % [len_50, expected_50])
@@ -281,12 +286,13 @@ func test_max_control_distance() -> void:
 		"Tech 100 -> max control distance",
 		"got=%.1f expected=%.1f" % [dist_100, DribblePhysics.MAX_CONTROL_DISTANCE_MAX])
 
-	# 技术 50 在中间
+	# 技术 50 在中间（注意 normalize_technique 的范围是 30-98）
 	var dist_50 := DribblePhysics.get_max_control_distance(50.0)
-	var expected_50 := lerp(DribblePhysics.MAX_CONTROL_DISTANCE_MIN, DribblePhysics.MAX_CONTROL_DISTANCE_MAX, 0.5)
-	_assert(_approx(dist_50, expected_50),
+	var t_norm_50b: float = clamp((50.0 - DribblePhysics.TECHNIQUE_MIN) / (DribblePhysics.TECHNIQUE_MAX - DribblePhysics.TECHNIQUE_MIN), 0.0, 1.0)
+	var expected_50b: float = lerp(DribblePhysics.MAX_CONTROL_DISTANCE_MIN, DribblePhysics.MAX_CONTROL_DISTANCE_MAX, t_norm_50b)
+	_assert(_approx(dist_50, expected_50b),
 		"Tech 50 -> lerp midpoint",
-		"got=%.1f expected=%.1f" % [dist_50, expected_50])
+		"got=%.1f expected=%.1f" % [dist_50, expected_50b])
 
 	print()
 
@@ -307,13 +313,103 @@ func test_touch_impulse() -> void:
 	_assert(result != vel, "Moving player changes ball velocity",
 		"old=%.1f new=%.1f" % [vel.x, result.x])
 
-	# 推球方向与球员移动方向一致（同向时 y=0）
-	_assert(abs(result.y) < 5.0, "Push direction roughly matches player direction",
+	# 推球方向与球员移动方向一致（同向时 y=0，有随机偏差和速度惩罚）
+	_assert(abs(result.y) < 15.0, "Push direction roughly matches player direction",
 		"result.y=%.4f" % result.y)
 
 	# 球员速度为 1（边界值）不应触球
 	player_vel = Vector2(0.5, 0.0)
 	var result_slow := DribblePhysics.compute_touch_impulse(vel, player_vel, 100.0, 50.0)
 	_assert(result_slow == vel, "Very slow player returns unchanged velocity")
+
+	print()
+
+func test_mode_touch_zone() -> void:
+	print("-- Mode: Touch Zone Tests --")
+
+	var tech := 64.0
+	var jog_len := DribblePhysics.get_touch_zone_length(tech, DribblePhysics.Mode.JOG)
+	var sprint_len := DribblePhysics.get_touch_zone_length(tech, DribblePhysics.Mode.SPRINT)
+
+	# SPRINT 触球区比 JOG 长
+	_assert(sprint_len > jog_len, "SPRINT touch zone longer than JOG",
+		"jog=%.1f sprint=%.1f" % [jog_len, sprint_len])
+
+	# SPRINT 倍率约为 1.3
+	var ratio := sprint_len / jog_len
+	_assert(_approx(ratio, 1.3, 0.05), "SPRINT/JOG touch zone ratio ~ 1.3",
+		"ratio=%.2f" % ratio)
+
+	# is_ball_in_touch_zone 的 mode 参数生效
+	var player_pos := Vector2.ZERO
+	var player_dir := Vector2.RIGHT
+	# 在 JOG 区外但在 SPRINT 区内的点
+	var just_outside_jog := Vector2(DribblePhysics.TOUCH_ZONE_FRONT_OFFSET + jog_len + 2.0, 0.0)
+	_assert(not DribblePhysics.is_ball_in_touch_zone(just_outside_jog, player_pos, player_dir, tech, DribblePhysics.Mode.JOG),
+		"Point outside JOG zone returns false for JOG mode")
+	# 只有当 sprint 区长足够包含这个点时才测
+	if sprint_len > jog_len + 2.0:
+		_assert(DribblePhysics.is_ball_in_touch_zone(just_outside_jog, player_pos, player_dir, tech, DribblePhysics.Mode.SPRINT),
+			"Point outside JOG but inside SPRINT zone returns true for SPRINT mode")
+
+	print()
+
+func test_mode_control_distance() -> void:
+	print("-- Mode: Control Distance Tests --")
+
+	var tech := 64.0
+	var jog_dist := DribblePhysics.get_max_control_distance(tech, DribblePhysics.Mode.JOG)
+	var sprint_dist := DribblePhysics.get_max_control_distance(tech, DribblePhysics.Mode.SPRINT)
+
+	_assert(sprint_dist > jog_dist, "SPRINT control distance > JOG",
+		"jog=%.1f sprint=%.1f" % [jog_dist, sprint_dist])
+
+	var ratio := sprint_dist / jog_dist
+	_assert(_approx(ratio, 1.5, 0.1), "SPRINT/JOG control distance ratio ~ 1.5",
+		"ratio=%.2f" % ratio)
+
+	print()
+
+func test_mode_impulse() -> void:
+	print("-- Mode: Touch Impulse Tests --")
+
+	var ball_vel := Vector2(40.0, 0.0)
+	var player_vel := Vector2(60.0, 0.0)
+	var max_speed := 80.0
+	var tech := 64.0
+
+	var jog_result := DribblePhysics.compute_touch_impulse(ball_vel, player_vel, max_speed, tech, DribblePhysics.Mode.JOG)
+	var sprint_result := DribblePhysics.compute_touch_impulse(ball_vel, player_vel, max_speed, tech, DribblePhysics.Mode.SPRINT)
+
+	# SPRINT 推球速度更快（冲量更大）
+	_assert(sprint_result.length() > jog_result.length(), "SPRINT impulse > JOG impulse",
+		"jog=%.1f sprint=%.1f" % [jog_result.length(), sprint_result.length()])
+
+	print()
+
+func test_first_touch_quality() -> void:
+	print("-- First Touch Quality Tests --")
+
+	var incoming := Vector2(80.0, 0.0)
+	var control_dir := Vector2.RIGHT
+
+	# 高技术停球慢（吸收多）
+	var high_tech := DribblePhysics.compute_first_touch_velocity(incoming, control_dir, 90.0)
+	# 低技术停球快（吸收少，球弹远）
+	var low_tech := DribblePhysics.compute_first_touch_velocity(incoming, control_dir, 40.0)
+
+	_assert(high_tech.length() < low_tech.length(),
+		"High technique = slower first touch (better control)",
+		"high_tech=%.1f low_tech=%.1f" % [high_tech.length(), low_tech.length()])
+
+	# 高技术停球速应明显低于入射速度
+	_assert(high_tech.length() < incoming.length() * 0.5,
+		"High technique absorbs > 50% of incoming speed",
+		"incoming=%.1f result=%.1f" % [incoming.length(), high_tech.length()])
+
+	# 低技术也应吸收一部分（不可能全反弹）
+	_assert(low_tech.length() < incoming.length(),
+		"Low technique still absorbs some speed",
+		"incoming=%.1f result=%.1f" % [incoming.length(), low_tech.length()])
 
 	print()
