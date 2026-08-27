@@ -6,6 +6,7 @@ const TURN_RATE_LOW_SPEED := 12.0        # 静止时最大转向速率（rad/s�
 const TURN_RATE_HIGH_SPEED := 4.0        # 满速时最大转向速率（rad/s）
 const SPRINT_TURN_PENALTY := 0.6         # 冲刺时转向速率倍率
 const CUTBACK_ANGLE_THRESHOLD := deg_to_rad(90.0)  # 急转角度阈值
+const CUTBACK_HYSTERESIS := 0.8           # 急转重置滞后倍率（低于阈值×此值才重置）
 const CUTBACK_SPEED_PENALTY := 0.6       # 急转速度衰减（乘以此系数）
 
 const SPRINT_SPEED_MULTIPLIER := 1.6
@@ -13,6 +14,7 @@ const SPRINT_SPEED_MULTIPLIER := 1.6
 ## Turn Controller 状态
 var current_move_direction := Vector2.RIGHT  # 当前实际移动方向（平滑插值后）
 var is_moving := false
+var cutback_active := false  # 急转是否处于激活状态（边沿触发用）
 
 func _process(delta: float) -> void:
 	if player.control_scheme == Player.ControlScheme.CPU:
@@ -40,14 +42,21 @@ func handle_human_movement(delta: float) -> void:
 		speed_multiplier = SPRINT_SPEED_MULTIPLIER
 
 	# 转向平滑（Turn Controller）
+	var triggered_cutback := false
 	if has_direction:
-		var move_dir := _apply_turning(direction.normalized(), delta)
+		var turn_result := _apply_turning(direction.normalized(), delta)
+		var move_dir: Vector2 = turn_result.direction
+		triggered_cutback = turn_result.cutback
 		player.velocity = move_dir * player.speed * speed_multiplier
-		# 同步 heading（朝向）
-		if player.velocity.x > 0:
-			player.heading = Vector2.RIGHT
-		elif player.velocity.x < 0:
-			player.heading = Vector2.LEFT
+
+		# 急转：速度衰减 + 球额外前冲（在 velocity 设置后执行，避免被覆盖）
+		if triggered_cutback:
+			player.velocity *= CUTBACK_SPEED_PENALTY
+			if player.has_ball() and ball.current_state != null:
+				var dribble_state = ball.current_state
+				if dribble_state.has_method("apply_cutback_kick"):
+					dribble_state.apply_cutback_kick()
+
 		is_moving = true
 	else:
 		# 没有方向输入 → 减速停下，但保持当前朝向
@@ -111,13 +120,17 @@ func handle_human_movement(delta: float) -> void:
 
 
 ## 转向平滑：将当前移动方向朝目标方向插值
-## 返回插值后的移动方向
-func _apply_turning(target_direction: Vector2, delta: float) -> Vector2:
-	if target_direction.length() < 0.01:
-		return current_move_direction
+## 返回 Dictionary: {"direction": Vector2, "cutback": bool}
+##   direction: 插值后的移动方向
+##   cutback: 本帧是否触发了急转（边沿触发，每个方向跳变只触发一次）
+func _apply_turning(target_direction: Vector2, delta: float) -> Dictionary:
+	var result := {"direction": current_move_direction, "cutback": false}
 
-	var target_dir := target_direction.normalized()
-	var current_dir := current_move_direction.normalized()
+	if target_direction.length() < 0.01:
+		return result
+
+	var target_dir: Vector2 = target_direction.normalized()
+	var current_dir: Vector2 = current_move_direction.normalized()
 
 	# 计算转向速率：速度越快转越慢；冲刺时更慢
 	var speed_factor: float = clamp(player.velocity.length() / player.speed, 0.0, 1.0)
@@ -134,16 +147,19 @@ func _apply_turning(target_direction: Vector2, delta: float) -> Vector2:
 	else:
 		current_move_direction = current_dir.rotated(sign(angle_diff) * max_turn)
 
-	# 大角度急转：速度衰减 + 球额外前冲（带球时）
-	if abs(angle_diff) > CUTBACK_ANGLE_THRESHOLD and speed_factor > 0.6:
-		player.velocity *= CUTBACK_SPEED_PENALTY
-		# 通知球状态：急转趟大
-		if player.has_ball() and ball.current_state != null:
-			var dribble_state = ball.current_state
-			if dribble_state.has_method("apply_cutback_kick"):
-				dribble_state.apply_cutback_kick()
+	result.direction = current_move_direction
 
-	return current_move_direction
+	# 急转检测（边沿触发 + 滞后）
+	var abs_angle: float = abs(angle_diff)
+	if not cutback_active and abs_angle > CUTBACK_ANGLE_THRESHOLD and speed_factor > 0.6:
+		# 从低于阈值跳到高于阈值 → 触发一次急转
+		cutback_active = true
+		result.cutback = true
+	elif cutback_active and abs_angle < CUTBACK_ANGLE_THRESHOLD * CUTBACK_HYSTERESIS:
+		# 回落到低于阈值×滞后系数 → 重置，允许下一次触发
+		cutback_active = false
+
+	return result
 
 
 func can_carry_ball() -> bool:
