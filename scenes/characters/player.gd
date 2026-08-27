@@ -26,6 +26,7 @@ enum State {MOVING, TACKLING, RECOVERING, PREPPING_SHOT, SHOOTING, PASSING, HEAD
 @export var defense : float = 50.0
 @export var jump : float = 50.0
 @export var stamina : float = 50.0
+@export var dribble_mode : int = 0  ## DribblePhysics.Mode，默认 JOG=0
 @export var jersey_number : int = 0
 @export var target_goal : Goal
 
