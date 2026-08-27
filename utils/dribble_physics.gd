@@ -175,6 +175,15 @@ static func compute_first_touch_velocity(
 	control_direction: Vector2,
 	technique: float
 ) -> Vector2:
+	# 输入校验：没有来球就没有停球
+	if incoming_velocity.length() < 0.1:
+		return Vector2.ZERO
+
+	# 输入校验：控制方向为零时，以来球方向作为停球方向
+	var dir: Vector2 = control_direction
+	if dir.length() < 0.001:
+		dir = incoming_velocity.normalized()
+
 	var t_norm: float = normalize_technique(technique)
 
 	# 吸收比例：高技术吸收多（球慢）
@@ -185,7 +194,7 @@ static func compute_first_touch_velocity(
 	# 方向偏差：高技术准
 	var error_deg: float = lerp(FIRST_TOUCH_DIR_ERROR_MAX_DEG, FIRST_TOUCH_DIR_ERROR_MIN_DEG, t_norm)
 	var error_rad: float = deg_to_rad(error_deg)
-	var final_dir: Vector2 = control_direction.rotated(randf_range(-error_rad, error_rad))
+	var final_dir: Vector2 = dir.rotated(randf_range(-error_rad, error_rad))
 
 	return final_dir * remaining_speed
 
@@ -236,24 +245,19 @@ static func estimate_next_touch_interval(
 	if player_speed < IDLE_SPEED_THRESHOLD:
 		return get_min_touch_interval(technique, mode)
 
-	var t_norm: float = normalize_technique(technique)
-	var f: float = GROUND_FRICTION_PER_SEC
-	var base_efficiency: float = lerp(TOUCH_EFFICIENCY_MIN, TOUCH_EFFICIENCY_MAX, t_norm)
-	var efficiency: float = base_efficiency + float(MODE_EFFICIENCY_OFFSET[mode])
 	var zone_len: float = get_touch_zone_length(technique, mode)
-	var zone_end: float = TOUCH_ZONE_FRONT_OFFSET + zone_len
 
 	var speed_factor: float = clamp(player_speed / player_max_speed, 0.0, 1.0)
 	var push_mult_base: float = lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
 	var push_multiplier: float = push_mult_base + float(MODE_PUSH_OFFSET[mode])
 	var v_exit: float = player_speed * push_multiplier
 
-	# 简化假设：触球后球以 v_exit 速度离开，衰减后回落到 zone_end
-	# 求 v_exit * f^t 下降到某个值时，球从当前位置滚动到 zone_end 的时间
+	# 简化假设：触球后球以 v_exit 速度离开，摩擦衰减后回落到触球区末端
 	# 实际上这是个超越方程，这里用粗略近似：T ≈ zone_len / (球平均速度)
 	var v_avg: float = v_exit * 0.6  # 粗略取摩擦衰减后平均速度
-	var interval: float = zone_len / v_avg if v_avg > 1.0 else MIN_TOUCH_INTERVAL
-	return max(interval, get_min_touch_interval(technique, mode))
+	var fallback: float = get_min_touch_interval(technique, mode)
+	var interval: float = zone_len / v_avg if v_avg > 1.0 else fallback
+	return max(interval, fallback)
 
 # 调试用：计算给定 technique 下的理论控球指标
 # 返回 Dictionary: {touch_zone_len, max_control_dist, touch_efficiency, inaccuracy_deg}

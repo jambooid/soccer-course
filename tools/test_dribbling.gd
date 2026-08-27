@@ -26,6 +26,7 @@ func _ready() -> void:
 	test_mode_touch_zone()
 	test_mode_control_distance()
 	test_mode_impulse()
+	test_speed_penalty_within_mode()
 	test_first_touch_quality()
 
 	print()
@@ -385,6 +386,43 @@ func test_mode_impulse() -> void:
 	_assert(sprint_result.length() > jog_result.length(), "SPRINT impulse > JOG impulse",
 		"jog=%.1f sprint=%.1f" % [jog_result.length(), sprint_result.length()])
 
+	print()
+
+func test_speed_penalty_within_mode() -> void:
+	print("-- Speed Penalty Within Mode Tests --")
+
+	# 验证：在同一模式（JOG）下，高速比低速有更大的方向偏差（速度惩罚生效）
+	var ball_vel := Vector2(40.0, 0.0)
+	var max_speed := 100.0
+	var tech := 64.0
+	var iterations := 200
+
+	# 低速：player_speed / max_speed = 0.2
+	var low_speed_vel := Vector2(20.0, 0.0)
+	# 高速：player_speed / max_speed = 0.9
+	var high_speed_vel := Vector2(90.0, 0.0)
+
+	var low_speed_avg_abs_y := 0.0
+	var high_speed_avg_abs_y := 0.0
+
+	for i in range(iterations):
+		var low_result := DribblePhysics.compute_touch_impulse(
+			ball_vel, low_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG)
+		low_speed_avg_abs_y += abs(low_result.y)
+
+		var high_result := DribblePhysics.compute_touch_impulse(
+			ball_vel, high_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG)
+		high_speed_avg_abs_y += abs(high_result.y)
+
+	low_speed_avg_abs_y /= float(iterations)
+	high_speed_avg_abs_y /= float(iterations)
+
+	_assert(high_speed_avg_abs_y > low_speed_avg_abs_y,
+		"High speed has greater avg |y| deviation than low speed (speed penalty)",
+		"low_speed_avg_abs_y=%.4f high_speed_avg_abs_y=%.4f" % [low_speed_avg_abs_y, high_speed_avg_abs_y])
+
+	print("    Low speed avg |y|: %.4f" % low_speed_avg_abs_y)
+	print("    High speed avg |y|: %.4f" % high_speed_avg_abs_y)
 	print()
 
 func test_first_touch_quality() -> void:
