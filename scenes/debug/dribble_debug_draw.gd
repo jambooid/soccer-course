@@ -22,11 +22,15 @@ const MAX_TRAJECTORY_POINTS := 30
 var _trajectory_points: Array[Vector2] = []
 
 # ---- 颜色配置 ----
-const COLOR_TOUCH_ZONE := Color(0.3, 1.0, 0.3, 0.3)
-const COLOR_TOUCH_ZONE_BORDER := Color(0.3, 1.0, 0.3, 0.8)
+const COLOR_TOUCH_ZONE_JOG := Color(0.3, 1.0, 0.3, 0.3)
+const COLOR_TOUCH_ZONE_BORDER_JOG := Color(0.3, 1.0, 0.3, 0.8)
+const COLOR_TOUCH_ZONE_SPRINT := Color(1.0, 0.5, 0.2, 0.3)
+const COLOR_TOUCH_ZONE_BORDER_SPRINT := Color(1.0, 0.4, 0.1, 0.9)
 const COLOR_VELOCITY_ARROW := Color(1.0, 0.8, 0.0, 0.9)
 const COLOR_CONTROL_CIRCLE := Color(1.0, 1.0, 1.0, 0.4)
 const COLOR_TRAJECTORY := Color(0.5, 0.5, 1.0, 0.7)
+const COLOR_INFO_TEXT := Color(1.0, 1.0, 1.0, 0.9)
+const COLOR_INFO_BG := Color(0.0, 0.0, 0.0, 0.5)
 
 func _process(_delta: float) -> void:
 	# 记录轨迹点
@@ -52,10 +56,11 @@ func _draw() -> void:
 
 	var technique := carrier.technique
 	var player_dir := _get_player_direction(carrier)
+	var mode: int = carrier.dribble_mode
 
 	# 1. 触球区
 	if show_touch_zone:
-		_draw_touch_zone(carrier.position, player_dir, technique)
+		_draw_touch_zone(carrier.position, player_dir, technique, mode)
 
 	# 2. 速度向量箭头
 	if show_velocity_arrow:
@@ -63,11 +68,14 @@ func _draw() -> void:
 
 	# 3. 最大可控距离圈
 	if show_control_circle:
-		_draw_control_circle(carrier.position, technique)
+		_draw_control_circle(carrier.position, technique, mode)
 
 	# 4. 轨迹点
 	if show_trajectory:
 		_draw_trajectory()
+
+	# 5. 模式信息文字
+	_draw_mode_info(carrier.position, technique, mode)
 
 # ---- 判断球是否处于 DRIBBLING 状态 ----
 func _is_ball_dribbling() -> bool:
@@ -82,17 +90,21 @@ func _get_player_direction(player: Player) -> Vector2:
 	return player.heading
 
 # ---- 绘制触球区（胶囊形 = 矩形 + 两个半圆封头） ----
-func _draw_touch_zone(player_pos: Vector2, player_dir: Vector2, technique: float) -> void:
+func _draw_touch_zone(player_pos: Vector2, player_dir: Vector2, technique: float, mode: int = DribblePhysics.Mode.JOG) -> void:
 	if player_dir.length() < 0.001:
 		return
 
-	var zone_len := DribblePhysics.get_touch_zone_length(technique)
+	var zone_len := DribblePhysics.get_touch_zone_length(technique, mode)
 	var zone_width := DribblePhysics.TOUCH_ZONE_WIDTH
 	var zone_start := DribblePhysics.TOUCH_ZONE_FRONT_OFFSET
 	var zone_end := zone_start + zone_len
 
 	var dir_norm := player_dir.normalized()
 	var perp := dir_norm.rotated(PI / 2.0)
+
+	# 模式颜色
+	var fill_color := COLOR_TOUCH_ZONE_JOG if mode == DribblePhysics.Mode.JOG else COLOR_TOUCH_ZONE_SPRINT
+	var border_color := COLOR_TOUCH_ZONE_BORDER_JOG if mode == DribblePhysics.Mode.JOG else COLOR_TOUCH_ZONE_BORDER_SPRINT
 
 	# 本地坐标系原点 = player_pos，+x = dir_norm，+y = perp
 	# 触球区 = [zone_start, zone_end] × [-zone_width/2, zone_width/2]
@@ -104,20 +116,20 @@ func _draw_touch_zone(player_pos: Vector2, player_dir: Vector2, technique: float
 	var bl := player_pos + dir_norm * zone_end + perp * (-zone_width / 2.0)
 
 	# 填充矩形主体
-	draw_polygon([tl, tr, br, bl], [COLOR_TOUCH_ZONE])
+	draw_polygon([tl, tr, br, bl], [fill_color])
 	# 边框
-	draw_line(tl, tr, COLOR_TOUCH_ZONE_BORDER, 1.5)
-	draw_line(tr, br, COLOR_TOUCH_ZONE_BORDER, 1.5)
-	draw_line(br, bl, COLOR_TOUCH_ZONE_BORDER, 1.5)
-	draw_line(bl, tl, COLOR_TOUCH_ZONE_BORDER, 1.5)
+	draw_line(tl, tr, border_color, 1.5)
+	draw_line(tr, br, border_color, 1.5)
+	draw_line(br, bl, border_color, 1.5)
+	draw_line(bl, tl, border_color, 1.5)
 
 	# 前端和后端半圆封头（可选，更精确的触球区形状）
 	# 前端封头圆心 = zone_start 处，半径 = zone_width/2
 	var front_center := player_pos + dir_norm * zone_start
 	var back_center := player_pos + dir_norm * zone_end
 	var radius := zone_width / 2.0
-	draw_arc(front_center, radius, dir_norm.angle() + PI / 2.0, dir_norm.angle() + 3.0 * PI / 2.0, 16, COLOR_TOUCH_ZONE_BORDER, 1.5)
-	draw_arc(back_center, radius, dir_norm.angle() - PI / 2.0, dir_norm.angle() + PI / 2.0, 16, COLOR_TOUCH_ZONE_BORDER, 1.5)
+	draw_arc(front_center, radius, dir_norm.angle() + PI / 2.0, dir_norm.angle() + 3.0 * PI / 2.0, 16, border_color, 1.5)
+	draw_arc(back_center, radius, dir_norm.angle() - PI / 2.0, dir_norm.angle() + PI / 2.0, 16, border_color, 1.5)
 
 # ---- 绘制速度向量箭头 ----
 func _draw_velocity_arrow(ball_pos: Vector2, velocity: Vector2) -> void:
@@ -138,8 +150,8 @@ func _draw_velocity_arrow(ball_pos: Vector2, velocity: Vector2) -> void:
 	draw_line(arrow_end, arrow_side2, COLOR_VELOCITY_ARROW, 2.0)
 
 # ---- 绘制最大可控距离圈（虚线圆） ----
-func _draw_control_circle(player_pos: Vector2, technique: float) -> void:
-	var max_control := DribblePhysics.get_max_control_distance(technique)
+func _draw_control_circle(player_pos: Vector2, technique: float, mode: int = DribblePhysics.Mode.JOG) -> void:
+	var max_control := DribblePhysics.get_max_control_distance(technique, mode)
 	# 虚线圆：每隔一段画一段弧
 	const SEGMENT_COUNT := 32
 	const DASH_RATIO := 0.5  # 画一半留一半
@@ -160,3 +172,44 @@ func _draw_trajectory() -> void:
 		var alpha := (i / float(_trajectory_points.size())) * COLOR_TRAJECTORY.a
 		var color := Color(COLOR_TRAJECTORY.r, COLOR_TRAJECTORY.g, COLOR_TRAJECTORY.b, alpha)
 		draw_line(p1, p2, color, 1.5)
+
+# ---- 绘制模式信息文字（球员上方浮动信息） ----
+func _draw_mode_info(player_pos: Vector2, technique: float, mode: int) -> void:
+	var stats := DribblePhysics.debug_get_technique_stats(technique, mode)
+	var mode_name := "JOG" if mode == DribblePhysics.Mode.JOG else "SPRINT"
+	var mode_color := COLOR_TOUCH_ZONE_BORDER_JOG if mode == DribblePhysics.Mode.JOG else COLOR_TOUCH_ZONE_BORDER_SPRINT
+
+	var lines: Array[String] = [
+		"[%s]" % mode_name,
+		"Tech:%.0f Z:%.1f" % [stats["technique_raw"], stats["touch_zone_len"]],
+		"Ctl:%.1f Int:%.2f" % [stats["max_control_dist"], stats["min_touch_interval"]],
+		"Eff:%.2f Err:%.0f°" % [stats["touch_efficiency"], stats["inaccuracy_deg"]],
+	]
+
+	var line_height := 11.0
+	var padding := 3.0
+	var total_height := lines.size() * line_height + padding * 2.0
+	var max_width := 110.0
+
+	# 信息框显示在球员上方
+	var box_top_left := player_pos + Vector2(-max_width / 2.0, -40.0 - total_height)
+	var bg_rect := Rect2(box_top_left - Vector2(padding, padding), Vector2(max_width + padding * 2.0, total_height))
+
+	# 背景
+	draw_rect(bg_rect, COLOR_INFO_BG)
+	# 顶部颜色条（标识模式）
+	draw_rect(Rect2(bg_rect.position, Vector2(bg_rect.size.x, 2.0)), mode_color)
+
+	# 文字
+	for i in range(lines.size()):
+		var text_pos := box_top_left + Vector2(2.0, i * line_height + line_height - 1.0)
+		var col := mode_color if i == 0 else COLOR_INFO_TEXT
+		draw_string(
+			ThemeDB.fallback_font,
+			text_pos,
+			lines[i],
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			9,
+			col
+		)

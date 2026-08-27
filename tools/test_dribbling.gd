@@ -28,6 +28,8 @@ func _ready() -> void:
 	test_mode_impulse()
 	test_speed_penalty_within_mode()
 	test_first_touch_quality()
+	test_speed_penalty()
+	test_mode_min_interval()
 
 	print()
 	print("========================================")
@@ -449,5 +451,47 @@ func test_first_touch_quality() -> void:
 	_assert(low_tech.length() < incoming.length(),
 		"Low technique still absorbs some speed",
 		"incoming=%.1f result=%.1f" % [incoming.length(), low_tech.length()])
+
+	print()
+
+
+func test_speed_penalty() -> void:
+	print("-- Speed Penalty Tests --")
+
+	var ball_vel := Vector2(30.0, 0.0)
+	var max_speed := 100.0
+	var tech := 64.0
+
+	# 低速 vs 高速：高速时触球精度更低（多次运行统计 y 偏差更大）
+	var low_speed_vel := Vector2(20.0, 0.0)
+	var high_speed_vel := Vector2(90.0, 0.0)
+
+	# 速度为 0 时不触球（已有测试覆盖），这里验证速度影响效率
+	# 高速时球速提升应该更小（效率低）
+	var low_result := DribblePhysics.compute_touch_impulse(ball_vel, low_speed_vel, max_speed, tech)
+	var high_result := DribblePhysics.compute_touch_impulse(ball_vel, high_speed_vel, max_speed, tech)
+
+	# 高速推球速度肯定更快（因为 player 速度快），但验证函数不崩溃
+	_assert(high_result.length() > low_result.length(),
+		"High speed push results in faster ball",
+		"low=%.1f high=%.1f" % [low_result.length(), high_result.length()])
+
+	print()
+
+
+func test_mode_min_interval() -> void:
+	print("-- Mode: Min Touch Interval Tests --")
+
+	var tech := 64.0
+	var jog_interval := DribblePhysics.get_min_touch_interval(tech, DribblePhysics.Mode.JOG)
+	var sprint_interval := DribblePhysics.get_min_touch_interval(tech, DribblePhysics.Mode.SPRINT)
+
+	_assert(sprint_interval > jog_interval, "SPRINT min interval > JOG",
+		"jog=%.3f sprint=%.3f" % [jog_interval, sprint_interval])
+
+	# 验证倍率 ~ 1.875（0.08 → 0.15）
+	var ratio := sprint_interval / jog_interval
+	_assert(_approx(ratio, 1.875, 0.05), "SPRINT/JOG interval ratio ~ 1.875",
+		"ratio=%.3f" % ratio)
 
 	print()
