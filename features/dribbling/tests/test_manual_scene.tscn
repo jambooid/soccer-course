@@ -78,12 +78,13 @@ control_scheme = 1
 ball = NodePath("../Ball")
 technique = 98.0
 speed = 80.0
+team_color = 0
 
 [node name="PlayerLowTech" parent="." node_paths=PackedStringArray("ball") instance=ExtResource("5")]
 unique_name_in_owner = true
 position = Vector2(300, 180)
 team_color = 1
-control_scheme = 0
+control_scheme = 2
 ball = NodePath("../Ball")
 technique = 30.0
 speed = 60.0
