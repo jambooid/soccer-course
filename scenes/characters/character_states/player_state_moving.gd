@@ -44,6 +44,10 @@ func handle_human_movement(delta: float) -> void:
 	# 转向平滑（Turn Controller）
 	var triggered_cutback := false
 	if has_direction:
+		# 从静止启动时，直接使用新方向，避免从旧方向插值造成半圆轨迹
+		if not is_moving:
+			current_move_direction = direction.normalized()
+
 		var turn_result := _apply_turning(direction.normalized(), delta)
 		var move_dir: Vector2 = turn_result.direction
 		triggered_cutback = turn_result.cutback
