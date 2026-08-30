@@ -1,0 +1,122 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-background.png" id="1"]
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-pattern.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-lines.png" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/ball/ball.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/characters/player.tscn" id="5"]
+[ext_resource type="Script" path="res://features/dribbling/tests/test_manual_scene.gd" id="6"]
+[ext_resource type="Script" path="res://scenes/debug/dribble_debug_draw.gd" id="7"]
+
+[sub_resource type="RectangleShape2D" id="1"]
+size = Vector2(802, 7)
+
+[sub_resource type="RectangleShape2D" id="2"]
+size = Vector2(7, 320)
+
+[node name="DribblingManualTest" type="Node2D"]
+script = ExtResource("6")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(425, 180)
+zoom = Vector2(2, 2)
+
+[node name="Background" type="Node2D" parent="."]
+
+[node name="Grass" type="Sprite2D" parent="Background"]
+modulate = Color(0.517647, 0.803922, 0.164706, 1)
+texture = ExtResource("1")
+centered = false
+
+[node name="Pattern" type="Sprite2D" parent="Background"]
+modulate = Color(0.282353, 0.607843, 0, 1)
+texture = ExtResource("2")
+centered = false
+
+[node name="Lines" type="Sprite2D" parent="Background"]
+modulate = Color(0.941176, 0.941176, 0.941176, 1)
+texture = ExtResource("3")
+centered = false
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="TopWall" type="StaticBody2D" parent="Walls"]
+position = Vector2(425, 17)
+collision_layer = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/TopWall"]
+shape = SubResource("1")
+
+[node name="BottomWall" type="StaticBody2D" parent="Walls"]
+position = Vector2(425, 343)
+collision_layer = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/BottomWall"]
+shape = SubResource("1")
+
+[node name="LeftWall" type="StaticBody2D" parent="Walls"]
+position = Vector2(27, 180)
+collision_layer = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/LeftWall"]
+shape = SubResource("2")
+
+[node name="RightWall" type="StaticBody2D" parent="Walls"]
+position = Vector2(823, 180)
+collision_layer = 1
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Walls/RightWall"]
+shape = SubResource("2")
+
+[node name="Ball" parent="." instance=ExtResource("4")]
+position = Vector2(425, 180)
+
+[node name="PlayerHighTech" parent="." node_paths=PackedStringArray("ball") instance=ExtResource("5")]
+unique_name_in_owner = true
+position = Vector2(400, 180)
+control_scheme = 1
+ball = NodePath("../Ball")
+technique = 98.0
+speed = 80.0
+
+[node name="PlayerLowTech" parent="." node_paths=PackedStringArray("ball") instance=ExtResource("5")]
+unique_name_in_owner = true
+position = Vector2(300, 180)
+team_color = 1
+control_scheme = 0
+ball = NodePath("../Ball")
+technique = 30.0
+speed = 60.0
+
+[node name="DebugDraw" type="Node2D" parent="."]
+script = ExtResource("7")
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Instructions" type="Label" parent="UI"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 550.0
+offset_bottom = 150.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 12
+text = "带球功能手动测试场景
+
+操作:
+  WASD - 移动 (高技术球员, tech=98)
+  箭头键 - 移动 (低技术球员, tech=30)
+  J/7 - 射门
+  K/8 - 短传
+  I/- - 冲刺 (SPRINT模式)
+
+  TAB - 切换调试可视化
+  ESC - 退出
+
+测试要点:
+• 直线带球: 球是否稳定在前方?
+• 变向: 是否有自然弧线?
+• 急停: 球是否有前冲?
+• 属性差异: 高低技术球员手感是否不同?
+• 冲刺模式: 球是否离脚更远?"
