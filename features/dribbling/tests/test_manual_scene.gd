@@ -16,6 +16,10 @@ func _ready() -> void:
 	print("按 ESC 退出")
 	print()
 
+	# 设置球员的 kickoff_position 为当前位置，避免跑向 (0,0)
+	player_high.kickoff_position = player_high.position
+	player_low.kickoff_position = player_low.position
+
 	# 禁用球员的 AI 行为（测试场景中不需要 AI）
 	if player_high.current_ai_behavior:
 		player_high.current_ai_behavior.queue_free()
@@ -23,6 +27,10 @@ func _ready() -> void:
 	if player_low.current_ai_behavior:
 		player_low.current_ai_behavior.queue_free()
 		player_low.current_ai_behavior = null
+
+	# 强制切换到 MOVING 状态，避免 RESETING 状态的移动行为
+	player_high.switch_state(Player.State.MOVING)
+	player_low.switch_state(Player.State.MOVING)
 
 	# 确保调试绘制启用
 	if debug_draw:
