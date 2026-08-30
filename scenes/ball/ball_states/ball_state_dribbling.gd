@@ -97,11 +97,12 @@ func _process(delta: float) -> void:
 	# 让球稳定在触球区内而不是越滚越远
 	var turn_state: PlayerStateMoving = carrier.current_state as PlayerStateMoving
 	if turn_state != null and turn_state.turn_active:
-		# 转身期间让球沿平滑目标轨迹换侧，避免瞬移或沿旧速度快速甩过去。
+		# 转身期间只沿脚下目标位置换侧。暂停额外物理位移，避免方向连续变化
+		# 时“位置插值 + 偏移速度”叠加成绕球员的环形轨迹。
 		var turn_ideal_pos := carrier.position + player_dir * 12.0
-		var turn_offset := turn_ideal_pos - ball.position
-		ball.position = ball.position.lerp(turn_ideal_pos, 0.12)
-		ball.velocity = turn_offset.limit_length(55.0)
+		var turn_follow_factor: float = 1.0 - pow(0.02, delta / maxf(turn_state.turn_duration, 0.01))
+		ball.position = ball.position.lerp(turn_ideal_pos, clampf(turn_follow_factor, 0.0, 1.0))
+		ball.velocity = Vector2.ZERO
 	elif current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
 		# 静止/低速时使用强约束：球位置和速度都被约束
 		# 与移动状态保持相同的前方距离，避免松键时球向球员收缩。

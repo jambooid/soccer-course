@@ -9,8 +9,11 @@ const CUTBACK_ANGLE_THRESHOLD := PitchConstants.PLAYER.MOVING_CUTBACK_ANGLE_THRE
 const CUTBACK_HYSTERESIS := 0.8           # 急转重置滞后倍率（低于阈值×此值才重置）
 const CUTBACK_SPEED_PENALTY := PitchConstants.PLAYER.MOVING_CUTBACK_SPEED_PENALTY
 
-const TURN_DURATION := 0.68
-const TURN_TRIGGER_ANGLE := deg_to_rad(90.0)
+const TURN_DURATION_SHORT := 0.24
+const TURN_DURATION_LONG := 0.78
+const TURN_TRIGGER_ANGLE := deg_to_rad(30.0)
+const TURN_ANGLE_SHORT := deg_to_rad(60.0)
+const TURN_ANGLE_LONG := deg_to_rad(135.0)
 const TURN_DIRECTION_MEMORY_DURATION := 0.35
 const TURN_MIN_SPEED_MULTIPLIER := 0.12
 const TURN_MAX_SPEED_MULTIPLIER := 0.5
@@ -25,6 +28,8 @@ var turn_active := false
 var turn_elapsed := 0.0
 var turn_start_direction := Vector2.RIGHT
 var turn_target_direction := Vector2.RIGHT
+var turn_duration := TURN_DURATION_LONG
+var turn_angle := 0.0
 var last_input_direction := Vector2.ZERO
 var time_since_last_direction_input := INF
 
@@ -181,14 +186,26 @@ func _begin_turn(target_direction: Vector2) -> void:
 	turn_elapsed = 0.0
 	turn_start_direction = current_move_direction.normalized()
 	turn_target_direction = target_direction.normalized()
+	turn_angle = abs(turn_start_direction.angle_to(turn_target_direction))
+	var angle_factor: float = clampf(
+		(turn_angle - TURN_ANGLE_SHORT) / (PI - TURN_ANGLE_SHORT),
+		0.0,
+		1.0
+	)
+	turn_duration = lerpf(TURN_DURATION_SHORT, TURN_DURATION_LONG, angle_factor)
 	cutback_active = true
-	animation_player.play("turn")
+	if turn_angle < TURN_ANGLE_SHORT:
+		animation_player.play("turn_45")
+	elif turn_angle < TURN_ANGLE_LONG:
+		animation_player.play("turn_90")
+	else:
+		animation_player.play("turn_180")
 
 func _process_turn(delta: float, target_direction: Vector2) -> void:
 	if target_direction.length() > 0.01:
 		turn_target_direction = target_direction.normalized()
 	turn_elapsed += delta
-	var progress: float = clampf(turn_elapsed / TURN_DURATION, 0.0, 1.0)
+	var progress: float = clampf(turn_elapsed / turn_duration, 0.0, 1.0)
 	var eased: float = progress * progress * (3.0 - 2.0 * progress)
 	current_move_direction = turn_start_direction.slerp(turn_target_direction, eased).normalized()
 	# 前半段先刹停，后半段再逐渐恢复，形成清晰的收球、转髋、拨球节奏。
