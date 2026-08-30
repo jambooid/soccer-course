@@ -95,15 +95,30 @@ func _process(delta: float) -> void:
 	# 当球员速度很低时，给球一个轻微的"吸回"速度调整，
 	# 让球稳定在触球区内而不是越滚越远
 	if current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
-		var to_ball_idle := ball.position - carrier.position
-		var forward_dist := to_ball_idle.dot(player_dir)
-		# 球在前方且超过了理想距离 → 轻轻往回拉
-		var zone_len := DribblePhysics.get_touch_zone_length(effective_tech, mode)
-		var ideal_idle_dist := DribblePhysics.TOUCH_ZONE_FRONT_OFFSET + zone_len * 0.3
-		if forward_dist > ideal_idle_dist:
-			var pull_speed: float = min(ball.velocity.length(), 30.0)  # 最大拉回速度
-			var pull_dir := (carrier.position - ball.position).normalized()
-			ball.velocity = ball.velocity.lerp(pull_dir * pull_speed, 0.3)  # 从 0.1 提高到 0.3，增强吸附
+		# 静止/低速时使用强约束：球位置和速度都被约束
+		var ideal_distance := 8.0  # 静止时的理想距离（更近）
+		var ideal_pos := carrier.position + player_dir * ideal_distance
+
+		# 位置约束：球被拉向理想位置
+		var to_ideal := ideal_pos - ball.position
+		var deviation := to_ideal.length()
+		if deviation > 3.0:  # 偏离超过 3px 时
+			# 强制拉回理想位置（0.4 的强度）
+			ball.position = ball.position.lerp(ideal_pos, 0.4)
+
+		# 速度约束：球速度匹配球员速度
+		ball.velocity = ball.velocity.lerp(carrier.velocity * 1.05, 0.5)
+	else:
+		# 中高速移动时使用磁吸修正：保持物理感但防止偏离太远
+		var ideal_distance := 12.0  # 移动时的理想距离
+		var ideal_pos := carrier.position + player_dir * ideal_distance
+
+		var to_ideal := ideal_pos - ball.position
+		var deviation := to_ideal.length()
+		if deviation > 8.0:  # 偏离超过 8px 时施加磁吸力
+			# 轻微的磁吸力（0.15 的强度，保留物理感）
+			var pull_force := to_ideal.normalized() * deviation * 0.15
+			ball.velocity += pull_force
 
 	# 3. 物理移动 + 墙壁反弹
 	var collision := ball.move_and_collide(ball.velocity * delta)
