@@ -73,6 +73,7 @@ func _process(delta: float) -> void:
 	var player_dir := _get_player_direction()
 	var mode := carrier.dribble_mode
 	var current_speed := carrier.velocity.length()  # 提前计算球员速度
+	var movement_intended := _carrier_movement_intended()
 
 	# 2. 应用地面摩擦力（指数衰减）
 	ball.velocity = DribblePhysics.apply_friction(ball.velocity, delta)
@@ -106,8 +107,10 @@ func _process(delta: float) -> void:
 			# 强制拉回理想位置（0.4 的强度）
 			ball.position = ball.position.lerp(ideal_pos, 0.4)
 
-		# 速度约束：球速度匹配球员速度
-		ball.velocity = ball.velocity.lerp(carrier.velocity * 1.05, 0.5)
+		# 停止意图下只保留摩擦减速，不能把球速重新写回球员速度。
+		# 低于阈值后直接归零，避免指数摩擦的尾部让球看起来一直在动。
+		if not movement_intended and ball.velocity.length() < DribblePhysics.IDLE_SPEED_THRESHOLD:
+			ball.velocity = Vector2.ZERO
 	else:
 		# 中高速移动时使用磁吸修正：保持物理感但防止偏离太远
 		var ideal_distance := 12.0  # 移动时的理想距离
@@ -141,7 +144,7 @@ func _process(delta: float) -> void:
 		return
 
 	# 5. 触球检测
-	if touch_cooldown <= 0.0:
+	if touch_cooldown <= 0.0 and movement_intended and current_speed >= DribblePhysics.IDLE_SPEED_THRESHOLD:
 		if DribblePhysics.is_ball_in_touch_zone(
 			ball.position, carrier.position, player_dir, effective_tech, mode
 		):
@@ -178,6 +181,14 @@ func _get_player_direction() -> Vector2:
 	if carrier.velocity.length() > 5.0:
 		return carrier.velocity.normalized()
 	return carrier.heading
+
+func _carrier_movement_intended() -> bool:
+	# 人类输入在 PlayerStateMoving.is_moving 中记录；AI 没有该标记，使用当前速度判断。
+	if carrier.control_scheme == Player.ControlScheme.CPU:
+		return carrier.velocity.length() >= DribblePhysics.IDLE_SPEED_THRESHOLD
+	if carrier.current_state is PlayerStateMoving:
+		return (carrier.current_state as PlayerStateMoving).is_moving
+	return carrier.velocity.length() >= DribblePhysics.IDLE_SPEED_THRESHOLD
 
 # 释放球，切换到 FREEFORM 状态
 func _release_ball() -> void:
