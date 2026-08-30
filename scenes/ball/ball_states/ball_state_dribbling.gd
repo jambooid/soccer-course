@@ -8,8 +8,9 @@ extends BallState
 ## 接球宽限期（秒）：刚进入 DRIBBLING 的短暂时间内
 ## - 失控距离临时 × 宽限期倍率
 ## - 抢断概率临时 × 抢断宽限倍率
+## - 宽限期结束后发出 ball_possession_stable 信号（用于自动切换球员）
 ## 确保接球第一下不会因为物理原因立刻丢球
-const GRACE_PERIOD_SEC := 0.3
+const GRACE_PERIOD_SEC := 0.5  ## 从 0.3 延长到 0.5，确保球权稳定后再切换球员
 const GRACE_CONTROL_DIST_MULT := 1.5
 const GRACE_INTERCEPT_MULT := 0.5
 
@@ -65,8 +66,13 @@ func _process(delta: float) -> void:
 		return
 
 	# 1. 冷却计时 + 宽限期计时
+	var prev_grace := grace_period_timer
 	touch_cooldown = max(0.0, touch_cooldown - delta)
 	grace_period_timer = max(0.0, grace_period_timer - delta)
+
+	# 宽限期刚结束 → 发出稳定控球信号（用于自动切换球员）
+	if prev_grace > 0.0 and grace_period_timer <= 0.0:
+		GameEvents.ball_possession_stable.emit(carrier)
 
 	# 预计算：有效技术值 & 球员当前方向 & 带球模式（多处复用）
 	var effective_tech := carrier.technique
@@ -89,7 +95,7 @@ func _process(delta: float) -> void:
 		if forward_dist > ideal_idle_dist:
 			var pull_speed: float = min(ball.velocity.length(), 30.0)  # 最大拉回速度
 			var pull_dir := (carrier.position - ball.position).normalized()
-			ball.velocity = ball.velocity.lerp(pull_dir * pull_speed, 0.1)
+			ball.velocity = ball.velocity.lerp(pull_dir * pull_speed, 0.3)  # 从 0.1 提高到 0.3，增强吸附
 
 	# 3. 物理移动 + 墙壁反弹
 	var collision := ball.move_and_collide(ball.velocity * delta)

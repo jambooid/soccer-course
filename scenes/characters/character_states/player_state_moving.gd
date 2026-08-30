@@ -47,7 +47,13 @@ func handle_human_movement(delta: float) -> void:
 		var turn_result := _apply_turning(direction.normalized(), delta)
 		var move_dir: Vector2 = turn_result.direction
 		triggered_cutback = turn_result.cutback
-		player.velocity = move_dir * player.speed * speed_multiplier
+
+		# 目标速度
+		var target_velocity := move_dir * player.speed * speed_multiplier
+
+		# 快速加速到目标速度，提升响应手感（从即时设置改为快速插值）
+		var accel_factor := 10.0  # 加速系数（原本是即时设置）
+		player.velocity = player.velocity.move_toward(target_velocity, player.speed * accel_factor * delta)
 
 		# 急转：速度衰减 + 球额外前冲（在 velocity 设置后执行，避免被覆盖）
 		if triggered_cutback:
@@ -59,8 +65,8 @@ func handle_human_movement(delta: float) -> void:
 
 		is_moving = true
 	else:
-		# 没有方向输入 → 减速停下，但保持当前朝向
-		player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 3.0 * delta)
+		# 没有方向输入 → 快速减速停下，提升手感（从 3.0 提高到 8.0）
+		player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 8.0 * delta)
 		is_moving = false
 
 	if player.velocity != Vector2.ZERO:

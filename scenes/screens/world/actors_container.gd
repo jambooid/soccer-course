@@ -32,7 +32,7 @@ var _last_auto_swap_ms := 0  ## 上次自动切换时间（冷却用）
 func _init() -> void:
 	GameEvents.team_reset.connect(on_team_reset.bind())
 	GameEvents.impact_received.connect(on_impact_received.bind())
-	GameEvents.ball_possessed_by.connect(_on_ball_possessed.bind())
+	GameEvents.ball_possession_stable.connect(_on_ball_possession_stable.bind())
 
 func _ready() -> void:
 	add_to_group("actors_container")
@@ -154,8 +154,10 @@ func on_impact_received(impact_position: Vector2, _is_high_impact: bool) -> void
 
 ## === 控球权自动切换（PossessionManager）===
 
-func _on_ball_possessed(player: Player) -> void:
-	## 己方球员获得球权 → 自动切换控制到该球员
+func _on_ball_possession_stable(player: Player) -> void:
+	## 己方球员稳定控球（宽限期结束后）→ 自动切换控制到该球员
+	## 修复：从监听 ball_possessed_by 改为 ball_possession_stable
+	## 避免在球权不稳定时过早切换球员
 	## 规则：
 	## - 如果获得球权的是己方人类玩家，不切换（已经是人类控制）
 	## - 如果获得球权的是己方 CPU 球员，把控制切给它
