@@ -5,17 +5,11 @@ extends BallState
 ## 核心机制：球有独立的速度和位置，通过摩擦力减速，球员通过周期性触球推动球前进
 ## 替换 CARRIED 状态的 lerp 跟随式带球，实现真实的惯性和物理感
 
-## 接球宽限期（秒）：刚进入 DRIBBLING 的短暂时间内
-## - 失控距离临时 × 宽限期倍率
-## - 抢断概率临时 × 抢断宽限倍率
-## - 宽限期结束后发出 ball_possession_stable 信号（用于自动切换球员）
-## 确保接球第一下不会因为物理原因立刻丢球
-const GRACE_PERIOD_SEC := 0.5  ## 从 0.3 延长到 0.5，确保球权稳定后再切换球员
-const GRACE_CONTROL_DIST_MULT := 1.5
-const GRACE_INTERCEPT_MULT := 0.5
-
-## 急转时球的额外前冲倍率（模拟趟大）
-const CUTBACK_BALL_KICK_MULT := 1.2
+## 带球常量（使用 PitchConstants 集中管理）
+const GRACE_PERIOD_SEC := PitchConstants.BALL.DRIBBLING_GRACE_PERIOD_SEC
+const GRACE_CONTROL_DIST_MULT := PitchConstants.BALL.DRIBBLING_GRACE_CONTROL_DIST_MULT
+const GRACE_INTERCEPT_MULT := PitchConstants.BALL.DRIBBLING_GRACE_INTERCEPT_MULT
+const CUTBACK_BALL_KICK_MULT := PitchConstants.BALL.DRIBBLING_CUTBACK_BALL_KICK_MULT
 
 # 触球冷却（秒）
 var touch_cooldown := 0.0

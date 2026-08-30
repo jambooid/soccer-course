@@ -18,13 +18,14 @@ extends BallState
 ##
 ## 新系统请使用：BallStateDribbling（物理推球，无 lerp，真实惯性）
 
-const TOUCH_INTERVAL_MIN := 0.14
-const TOUCH_INTERVAL_MAX := 0.32
-const TOUCH_OFFSET_MIN := 8.0
-const TOUCH_OFFSET_MAX := 20.0
-const FREE_BALL_RATIO := 0.7          ## 离脚窗口占触球间隔的比例
-const BALL_SPEED_MULTIPLIER := 1.15
-const FOLLOW_LERP_FACTOR := 12.0      ## 非离脚窗口时球跟随球员的 lerp 系数
+## 带球常量（使用 PitchConstants 集中管理）
+const TOUCH_INTERVAL_MIN := PitchConstants.BALL.CARRIED_TOUCH_INTERVAL_MIN
+const TOUCH_INTERVAL_MAX := PitchConstants.BALL.CARRIED_TOUCH_INTERVAL_MAX
+const TOUCH_OFFSET_MIN := PitchConstants.BALL.CARRIED_TOUCH_OFFSET_MIN
+const TOUCH_OFFSET_MAX := PitchConstants.BALL.CARRIED_TOUCH_OFFSET_MAX
+const FREE_BALL_RATIO := PitchConstants.BALL.CARRIED_FREE_BALL_RATIO
+const BALL_SPEED_MULTIPLIER := PitchConstants.BALL.CARRIED_SPEED_MULTIPLIER
+const FOLLOW_LERP_FACTOR := PitchConstants.BALL.CARRIED_FOLLOW_LERP_FACTOR
 
 var touch_timer := 0.0
 var touch_interval := 0.25

@@ -5,8 +5,9 @@ extends BallState
 ## 大幅减速，方向由门将扑救方向决定
 ## 门将可以二次扑救抱住
 
-const TRANSITION_SPEED := 25.0
-const MAX_DURATION_MS := 1500
+## SAVED 状态常量（使用 PitchConstants 集中管理）
+const TRANSITION_SPEED := PitchConstants.BALL.SAVED_TRANSITION_SPEED
+const MAX_DURATION_MS := PitchConstants.BALL.SAVED_MAX_DURATION_MS
 
 var time_started := 0
 var goalie : Player = null

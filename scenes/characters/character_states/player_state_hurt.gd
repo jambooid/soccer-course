@@ -2,9 +2,11 @@ class_name PlayerStateHurt
 extends PlayerState
 
 const AIR_FRICTION := 35.0
-const BALL_TUMBLE_SPEED := 100.0
 const DURATION_HURT := 1000
 const HURT_HEIGHT_VELOCITY := 3.0
+
+## 球滚动速度（使用 PitchConstants 集中管理）
+const BALL_TUMBLE_SPEED := PitchConstants.PLAYER.HURT_BALL_TUMBLE_SPEED
 
 var time_start_hurt := Time.get_ticks_msec()
 

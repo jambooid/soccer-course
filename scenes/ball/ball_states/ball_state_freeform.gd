@@ -2,8 +2,10 @@ class_name BallStateFreeform
 extends BallState
 
 const MAX_CAPTURE_HEIGHT := PitchConstants.HEIGHT_FREEFORM_PICKUP_MAX
-const AUTO_CAPTURE_DISTANCE := 15.0  # 主动接球距离阈值（px）
-const AUTO_CAPTURE_CHECK_INTERVAL := 3  # 每 3 帧检测一次（降低性能消耗）
+
+## 自动接球常量（使用 PitchConstants 集中管理）
+const AUTO_CAPTURE_DISTANCE := PitchConstants.BALL.FREEFORM_AUTO_CAPTURE_DIST
+const AUTO_CAPTURE_CHECK_INTERVAL := PitchConstants.BALL.FREEFORM_AUTO_CAPTURE_CHECK_INTERVAL
 
 var time_since_freeform := Time.get_ticks_msec()
 var capture_check_frame := 0

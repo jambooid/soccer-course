@@ -2,24 +2,26 @@ class_name AIBehaviorField
 extends AIBehavior
 
 const PASS_PROBABILITY := 0.05
-const SHOT_DISTANCE := 150
 const SHOT_PROBABILITY := 0.3
 const SPREAD_ASSIST_FACTOR := 0.8
-const TACKLE_DISTANCE := 15
 const TACKLE_PROBABILITY := 0.3
+
+## 距离判断（使用 PitchConstants 集中管理）
+const SHOT_DISTANCE := PitchConstants.AI.SHOT_DISTANCE
+const TACKLE_DISTANCE := PitchConstants.AI.TACKLE_DISTANCE
 
 ## 无球跑位（进攻支援）参数
 const SUPPORT_RUN_WING_WIDTH := 70.0       ## 边路球员拉开宽度
 const SUPPORT_RUN_FORWARD_PUSH := 90.0     ## 前锋向前插的距离
 const SUPPORT_MID_PUSH := 50.0            ## 中场向前支援的距离
 const SUPPORT_FULLBACK_PUSH := 60.0       ## 边后卫插上距离
-const SUPPORT_CENTRAL_HOLD_DIST := 80.0   ## 后腰保持的距离（球后方）
-const SUPPORT_RUN_ACTIVATION_DIST := 200.0 ## 离球多远以内开始跑位
+const SUPPORT_CENTRAL_HOLD_DIST := PitchConstants.AI.SUPPORT_CENTRAL_HOLD_DIST
+const SUPPORT_RUN_ACTIVATION_DIST := PitchConstants.AI.SUPPORT_RUN_ACTIVATION_DIST
 
 ## 带球模式 AI 参数
-const SPRINT_TECH_THRESHOLD := 60.0   ## 技术高于此值的球员才会冲刺带球
+const SPRINT_TECH_THRESHOLD := PitchConstants.AI.SPRINT_TECH_THRESHOLD
 const SPRINT_OPPONENT_MAX := 0         ## 附近对手不超过此数才冲刺
-const SPRINT_DIST_TO_GOAL_MAX := 425.0 ## 过了中线（场地总长约 850）才冲刺
+const SPRINT_DIST_TO_GOAL_MAX := PitchConstants.AI.SPRINT_DIST_TO_GOAL_MAX
 
 ## AI 转向参数（与人类玩家 TurnController 一致）
 const AI_TURN_RATE_LOW := 10.0         # rad/s, 低速

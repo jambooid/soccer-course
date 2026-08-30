@@ -4,12 +4,12 @@ extends CharacterBody2D
 signal swap_requested(player: Player)
 
 const BALL_CONTROL_HEIGHT_MAX := PitchConstants.HEIGHT_BALL_CONTROL_MAX
+const WALK_ANIM_THRESHOLD := PitchConstants.PLAYER.WALK_ANIM_THRESHOLD
 const CONTROL_SCHEME_MAP : Dictionary = {
 	ControlScheme.CPU: preload("res://assets/art/props/cpu.png"),
 	ControlScheme.P1: preload("res://assets/art/props/1p.png"),
 	ControlScheme.P2: preload("res://assets/art/props/2p.png"),
 }
-const WALK_ANIM_THRESHOLD := 0.6
 
 enum ControlScheme {CPU, P1, P2}
 enum Role {GOALIE, DEFENSE, MIDFIELD, OFFENSE}

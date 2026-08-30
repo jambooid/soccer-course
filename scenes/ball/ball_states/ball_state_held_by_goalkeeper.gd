@@ -4,9 +4,10 @@ extends BallState
 ## 被守门员抱在手中的状态
 ## 球跟随门将，不能被抢断，有持球时间限制
 
-const HOLD_DURATION_MAX_MS := 3000
-const HOLD_OFFSET_Y := -10.0   ## 抱球高度（相对于球员脚部，负值=向上）
-const HOLD_OFFSET_X := 6.0     ## 抱球水平偏移（身前距离）
+## 门将持球常量（使用 PitchConstants 集中管理）
+const HOLD_DURATION_MAX_MS := PitchConstants.BALL.HELD_DURATION_MAX_MS
+const HOLD_OFFSET_Y := PitchConstants.BALL.HELD_OFFSET_Y
+const HOLD_OFFSET_X := PitchConstants.BALL.HELD_OFFSET_X
 
 var time_held := 0
 

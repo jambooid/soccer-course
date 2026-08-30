@@ -4,13 +4,14 @@ extends BallState
 ## 射门状态：高速、带弧线的射门
 ## 有重力（会下落）、有摩擦（会减速），碰到障碍物或超时后转自由球
 
-const DURATION_SHOT := 1500  ## ms
-const SHOT_HEIGHT := 8.0       ## 射门初始高度（像素）
-const SHOT_SPRITE_SCALE := 0.8
-const AIR_FRICTION_MULTIPLIER := 0.2
-const GROUND_FRICTION := 120.0  ## px/s²，射门球的地面摩擦
-const SHOT_DROP_MS := 600      ## ms 后开始明显下落（延迟重力，模拟抽射）
-const GOALIE_CATCH_SPEED := 180.0  ## px/s，低于此速度的射门门将能直接抱住
+## 射门常量（使用 PitchConstants 集中管理）
+const DURATION_SHOT := PitchConstants.BALL.SHOT_DURATION_MS
+const SHOT_HEIGHT := PitchConstants.BALL.SHOT_HEIGHT
+const SHOT_SPRITE_SCALE := PitchConstants.BALL.SHOT_SPRITE_SCALE
+const AIR_FRICTION_MULTIPLIER := PitchConstants.BALL.SHOT_AIR_FRICTION_MULT
+const GROUND_FRICTION := PitchConstants.BALL.SHOT_GROUND_FRICTION
+const SHOT_DROP_MS := PitchConstants.BALL.SHOT_DROP_MS
+const GOALIE_CATCH_SPEED := PitchConstants.BALL.SHOT_GOALIE_CATCH_SPEED
 
 var time_since_shot := Time.get_ticks_msec()
 

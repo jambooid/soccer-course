@@ -9,10 +9,11 @@ extends BallState
 ## - 对手随时可以拦截
 ## - 可以在空中被争顶/拦截
 
-const AIR_FRICTION_MULTIPLIER := 0.3
-const GROUND_FRICTION_BASE := 60.0
-const TRANSITION_TO_FREEFORM_SPEED := 20.0
-const MAX_BOUNCES_BEFORE_FREEFORM := 3
+## 物理常量（使用 PitchConstants 集中管理）
+const AIR_FRICTION_MULTIPLIER := PitchConstants.BALL.KICKED_AIR_FRICTION_MULT
+const GROUND_FRICTION_BASE := PitchConstants.BALL.KICKED_GROUND_FRICTION
+const TRANSITION_TO_FREEFORM_SPEED := PitchConstants.BALL.KICKED_TRANSITION_SPEED
+const MAX_BOUNCES_BEFORE_FREEFORM := PitchConstants.BALL.KICKED_MAX_BOUNCES
 
 var kicker : Player = null
 var bounce_count := 0

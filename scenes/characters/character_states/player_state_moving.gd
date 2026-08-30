@@ -1,15 +1,15 @@
 class_name PlayerStateMoving
 extends PlayerState
 
-## 转向参数（Turn Controller）
-const TURN_RATE_LOW_SPEED := 12.0        # 静止时最大转向速率（rad/s）
-const TURN_RATE_HIGH_SPEED := 4.0        # 满速时最大转向速率（rad/s）
+## 转向参数（Turn Controller）— 使用 PitchConstants 集中管理
+const TURN_RATE_LOW_SPEED := PitchConstants.PLAYER.MOVING_TURN_RATE_LOW_SPEED
+const TURN_RATE_HIGH_SPEED := PitchConstants.PLAYER.MOVING_TURN_RATE_HIGH_SPEED
 const SPRINT_TURN_PENALTY := 0.6         # 冲刺时转向速率倍率
-const CUTBACK_ANGLE_THRESHOLD := deg_to_rad(90.0)  # 急转角度阈值
+const CUTBACK_ANGLE_THRESHOLD := PitchConstants.PLAYER.MOVING_CUTBACK_ANGLE_THRESHOLD
 const CUTBACK_HYSTERESIS := 0.8           # 急转重置滞后倍率（低于阈值×此值才重置）
-const CUTBACK_SPEED_PENALTY := 0.6       # 急转速度衰减（乘以此系数）
+const CUTBACK_SPEED_PENALTY := PitchConstants.PLAYER.MOVING_CUTBACK_SPEED_PENALTY
 
-const SPRINT_SPEED_MULTIPLIER := 1.6
+const SPRINT_SPEED_MULTIPLIER := PitchConstants.PLAYER.MOVING_SPRINT_SPEED_MULTIPLIER
 
 ## Turn Controller 状态
 var current_move_direction := Vector2.RIGHT  # 当前实际移动方向（平滑插值后）

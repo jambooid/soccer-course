@@ -17,16 +17,18 @@ extends AIBehavior
 
 const AI_TICK_MS := 80              ## 门将 AI tick 频率（比普通球员快）
 const PROXIMITY_CONCERN := 10.0
-const CATCH_RADIUS := 20.0           ## 抱球范围（像素），AI 主动检测用
 const CATCH_PREDICT_MS := 120        ## 抱球预判时间（ms），看未来这个时间内球是否会进入范围
-const RUSH_OUT_DISTANCE := 120.0     ## 最大出击距离（离球门线）
-const RUSH_OUT_TRIGGER_DIST := 150.0 ## 触发出击的球距球门距离
 const HOLD_DURATION_MIN_MS := 1500   ## 最少抱球时间
 const HOLD_DURATION_MAX_MS := 3000   ## 最多抱球时间
-const DISTRIBUTION_KICK_DIST := 150.0 ## 大脚开球的最小目标距离
-const DIVING_SAVE_DISTANCE := 60.0   ## 飞身扑救的触发距离（球-门将距离）
 const DIVING_REACTION_TIME := 0.15   ## 门将反应时间（秒），低于这个时间赶不上就扑救
 const GROUND_BALL_HEIGHT := 5.0      ## 视为地滚球的高度阈值
+
+## 距离判断（使用 PitchConstants 集中管理）
+const CATCH_RADIUS := PitchConstants.AI.GOALIE_CATCH_RADIUS
+const RUSH_OUT_DISTANCE := PitchConstants.AI.GOALIE_RUSH_OUT_DISTANCE
+const RUSH_OUT_TRIGGER_DIST := PitchConstants.AI.GOALIE_RUSH_OUT_TRIGGER_DIST
+const DISTRIBUTION_KICK_DIST := PitchConstants.AI.GOALIE_DISTRIBUTION_KICK_DIST
+const DIVING_SAVE_DISTANCE := PitchConstants.AI.GOALIE_DIVING_SAVE_DISTANCE
 
 var time_ball_held_ms := 0
 var time_since_last_ai_tick_goalie := 0

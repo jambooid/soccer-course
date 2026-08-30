@@ -4,9 +4,10 @@ extends BallState
 ## 折射/反弹球：被球员身体挡到的球
 ## 被动碰撞，物理反射，衰减较少
 
-const TRANSITION_SPEED := 30.0
-const MAX_DURATION_MS := 1200
-const LOCK_DURATION_MS := 200
+## DEFLECTED 状态常量（使用 PitchConstants 集中管理）
+const TRANSITION_SPEED := PitchConstants.BALL.DEFLECTED_TRANSITION_SPEED
+const MAX_DURATION_MS := PitchConstants.BALL.DEFLECTED_MAX_DURATION_MS
+const LOCK_DURATION_MS := PitchConstants.BALL.DEFLECTED_LOCK_DURATION_MS
 
 var time_started := 0
 var deflector : Player = null
