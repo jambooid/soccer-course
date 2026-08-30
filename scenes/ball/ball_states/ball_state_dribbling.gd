@@ -72,14 +72,28 @@ func _process(delta: float) -> void:
 	var effective_tech := carrier.technique
 	var player_dir := _get_player_direction()
 	var mode := carrier.dribble_mode
+	var current_speed := carrier.velocity.length()  # 提前计算球员速度
 
 	# 2. 应用地面摩擦力（指数衰减）
 	ball.velocity = DribblePhysics.apply_friction(ball.velocity, delta)
 
+	# 2.3 方向跟随修正：当球员改变方向时，球的速度方向逐渐跟随
+	# 防止球员转向时球因惯性继续往旧方向滚导致失控
+	if current_speed > DribblePhysics.IDLE_SPEED_THRESHOLD:
+		var ball_speed := ball.velocity.length()
+		if ball_speed > 5.0:  # 球有明显速度时才修正
+			var ball_dir := ball.velocity.normalized()
+			var angle_diff := ball_dir.angle_to(player_dir)
+			# 当球的方向与球员方向偏差较大时（>30°），逐渐修正
+			if abs(angle_diff) > deg_to_rad(30.0):
+				# 轻微修正球的方向，让球逐渐跟随球员方向
+				# 使用较小的插值系数（0.15）保持物理感，避免过度磁吸
+				var corrected_dir := ball_dir.lerp(player_dir, 0.15)
+				ball.velocity = corrected_dir * ball_speed
+
 	# 2.5 静止/低速控球：球不会滚远，保持在脚边
 	# 当球员速度很低时，给球一个轻微的"吸回"速度调整，
 	# 让球稳定在触球区内而不是越滚越远
-	var current_speed := carrier.velocity.length()
 	if current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
 		var to_ball_idle := ball.position - carrier.position
 		var forward_dist := to_ball_idle.dot(player_dir)

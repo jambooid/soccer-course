@@ -55,13 +55,16 @@ func handle_human_movement(delta: float) -> void:
 		# 直接设置目标速度（Turn Controller 已经处理了方向平滑）
 		player.velocity = move_dir * player.speed * speed_multiplier
 
-		# 急转：速度衰减 + 球额外前冲（在 velocity 设置后执行，避免被覆盖）
+		# 急转：速度衰减 + 球方向修正
 		if triggered_cutback:
 			player.velocity *= CUTBACK_SPEED_PENALTY
 			if player.has_ball() and ball.current_state != null:
-				var dribble_state = ball.current_state
-				if dribble_state.has_method("apply_cutback_kick"):
-					dribble_state.apply_cutback_kick()
+				# 修正球的速度方向到新方向，避免球继续往旧方向滚导致失控
+				# 保持球速大小，但方向改为球员的新方向
+				var ball_speed := ball.velocity.length()
+				var new_direction := move_dir  # 球员的新移动方向
+				# 将球速度插值到新方向（0.7 的插值强度，保留一些惯性感）
+				ball.velocity = ball.velocity.lerp(new_direction * ball_speed, 0.7)
 
 		is_moving = true
 	else:
