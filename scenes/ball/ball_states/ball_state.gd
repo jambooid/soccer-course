@@ -24,7 +24,9 @@ func transition_state(new_state: Ball.State, data: BallStateData = BallStateData
 	state_transition_requested.emit(new_state, data)
 
 func set_ball_animation_from_velocity() -> void:
-	if ball.velocity == Vector2.ZERO:
+	# 摩擦减速会产生极小的非零速度，使用阈值避免静止后继续播放滚动动画。
+	if ball.velocity.length() < 1.0:
+		ball.velocity = Vector2.ZERO
 		animation_player.play("idle")
 	elif ball.velocity.x > 0:
 		animation_player.play("roll")

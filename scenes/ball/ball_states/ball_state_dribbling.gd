@@ -97,7 +97,8 @@ func _process(delta: float) -> void:
 	# 让球稳定在触球区内而不是越滚越远
 	if current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
 		# 静止/低速时使用强约束：球位置和速度都被约束
-		var ideal_distance := 8.0  # 静止时的理想距离（更近）
+		# 与移动状态保持相同的前方距离，避免松键时球向球员收缩。
+		var ideal_distance := 12.0
 		var ideal_pos := carrier.position + player_dir * ideal_distance
 
 		# 位置约束：球被拉向理想位置
