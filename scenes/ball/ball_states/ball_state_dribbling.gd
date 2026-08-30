@@ -95,7 +95,14 @@ func _process(delta: float) -> void:
 	# 2.5 静止/低速控球：球不会滚远，保持在脚边
 	# 当球员速度很低时，给球一个轻微的"吸回"速度调整，
 	# 让球稳定在触球区内而不是越滚越远
-	if current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
+	var turn_state: PlayerStateMoving = carrier.current_state as PlayerStateMoving
+	if turn_state != null and turn_state.turn_active:
+		# 转身期间让球沿平滑目标轨迹换侧，避免瞬移或沿旧速度快速甩过去。
+		var turn_ideal_pos := carrier.position + player_dir * 12.0
+		var turn_offset := turn_ideal_pos - ball.position
+		ball.position = ball.position.lerp(turn_ideal_pos, 0.12)
+		ball.velocity = turn_offset.limit_length(55.0)
+	elif current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
 		# 静止/低速时使用强约束：球位置和速度都被约束
 		# 与移动状态保持相同的前方距离，避免松键时球向球员收缩。
 		var ideal_distance := 12.0
@@ -179,6 +186,8 @@ func _exit_tree() -> void:
 
 # 获取球员当前方向：速度方向（速度足够大时），否则用 heading
 func _get_player_direction() -> Vector2:
+	if carrier.current_state is PlayerStateMoving:
+		return (carrier.current_state as PlayerStateMoving).get_dribble_direction()
 	if carrier.velocity.length() > 5.0:
 		return carrier.velocity.normalized()
 	return carrier.heading
@@ -188,7 +197,8 @@ func _carrier_movement_intended() -> bool:
 	if carrier.control_scheme == Player.ControlScheme.CPU:
 		return carrier.velocity.length() >= DribblePhysics.IDLE_SPEED_THRESHOLD
 	if carrier.current_state is PlayerStateMoving:
-		return (carrier.current_state as PlayerStateMoving).is_moving
+		var moving_state := carrier.current_state as PlayerStateMoving
+		return moving_state.is_moving and not moving_state.turn_active
 	return carrier.velocity.length() >= DribblePhysics.IDLE_SPEED_THRESHOLD
 
 # 释放球，切换到 FREEFORM 状态

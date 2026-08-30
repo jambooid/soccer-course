@@ -120,6 +120,8 @@ func switch_state(state: State, state_data: PlayerStateData = PlayerStateData.ne
 	call_deferred("add_child", current_state)
 
 func set_movement_animation() -> void:
+	if current_state is PlayerStateMoving and (current_state as PlayerStateMoving).turn_active:
+		return
 	var vel_length := velocity.length()
 	if vel_length < 1:
 		animation_player.play("idle")

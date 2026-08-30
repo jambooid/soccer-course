@@ -9,12 +9,24 @@ const CUTBACK_ANGLE_THRESHOLD := PitchConstants.PLAYER.MOVING_CUTBACK_ANGLE_THRE
 const CUTBACK_HYSTERESIS := 0.8           # 急转重置滞后倍率（低于阈值×此值才重置）
 const CUTBACK_SPEED_PENALTY := PitchConstants.PLAYER.MOVING_CUTBACK_SPEED_PENALTY
 
+const TURN_DURATION := 0.46
+const TURN_TRIGGER_ANGLE := deg_to_rad(90.0)
+const TURN_DIRECTION_MEMORY_DURATION := 0.35
+const TURN_MIN_SPEED_MULTIPLIER := 0.15
+const TURN_MAX_SPEED_MULTIPLIER := 0.5
+
 const SPRINT_SPEED_MULTIPLIER := PitchConstants.PLAYER.MOVING_SPRINT_SPEED_MULTIPLIER
 
 ## Turn Controller 状态
 var current_move_direction := Vector2.RIGHT  # 当前实际移动方向（平滑插值后）
 var is_moving := false
 var cutback_active := false  # 急转是否处于激活状态（边沿触发用）
+var turn_active := false
+var turn_elapsed := 0.0
+var turn_start_direction := Vector2.RIGHT
+var turn_target_direction := Vector2.RIGHT
+var last_input_direction := Vector2.ZERO
+var time_since_last_direction_input := INF
 
 func _process(delta: float) -> void:
 	if player.control_scheme == Player.ControlScheme.CPU:
@@ -29,6 +41,28 @@ func handle_human_movement(delta: float) -> void:
 	# 方向输入
 	var direction := KeyUtils.get_input_vector(player.control_scheme)
 	var has_direction := direction.length() > 0.1
+
+	if turn_active:
+		_process_turn(delta, direction if has_direction else turn_target_direction)
+	else:
+		# 持球时的反向输入进入短暂转身阶段，给收球和拨球留下前摇/后摇。
+		if has_direction and _should_start_turn(direction.normalized()):
+			_begin_turn(direction.normalized())
+			_process_turn(delta, direction.normalized())
+		else:
+			_process_movement(delta, direction, has_direction)
+
+	# 记录最后一次有效方向。相反方向按键交接时 Input 会短暂报告零向量，
+	# 因此转身判定不能只依赖当前帧的 is_moving 或残余速度。
+	if has_direction:
+		last_input_direction = direction.normalized()
+		time_since_last_direction_input = 0.0
+	else:
+		time_since_last_direction_input += delta
+
+	_process_actions()
+
+func _process_movement(delta: float, direction: Vector2, has_direction: bool) -> void:
 
 	# 冲刺模式切换
 	if KeyUtils.is_action_pressed(player.control_scheme, KeyUtils.Action.SPRINT):
@@ -77,6 +111,11 @@ func handle_human_movement(delta: float) -> void:
 		teammate_detection_area.rotation = player.velocity.angle()
 
 	# 短传：最常用，优先级高（从输入缓冲消费，提升跟手感）
+
+func _process_actions() -> void:
+	# 转身前摇/后摇期间锁定动作，输入留在缓冲区，转身结束后再消费。
+	if turn_active:
+		return
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHORT_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
@@ -127,6 +166,48 @@ func handle_human_movement(delta: float) -> void:
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SPECIAL):
 		if not player.has_ball():
 			player.swap_requested.emit(player)
+
+func _should_start_turn(target_direction: Vector2) -> bool:
+	if not player.has_ball() or time_since_last_direction_input > TURN_DIRECTION_MEMORY_DURATION:
+		return false
+	if last_input_direction.length_squared() < 0.01:
+		return false
+	var previous_direction: Vector2 = last_input_direction.normalized()
+	var direction_dot: float = previous_direction.dot(target_direction.normalized())
+	return abs(previous_direction.angle_to(target_direction)) >= TURN_TRIGGER_ANGLE or direction_dot < 0.0
+
+func _begin_turn(target_direction: Vector2) -> void:
+	turn_active = true
+	turn_elapsed = 0.0
+	turn_start_direction = current_move_direction.normalized()
+	turn_target_direction = target_direction.normalized()
+	cutback_active = true
+	animation_player.play("turn")
+
+func _process_turn(delta: float, target_direction: Vector2) -> void:
+	if target_direction.length() > 0.01:
+		turn_target_direction = target_direction.normalized()
+	turn_elapsed += delta
+	var progress: float = clampf(turn_elapsed / TURN_DURATION, 0.0, 1.0)
+	var eased: float = progress * progress * (3.0 - 2.0 * progress)
+	current_move_direction = turn_start_direction.slerp(turn_target_direction, eased).normalized()
+	# 起步和收尾保持较低速度，中点最低，形成明显的收球再拨球节奏。
+	var speed_multiplier: float = lerpf(TURN_MAX_SPEED_MULTIPLIER, TURN_MIN_SPEED_MULTIPLIER, sin(progress * PI))
+	player.velocity = current_move_direction * player.speed * speed_multiplier
+	is_moving = true
+	if progress >= 0.5:
+		player.heading = Vector2.LEFT if turn_target_direction.x < 0 else Vector2.RIGHT
+	if progress >= 1.0:
+		turn_active = false
+		cutback_active = false
+		current_move_direction = turn_target_direction
+		player.velocity = current_move_direction * player.speed * TURN_MAX_SPEED_MULTIPLIER
+		animation_player.play("run")
+
+func get_dribble_direction() -> Vector2:
+	if turn_active:
+		return current_move_direction
+	return current_move_direction if is_moving else player.heading
 
 
 ## 转向平滑：将当前移动方向朝目标方向插值
