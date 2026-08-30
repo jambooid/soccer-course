@@ -68,8 +68,21 @@ func handle_human_movement(delta: float) -> void:
 
 		is_moving = true
 	else:
-		# 没有方向输入 → 快速减速停下，提升手感（从 3.0 提高到 8.0）
-		player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 8.0 * delta)
+		# 没有方向输入 → 减速停下
+		# "持有状态"机制：无对抗时，球员跟随球速度减速，保持球在脚下
+		if player.has_ball():
+			# 持球状态：球员速度跟随球速度，让球员和球一起减速
+			var ball_velocity := ball.velocity.length()
+			if ball_velocity > 5.0:  # 球还在移动
+				# 球员速度逐渐匹配球速（略慢一点点，让球在前方）
+				var target_velocity := ball.velocity * 0.9
+				player.velocity = player.velocity.lerp(target_velocity, 0.3)
+			else:
+				# 球几乎静止，球员也快速停下
+				player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 8.0 * delta)
+		else:
+			# 无球状态：正常快速减速
+			player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 8.0 * delta)
 		is_moving = false
 
 	if player.velocity != Vector2.ZERO:
