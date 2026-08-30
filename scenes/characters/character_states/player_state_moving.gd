@@ -9,10 +9,10 @@ const CUTBACK_ANGLE_THRESHOLD := PitchConstants.PLAYER.MOVING_CUTBACK_ANGLE_THRE
 const CUTBACK_HYSTERESIS := 0.8           # 急转重置滞后倍率（低于阈值×此值才重置）
 const CUTBACK_SPEED_PENALTY := PitchConstants.PLAYER.MOVING_CUTBACK_SPEED_PENALTY
 
-const TURN_DURATION := 0.46
+const TURN_DURATION := 0.68
 const TURN_TRIGGER_ANGLE := deg_to_rad(90.0)
 const TURN_DIRECTION_MEMORY_DURATION := 0.35
-const TURN_MIN_SPEED_MULTIPLIER := 0.15
+const TURN_MIN_SPEED_MULTIPLIER := 0.12
 const TURN_MAX_SPEED_MULTIPLIER := 0.5
 
 const SPRINT_SPEED_MULTIPLIER := PitchConstants.PLAYER.MOVING_SPRINT_SPEED_MULTIPLIER
@@ -191,8 +191,14 @@ func _process_turn(delta: float, target_direction: Vector2) -> void:
 	var progress: float = clampf(turn_elapsed / TURN_DURATION, 0.0, 1.0)
 	var eased: float = progress * progress * (3.0 - 2.0 * progress)
 	current_move_direction = turn_start_direction.slerp(turn_target_direction, eased).normalized()
-	# 起步和收尾保持较低速度，中点最低，形成明显的收球再拨球节奏。
-	var speed_multiplier: float = lerpf(TURN_MAX_SPEED_MULTIPLIER, TURN_MIN_SPEED_MULTIPLIER, sin(progress * PI))
+	# 前半段先刹停，后半段再逐渐恢复，形成清晰的收球、转髋、拨球节奏。
+	var speed_multiplier: float
+	if progress < 0.55:
+		var brake_progress: float = smoothstep(0.0, 1.0, progress / 0.55)
+		speed_multiplier = lerpf(TURN_MAX_SPEED_MULTIPLIER, TURN_MIN_SPEED_MULTIPLIER, brake_progress)
+	else:
+		var recovery_progress: float = smoothstep(0.0, 1.0, (progress - 0.55) / 0.45)
+		speed_multiplier = lerpf(TURN_MIN_SPEED_MULTIPLIER, TURN_MAX_SPEED_MULTIPLIER, recovery_progress)
 	player.velocity = current_move_direction * player.speed * speed_multiplier
 	is_moving = true
 	if progress >= 0.5:
