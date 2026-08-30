@@ -16,6 +16,14 @@ func _ready() -> void:
 	print("按 ESC 退出")
 	print()
 
+	# 禁用球员的 AI 行为（测试场景中不需要 AI）
+	if player_high.current_ai_behavior:
+		player_high.current_ai_behavior.queue_free()
+		player_high.current_ai_behavior = null
+	if player_low.current_ai_behavior:
+		player_low.current_ai_behavior.queue_free()
+		player_low.current_ai_behavior = null
+
 	# 确保调试绘制启用
 	if debug_draw:
 		debug_draw.visible = true
