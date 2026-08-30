@@ -36,19 +36,19 @@ enum Mode { JOG, SPRINT }
 
 # ---- 常量（已校准） ----
 const GROUND_FRICTION_PER_SEC := 0.35       # 每秒速度衰减系数（f=0.35 → 停止距离 ≈ v0 × 0.95）
-const TOUCH_ZONE_LEN_MIN := 10.0            # 触球区最小长度（px，低技术）- 从 12.0 减小，球更贴脚
-const TOUCH_ZONE_LEN_MAX := 20.0            # 触球区最大长度（px，满技术）- 从 28.0 减小，球更贴脚
+const TOUCH_ZONE_LEN_MIN := 8.0             # 触球区最小长度（px，低技术）- 球更贴脚
+const TOUCH_ZONE_LEN_MAX := 14.0            # 触球区最大长度（px，满技术）- 球更贴脚
 const TOUCH_ZONE_WIDTH := 8.0               # 触球区宽度（px，两侧各一半）
-const MIN_TOUCH_INTERVAL := 0.08            # 最小触球间隔（秒，防止帧频过高导致连触）
-const PUSH_MULT_LOW_SPEED := 1.6            # 低速推球倍率（站定时把球拨出去）
-const PUSH_MULT_HIGH_SPEED := 1.35          # 高速推球倍率（冲刺时顺势推）
+const MIN_TOUCH_INTERVAL := 0.05            # 最小触球间隔（秒）- 从 0.08 减小，更频繁触球
+const PUSH_MULT_LOW_SPEED := 1.4            # 低速推球倍率（站定时把球拨出去）- 从 1.6 减小
+const PUSH_MULT_HIGH_SPEED := 1.25          # 高速推球倍率（冲刺时顺势推）- 从 1.35 减小
 const TOUCH_EFFICIENCY_MIN := 0.5           # 最低触球效率（lerp 权重，低技术）
 const TOUCH_EFFICIENCY_MAX := 0.9           # 最高触球效率（lerp 权重，满技术）
 const MAX_INACCURACY_RAD := 0.15            # 最大推球方向偏差（弧度，低技术时）
 const MAX_CONTROL_DISTANCE_MIN := 50.0      # 最小可控距离（px，低技术）
-const MAX_CONTROL_DISTANCE_MAX := 100.0     # 最大可控距离（px，满技术）- 从 80.0 增大，减少误失控
+const MAX_CONTROL_DISTANCE_MAX := 100.0     # 最大可控距离（px，满技术）- 保持足够缓冲
 const IDLE_SPEED_THRESHOLD := 20.0          # 静止/慢速阈值（px/s）
-const TOUCH_ZONE_FRONT_OFFSET := 4.0        # 触球区前端距球员身体的偏移（px）- 从 6.0 减小，球更贴脚
+const TOUCH_ZONE_FRONT_OFFSET := 2.0        # 触球区前端距球员身体的偏移（px）- 从 4.0 大幅减小
 
 # ---- 带球模式参数 ----
 # 注：使用 int 键而非 Mode.JOG 因为 const 字典不接受枚举键作为常量表达式
