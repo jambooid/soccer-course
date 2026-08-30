@@ -48,12 +48,8 @@ func handle_human_movement(delta: float) -> void:
 		var move_dir: Vector2 = turn_result.direction
 		triggered_cutback = turn_result.cutback
 
-		# 目标速度
-		var target_velocity := move_dir * player.speed * speed_multiplier
-
-		# 快速加速到目标速度，提升响应手感（从即时设置改为快速插值）
-		var accel_factor := 10.0  # 加速系数（原本是即时设置）
-		player.velocity = player.velocity.move_toward(target_velocity, player.speed * accel_factor * delta)
+		# 直接设置目标速度（Turn Controller 已经处理了方向平滑）
+		player.velocity = move_dir * player.speed * speed_multiplier
 
 		# 急转：速度衰减 + 球额外前冲（在 velocity 设置后执行，避免被覆盖）
 		if triggered_cutback:
