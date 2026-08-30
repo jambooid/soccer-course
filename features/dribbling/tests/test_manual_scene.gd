@@ -48,8 +48,8 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	# 更新调试信息
 	if debug_enabled and ball and player_high:
-		var carrier = ball.carrier if ball.state == Ball.State.DRIBBLING else null
-		if carrier:
+		var carrier = ball.carrier
+		if carrier and is_instance_valid(carrier):
 			var info := ""
 			info += "当前控球: %s (tech=%.0f)\n" % [
 				"高技术" if carrier == player_high else "低技术",
