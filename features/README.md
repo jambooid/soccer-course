@@ -22,6 +22,11 @@
 
 ## 待开发功能（参考 WE2000 优先级）
 
+### [TESTING] 射门系统（Shooting）
+**优先级**：P0
+**目录**：`features/shooting/`
+**目标**：可取消蓄力、球门方向/力量辅助、动画触球时机
+
 ### [PLANNING] 传球辅助（Pass Assist）
 **优先级**：P0  
 **WE2000 对照**：磁性传球、方向吸附  
@@ -96,6 +101,14 @@ godot --path . features/dribbling/tests/test_scene.tscn
 godot --path . -e features/dribbling/tests/test_scene.tscn
 ```
 
+### 运行射门功能手动测试
+
+```bash
+godot --path . features/shooting/tests/test_manual_scene.tscn
+```
+
+按住射门键蓄力，松开后才播放踢球动画；蓄力期间按方向键会取消射门并继续带球。
+
 ### 创建新功能模块
 
 ```bash
@@ -110,7 +123,7 @@ cd features/[new_feature_name]
 ## 统计数据
 
 - **已集成功能**：1
-- **开发中功能**：0
+- **开发中功能**：1（射门）
 - **计划中功能**：6
 - **总代码覆盖**：约 800 行（dribbling）
 - **测试用例数**：32（dribbling）

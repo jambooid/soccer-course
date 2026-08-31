@@ -1,0 +1,5 @@
+2026-08-31
+自动化测试：未能启动。Godot 4.4.1 的 `--headless` 场景/脚本运行在当前 ARM 环境初始化阶段以 exit 134 中止（`recursive_mutex lock failed: Invalid argument`），因此没有可记录的 pass/fail 输出。
+静态检查：`git diff --check` 通过；`--headless --editor --quit` 文件扫描和脚本类注册通过。
+手动测试：未执行（需要 Godot 窗口）。
+手动入口：`godot --path . features/shooting/tests/test_manual_scene.tscn`

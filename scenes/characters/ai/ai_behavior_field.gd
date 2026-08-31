@@ -274,14 +274,18 @@ func _find_most_forward_teammate() -> Player:
 	return most_forward
 
 func _execute_shot(target_pos: Vector2) -> void:
-	## 执行射门：以 target_pos 为基准，根据射门精度添加随机偏差
+	## 执行射门：与人类射门共用自动瞄准和距离/属性力量修正。
 	player.face_towards_target_goal()
-	# 根据射门属性计算偏差：属性越低，偏差越大
-	var inaccuracy: float = (1.0 - player.shooting / 100.0) * 15.0
-	var offset_y: float = randf_range(-inaccuracy, inaccuracy)
-	var shot_target := target_pos + Vector2(0, offset_y)
-	var shot_direction := player.position.direction_to(shot_target)
-	var data := PlayerStateData.build().set_shot_power(player.power).set_shot_direction(shot_direction)
+	var shot := ShootingPhysics.build_shot(
+		player.position,
+		player.heading,
+		target_pos,
+		Vector2.ZERO,
+		player.power,
+		player.shooting,
+		1.0
+	)
+	var data := PlayerStateData.build().set_shot_power(shot.power).set_shot_direction(shot.direction)
 	player.switch_state(Player.State.SHOOTING, data)
 
 func _execute_pass(target: Player, pass_type: int) -> void:

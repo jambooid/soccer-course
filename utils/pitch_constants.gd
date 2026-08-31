@@ -200,6 +200,14 @@ class PLAYER:
 	const PASSING_ASSIST_MAGNET_RANGE_LONG := SCALE_FACTOR * 300.0   ## 相对：长传吸附范围
 	const PASSING_ASSIST_MAGNET_RANGE_THROUGH := SCALE_FACTOR * 220.0 ## 相对：直塞吸附范围
 
+	## SHOOTING / PREPPING_SHOT 状态
+	const SHOOT_MAX_CHARGE_SECONDS := 1.5                       ## 秒：最大蓄力时间
+	const SHOOT_MIN_CHARGE_RATIO := 0.18                        ## 无量纲：轻按的最小力量
+	const SHOOT_AIM_VERTICAL_RANGE := 42.0                      ## 绝对：球门上下瞄准范围
+	const SHOOT_MIN_SPEED := SCALE_FACTOR * 90.0                ## 相对：最低射门速度
+	const SHOOT_MAX_SPEED := SCALE_FACTOR * 520.0               ## 相对：最高射门速度
+	const SHOOT_DISTANCE_REFERENCE := SCALE_FACTOR * 260.0      ## 相对：距离力量补偿基准
+
 	## HURT 状态
 	const HURT_BALL_TUMBLE_SPEED := SCALE_FACTOR * 100.0 ## 相对：被撞击后球滚动速度
 

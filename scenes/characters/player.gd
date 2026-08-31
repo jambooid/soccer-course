@@ -44,6 +44,9 @@ enum State {MOVING, TACKLING, RECOVERING, PREPPING_SHOT, SHOOTING, PASSING, HEAD
 @onready var turn_sprite : Sprite2D = %TurnSprite
 
 var ai_behavior_factory := AIBehaviorFactory.new()
+## Public charge state for HUD/feedback and deterministic shot release.
+var charge_display := 0.0
+var is_charging := false
 var country := ""
 var current_ai_behavior : AIBehavior = null
 var current_state: PlayerState = null
@@ -112,6 +115,9 @@ func setup_ai_behavior() -> void:
 	add_child(current_ai_behavior)
 
 func switch_state(state: State, state_data: PlayerStateData = PlayerStateData.new()) -> void:
+	if state != State.PREPPING_SHOT and state != State.SHOOTING:
+		is_charging = false
+		charge_display = 0.0
 	if current_state != null:
 		current_state.queue_free()
 	current_state = state_factory.get_fresh_state(state)

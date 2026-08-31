@@ -1,0 +1,134 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-background.png" id="1_bg"]
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-pattern.png" id="2_pattern"]
+[ext_resource type="Texture2D" path="res://assets/art/backgrounds/pitch-lines.png" id="3_lines"]
+[ext_resource type="PackedScene" path="res://scenes/ball/ball.tscn" id="4_ball"]
+[ext_resource type="PackedScene" path="res://scenes/characters/player.tscn" id="5_player"]
+[ext_resource type="PackedScene" path="res://scenes/goal/goal.tscn" id="6_goal"]
+[ext_resource type="Script" path="res://features/shooting/tests/test_manual_scene.gd" id="7_script"]
+
+[sub_resource type="RectangleShape2D" id="TopBottomShape"]
+size = Vector2(802, 7)
+
+[sub_resource type="RectangleShape2D" id="SideShape"]
+size = Vector2(7, 320)
+
+[node name="ShootingManualTest" type="Node2D"]
+script = ExtResource("7_script")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(425, 180)
+zoom = Vector2(2, 2)
+
+[node name="Background" type="Node2D" parent="."]
+
+[node name="Grass" type="Sprite2D" parent="Background"]
+modulate = Color(0.517647, 0.803922, 0.164706, 1)
+texture = ExtResource("1_bg")
+centered = false
+
+[node name="Pattern" type="Sprite2D" parent="Background"]
+modulate = Color(0.282353, 0.607843, 0, 1)
+texture = ExtResource("2_pattern")
+centered = false
+
+[node name="Lines" type="Sprite2D" parent="Background"]
+modulate = Color(0.941176, 0.941176, 0.941176, 1)
+texture = ExtResource("3_lines")
+centered = false
+
+[node name="Walls" type="Node2D" parent="."]
+
+[node name="Top" type="StaticBody2D" parent="Walls"]
+position = Vector2(425, 17)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="Walls/Top"]
+shape = SubResource("TopBottomShape")
+
+[node name="Bottom" type="StaticBody2D" parent="Walls"]
+position = Vector2(425, 343)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="Walls/Bottom"]
+shape = SubResource("TopBottomShape")
+
+[node name="Left" type="StaticBody2D" parent="Walls"]
+position = Vector2(27, 180)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="Walls/Left"]
+shape = SubResource("SideShape")
+
+[node name="Right" type="StaticBody2D" parent="Walls"]
+position = Vector2(823, 180)
+collision_layer = 1
+
+[node name="Shape" type="CollisionShape2D" parent="Walls/Right"]
+shape = SubResource("SideShape")
+
+[node name="GoalHome" parent="." instance=ExtResource("6_goal")]
+position = Vector2(32, 220)
+
+[node name="GoalAway" parent="." instance=ExtResource("6_goal")]
+position = Vector2(818, 220)
+scale = Vector2(-1, 1)
+
+[node name="Ball" parent="." instance=ExtResource("4_ball")]
+position = Vector2(470, 180)
+
+[node name="PlayerHighShooting" parent="." node_paths=PackedStringArray("ball", "own_goal", "target_goal") instance=ExtResource("5_player")]
+unique_name_in_owner = true
+position = Vector2(450, 180)
+control_scheme = 1
+ball = NodePath("../Ball")
+own_goal = NodePath("../GoalHome")
+target_goal = NodePath("../GoalAway")
+power = 180.0
+speed = 80.0
+shooting = 95.0
+
+[node name="PlayerLowShooting" parent="." node_paths=PackedStringArray("ball", "own_goal", "target_goal") instance=ExtResource("5_player")]
+unique_name_in_owner = true
+position = Vector2(380, 260)
+control_scheme = 2
+ball = NodePath("../Ball")
+own_goal = NodePath("../GoalHome")
+target_goal = NodePath("../GoalAway")
+power = 130.0
+speed = 65.0
+shooting = 35.0
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Instructions" type="Label" parent="UI"]
+offset_left = 10.0
+offset_top = 8.0
+offset_right = 500.0
+offset_bottom = 110.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 12
+text = "射门系统独立手动测试\nWASD/J：高射门属性球员    方向键/7：低射门属性球员\n按住射门蓄力，松开出脚；蓄力前按方向键取消并继续带球\n1/2：切换球员    R：重置    TAB：调试瞄准线    ESC：退出"
+
+[node name="Status" type="Label" parent="UI"]
+offset_left = 10.0
+offset_top = 125.0
+offset_right = 350.0
+offset_bottom = 205.0
+theme_override_colors/font_color = Color(1, 1, 0.5, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="Aim" type="Label" parent="UI"]
+offset_left = 10.0
+offset_top = 215.0
+offset_right = 350.0
+offset_bottom = 260.0
+theme_override_colors/font_color = Color(0.6, 0.9, 1, 1)
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 12
