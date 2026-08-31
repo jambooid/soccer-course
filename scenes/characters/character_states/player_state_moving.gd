@@ -195,7 +195,7 @@ func _begin_turn(target_direction: Vector2) -> void:
 	turn_duration = lerpf(TURN_DURATION_SHORT, TURN_DURATION_LONG, angle_factor)
 	cutback_active = true
 	if turn_angle < TURN_ANGLE_SHORT:
-		animation_player.play("turn_45")
+		animation_player.play("turn_45_up" if turn_target_direction.y < 0.0 else "turn_45_down")
 	elif turn_angle < TURN_ANGLE_LONG:
 		animation_player.play("turn_90")
 	else:

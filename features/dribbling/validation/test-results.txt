@@ -142,3 +142,14 @@ All tests passed!
 ✅ **边界条件处理正确**
 ✅ **带球模式差异符合设计**
 ✅ **可以进入手动测试阶段**
+## 2026-08-31 斜向转身动画
+
+**测试文件**：`features/dribbling/tests/test_diagonal_turn_animation.gd`
+**执行方式**：`godot --headless --path . -s features/dribbling/tests/test_diagonal_turn_animation.gd`
+
+结果：**4 passed, 0 failed**
+
+- [PASS] 4x2 斜向序列帧图尺寸
+- [PASS] 右上动画帧 0..3 与 `TurnSprite:frame` 绑定
+- [PASS] 右下动画帧 4..7 与 `TurnSprite:frame` 绑定
+- [PASS] 球员场景包含 4x2 `TurnSprite`

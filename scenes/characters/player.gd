@@ -41,6 +41,7 @@ enum State {MOVING, TACKLING, RECOVERING, PREPPING_SHOT, SHOOTING, PASSING, HEAD
 @onready var run_particles : GPUParticles2D = %RunParticles
 @onready var tackle_damage_emitter_area : Area2D = %TackleDamageEmitterArea
 @onready var teammate_detection_area : Area2D = %TeammateDetectionArea
+@onready var turn_sprite : Sprite2D = %TurnSprite
 
 var ai_behavior_factory := AIBehaviorFactory.new()
 var country := ""
@@ -168,6 +169,12 @@ func set_control_scheme(scheme: ControlScheme) -> void:
 func set_sprite_visibility() -> void:
 	control_sprite.visible = has_ball() or not control_scheme == ControlScheme.CPU
 	run_particles.emitting = velocity.length() >= speed * 0.9
+	var turning := current_state is PlayerStateMoving and (current_state as PlayerStateMoving).turn_active
+	turn_sprite.visible = turning
+	player_sprite.visible = not turning
+	if turning:
+		var target_direction := (current_state as PlayerStateMoving).turn_target_direction
+		turn_sprite.flip_h = target_direction.x < 0.0
 
 func get_hurt(hurt_origin: Vector2) -> void:
 	switch_state(Player.State.HURT, PlayerStateData.build().set_hurt_direction(hurt_origin))

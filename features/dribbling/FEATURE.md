@@ -107,6 +107,7 @@ MAX_CONTROL_DISTANCE_MAX = 80.0     # 最大可控距离
 ### 3.2 测试文件
 
 - `features/dribbling/tests/test_physics.gd` - 自动化物理测试（32个测试用例）
+- `features/dribbling/tests/test_diagonal_turn_animation.gd` - 斜向转身序列帧和场景绑定校验
 - `features/dribbling/tests/test_scene.tscn` - 手动测试场景
 - `tools/test_dribbling.gd` - 原有测试（符号链接到 features/dribbling/tests/test_physics.gd）
 - `tools/test_dribbling_scene.tscn` - 原有测试场景（符号链接）
