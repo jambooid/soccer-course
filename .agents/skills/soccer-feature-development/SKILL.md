@@ -1,6 +1,6 @@
 ---
 name: soccer-feature-development
-description: Create, extend, test, and integrate feature modules in this Godot WE2000-style soccer project while keeping feature documentation, state-machine integration, Godot tests, and manual validation synchronized.
+description: Create, extend, test, and integrate feature modules in this Godot WE2000-style soccer project when explicitly invoked as $soccer-feature-development.
 metadata:
   author: soccer-course
   version: "1.0"
@@ -8,7 +8,7 @@ metadata:
 
 # Soccer Course Feature Development
 
-Use this skill when implementing a new gameplay or platform feature, or when making a substantial iteration to an existing feature. The deliverable is working project code plus an auditable module under `features/<feature-slug>/`; do not treat a code-only patch as complete.
+Invoke this skill explicitly as `$soccer-feature-development` when implementing a new gameplay or platform feature, or when making a substantial iteration to an existing feature. It is intentionally not selected automatically for ordinary project work. The deliverable is working project code plus an auditable module under `features/<feature-slug>/`; do not treat a code-only patch as complete.
 
 ## Project Context
 

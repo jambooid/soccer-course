@@ -1,0 +1,7 @@
+interface:
+  display_name: "Soccer Feature Development"
+  short_description: "Build and validate Godot soccer feature modules"
+  default_prompt: "Use $soccer-feature-development to implement and validate a soccer feature module."
+
+policy:
+  allow_implicit_invocation: false
