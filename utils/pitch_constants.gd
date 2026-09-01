@@ -126,12 +126,12 @@ class BALL:
 	## 基础参数
 	const BOUNCINESS := 0.8                              ## 无量纲：反弹系数
 	const DISTANCE_HIGH_PASS := SCALE_FACTOR * 90.0     ## 相对：高弧度传球阈值
-	const KICKOFF_PASS_DISTANCE := 30.0                 ## 绝对：开球短传距离
 	const TUMBLE_HEIGHT_VELOCITY := SCALE_FACTOR * 180.0 ## 相对：被撞弹起速度
 
 	## 时间锁定（不缩放）
 	const DURATION_TUMBLE_LOCK := 200                   ## ms：撞击后锁定时间
 	const DURATION_PASS_LOCK := 500                     ## ms：传球后锁定时间
+	const KICKOFF_TEAM_LOCK_MS := 800                   ## ms：开球后仅允许开球队率先触球
 
 	## KICKED 状态
 	const KICKED_AIR_FRICTION_MULT := 0.3               ## 无量纲：空气阻力系数

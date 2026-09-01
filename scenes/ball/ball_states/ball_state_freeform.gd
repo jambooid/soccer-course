@@ -15,6 +15,9 @@ func _enter_tree() -> void:
 	time_since_freeform = Time.get_ticks_msec()
 
 func on_player_enter(body: Player) -> void:
+	if not ball.can_be_picked_up_by(body):
+		return
+
 	# 守门员专用抱球逻辑
 	if body.role == Player.Role.GOALIE:
 		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
@@ -47,8 +50,8 @@ func _check_auto_capture() -> void:
 	## 主动接球检测：球滚到球员脚边时自动获得球权
 	## 解决问题：球员已经在 player_detection_area 内时，body_entered 不会触发
 
-	# 只在 monitoring 开启时检测（尊重 lock_duration）
-	if not player_detection_area.monitoring:
+	# 只在 monitoring 开启且不处于开球等待时检测。
+	if not player_detection_area.monitoring or not ball.is_pickup_enabled():
 		return
 
 	# 球太高不能接
@@ -68,6 +71,8 @@ func _check_auto_capture() -> void:
 		if not (body is Player):
 			continue
 		var player: Player = body
+		if not ball.can_be_picked_up_by(player):
+			continue
 
 		# 守门员有专门的抱球逻辑，跳过
 		if player.role == Player.Role.GOALIE:
@@ -91,6 +96,8 @@ func _check_auto_capture() -> void:
 		if not (body is Player):
 			continue
 		var other: Player = body
+		if not ball.can_be_picked_up_by(other):
+			continue
 
 		# 跳过己方球员
 		if other.country == closest_player.country:

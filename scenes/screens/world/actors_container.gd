@@ -24,6 +24,7 @@ var time_since_last_cache_refresh := Time.get_ticks_msec()
 
 func _init() -> void:
 	GameEvents.team_reset.connect(on_team_reset.bind())
+	GameEvents.kickoff_started.connect(on_kickoff_started.bind())
 	GameEvents.impact_received.connect(on_impact_received.bind())
 	GameEvents.ball_possession_stable.connect(_on_ball_possession_stable.bind())
 
@@ -138,6 +139,24 @@ func reset_control_schemes() -> void:
 
 func on_team_reset() -> void:
 	is_checking_for_kickoff_readiness = true
+
+func on_kickoff_started() -> void:
+	var kickoff_country := GameManager.current_match.country_home
+	if GameManager.current_state != null \
+			and GameManager.current_state.state_data != null \
+			and not GameManager.current_state.state_data.country_scored_on.is_empty():
+		kickoff_country = GameManager.current_state.state_data.country_scored_on
+
+	var squad := squad_home if squad_home[0].country == kickoff_country else squad_away
+	var candidates : Array[Player] = squad.filter(
+		func(p: Player): return p.role != Player.Role.GOALIE
+	)
+	candidates.sort_custom(func(p1: Player, p2: Player):
+		return p1.position.distance_squared_to(ball.spawn_position) \
+			< p2.position.distance_squared_to(ball.spawn_position))
+	if candidates.is_empty():
+		return
+	ball.start_kickoff(candidates[0])
 
 func on_impact_received(impact_position: Vector2, _is_high_impact: bool) -> void:
 	var spark := SPARK_PREFAB.instantiate()
@@ -260,10 +279,8 @@ func swap_sides() -> void:
 			player.switch_state(Player.State.RESETING,
 				PlayerStateData.build().set_reset_position(player.kickoff_position))
 
-	# 球重置到中圈
-	# place_at 会清除 carrier 并切到 FREEFORM 状态，
-	# 防止守门员持球时球跟随门将跑回禁区导致下半场无法开球
-	ball.place_at(Vector2(PITCH_CENTER_X, ball.position.y))
+	# 中场期间固定在标准开球点并禁止任何球员提前获得球权。
+	ball.prepare_for_kickoff()
 
 	# 重置控球权统计
 	GameManager.reset_possession()

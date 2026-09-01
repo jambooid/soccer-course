@@ -6,7 +6,7 @@ const BOUNCINESS := PitchConstants.BALL.BOUNCINESS
 const DISTANCE_HIGH_PASS := PitchConstants.BALL.DISTANCE_HIGH_PASS
 const DURATION_TUMBLE_LOCK := PitchConstants.BALL.DURATION_TUMBLE_LOCK
 const DURATION_PASS_LOCK := PitchConstants.BALL.DURATION_PASS_LOCK
-const KICKOFF_PASS_DISTANCE := PitchConstants.BALL.KICKOFF_PASS_DISTANCE
+const KICKOFF_TEAM_LOCK_MS := PitchConstants.BALL.KICKOFF_TEAM_LOCK_MS
 const TUMBLE_HEIGHT_VELOCITY := PitchConstants.BALL.TUMBLE_HEIGHT_VELOCITY
 
 enum State {CARRIED, FREEFORM, SHOT, KICKED, SAVED, DEFLECTED, HELD_BY_GOALKEEPER, DRIBBLING}
@@ -30,12 +30,14 @@ var state_factory := BallStateFactory.new()
 var velocity := Vector2.ZERO
 var _recapture_lock_player : Player = null
 var _recapture_lock_until_ms := 0
+var _pickup_enabled := true
+var _pickup_country := ""
+var _pickup_country_until_ms := 0
 
 func _ready() -> void:
 	switch_state(State.FREEFORM)
 	spawn_position = position
 	GameEvents.team_reset.connect(on_team_reset.bind())
-	GameEvents.kickoff_started.connect(on_kickoff_started.bind())
 
 func _process(_delta: float) -> void:
 	ball_sprite.position = Vector2.UP * height
@@ -153,6 +155,8 @@ func deflect_by(deflector: Player, new_velocity: Vector2) -> void:
 
 func hold_by_goalkeeper(goalie: Player) -> void:
 	## 门将抱住球
+	if not can_be_picked_up_by(goalie):
+		return
 	if is_recapture_locked_for(goalie):
 		return
 	# 扑救时球状态和门将动作状态可能在同一帧同时报告接球。
@@ -190,6 +194,50 @@ func clear_recapture_lock() -> void:
 	_recapture_lock_player = null
 	_recapture_lock_until_ms = 0
 
+func can_be_picked_up_by(context_player: Player) -> bool:
+	if not _pickup_enabled:
+		return false
+	if not _pickup_country.is_empty():
+		if Time.get_ticks_msec() >= _pickup_country_until_ms:
+			_clear_pickup_country_lock()
+		elif context_player.country != _pickup_country:
+			return false
+	return true
+
+func is_pickup_enabled() -> bool:
+	return _pickup_enabled
+
+func prepare_for_kickoff() -> void:
+	## 中场/进球重置期间固定足球，直到正式开球前不允许任何球员获得球权。
+	position = spawn_position
+	velocity = Vector2.ZERO
+	height = 0.0
+	height_velocity = 0.0
+	carrier = null
+	clear_recapture_lock()
+	_clear_pickup_country_lock()
+	_pickup_enabled = false
+	switch_state(State.FREEFORM)
+
+func start_kickoff(kicker: Player) -> void:
+	## 确定性地把中圈球权交给开球队，避免对称站位造成随机归属。
+	if not is_instance_valid(kicker):
+		return
+	position = spawn_position
+	velocity = Vector2.ZERO
+	height = 0.0
+	height_velocity = 0.0
+	carrier = null
+	_pickup_enabled = true
+	_pickup_country = kicker.country
+	_pickup_country_until_ms = Time.get_ticks_msec() + KICKOFF_TEAM_LOCK_MS
+	carrier = kicker
+	switch_state(State.DRIBBLING)
+
+func _clear_pickup_country_lock() -> void:
+	_pickup_country = ""
+	_pickup_country_until_ms = 0
+
 func stop() -> void:
 	velocity = Vector2.ZERO
 
@@ -201,6 +249,8 @@ func place_at(pos: Vector2) -> void:
 	height_velocity = 0.0
 	carrier = null
 	clear_recapture_lock()
+	_pickup_enabled = true
+	_clear_pickup_country_lock()
 	switch_state(State.FREEFORM)
 
 
@@ -299,12 +349,4 @@ func get_proximity_teammates_count(country: String) -> int:
 	return players.filter(func(p: Player): return p.country == country).size()
 
 func on_team_reset() -> void:
-	position = spawn_position
-	velocity = Vector2.ZERO
-	height = 0
-	carrier = null
-	clear_recapture_lock()
-	switch_state(State.FREEFORM)
-
-func on_kickoff_started() -> void:
-	pass_to(spawn_position + Vector2.DOWN * KICKOFF_PASS_DISTANCE, 0)
+	prepare_for_kickoff()

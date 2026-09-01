@@ -60,6 +60,9 @@ func move_and_bounce_kicked(delta: float) -> void:
 		SoundPlayer.play(SoundPlayer.Sound.BOUNCE)
 
 func on_player_enter(body: Player) -> void:
+	if not ball.can_be_picked_up_by(body):
+		return
+
 	# 守门员专用抱球逻辑（高度阈值比普通球员高）
 	if body.role == Player.Role.GOALIE:
 		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
