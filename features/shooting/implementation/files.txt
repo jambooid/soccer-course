@@ -2,6 +2,7 @@
 utils/shooting_physics.gd
 utils/pitch_constants.gd
 scenes/characters/player.gd
+scenes/characters/character_states/player_state_moving.gd
 scenes/characters/character_states/player_state_prepping_shot.gd
 scenes/characters/character_states/player_state_shooting.gd
 scenes/characters/ai/ai_behavior_field.gd

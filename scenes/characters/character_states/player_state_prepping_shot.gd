@@ -5,7 +5,6 @@ const MAX_CHARGE_SECONDS := ShootingPhysics.MAX_CHARGE_SECONDS
 const CANCEL_WINDOW_MS := 150  ## 起手窗口内可改为传球
 
 var elapsed_charge := 0.0
-var previous_input_direction := Vector2.ZERO
 
 func _enter_tree() -> void:
 	# Charging does not own the player movement.  The ball remains in the
@@ -13,11 +12,6 @@ func _enter_tree() -> void:
 	player.is_charging = true
 	player.charge_display = 0.0
 	elapsed_charge = 0.0
-	# A direction already held to control the dribble is not a cancel command.
-	# Only a newly pressed/changed direction during charge should interrupt it.
-	previous_input_direction = Vector2.ZERO
-	if player.control_scheme != Player.ControlScheme.CPU:
-		previous_input_direction = KeyUtils.get_input_vector(player.control_scheme)
 
 func _process(delta: float) -> void:
 	if not player.has_ball():
@@ -28,20 +22,8 @@ func _process(delta: float) -> void:
 	var input_direction := Vector2.ZERO
 	if player.control_scheme != Player.ControlScheme.CPU:
 		input_direction = KeyUtils.get_input_vector(player.control_scheme)
-	# WE-style cancel: a new movement input during the charge window keeps the
-	# player dribbling instead of freezing in a leg-up pose. Direction held
-	# before shooting remains valid and can be used for the assisted aim lane.
-	var direction_started_during_charge := input_direction.length() > 0.1 \
-		and previous_input_direction.length() <= 0.1
-	var direction_changed_during_charge := input_direction.length() > 0.1 \
-		and previous_input_direction.length() > 0.1 \
-		and input_direction.normalized().dot(previous_input_direction.normalized()) < 0.98
-	previous_input_direction = input_direction
-	if player.control_scheme != Player.ControlScheme.CPU \
-			and (direction_started_during_charge or direction_changed_during_charge):
-		_cancel_charge()
-		transition_state(Player.State.MOVING)
-		return
+	# Direction input is sampled for the final aim lane only. The player keeps
+	# the velocity and heading from the moment charge began.
 
 	elapsed_charge += delta
 	var ratio := ShootingPhysics.charge_ratio(elapsed_charge)
@@ -68,7 +50,8 @@ func _release_shot(input_direction: Vector2, ratio: float) -> void:
 		input_direction,
 		player.power,
 		player.shooting,
-		ratio
+		ratio,
+		player.technique
 	)
 	_cancel_charge()
 	# Only now, after charge release, does SHOOTING start its kick animation.

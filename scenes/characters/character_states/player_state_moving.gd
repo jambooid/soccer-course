@@ -118,6 +118,24 @@ func _process_movement(delta: float, direction: Vector2, has_direction: bool) ->
 	# 短传：最常用，优先级高（从输入缓冲消费，提升跟手感）
 
 func _process_actions() -> void:
+	# Shooting starts a charge while running as well. It must be checked before
+	# the turn animation lock, otherwise the short input-buffer window can
+	# expire during a long turn and make the shot appear unresponsive.
+	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHOOT):
+		if player.has_ball():
+			transition_state(Player.State.PREPPING_SHOT)
+		elif ball.can_air_interact():
+			if player.velocity == Vector2.ZERO:
+				if player.is_facing_target_goal():
+					transition_state(Player.State.VOLLEY_KICK)
+				else:
+					transition_state(Player.State.BICYCLE_KICK)
+			else:
+				transition_state(Player.State.HEADER)
+		elif player.velocity != Vector2.ZERO:
+			transition_state(Player.State.TACKLING)
+		return
+
 	# 转身前摇/后摇期间锁定动作，输入留在缓冲区，转身结束后再消费。
 	if turn_active:
 		return
@@ -149,22 +167,6 @@ func _process_actions() -> void:
 				.set_pass_type(PlayerStateData.PassType.THROUGH))
 		elif can_teammate_pass_ball():
 			ball.carrier.get_pass_request(player)
-		return
-
-	# 射门（从输入缓冲消费）
-	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHOOT):
-		if player.has_ball():
-			transition_state(Player.State.PREPPING_SHOT)
-		elif ball.can_air_interact():
-			if player.velocity == Vector2.ZERO:
-				if player.is_facing_target_goal():
-					transition_state(Player.State.VOLLEY_KICK)
-				else:
-					transition_state(Player.State.BICYCLE_KICK)
-			else:
-				transition_state(Player.State.HEADER)
-		elif player.velocity != Vector2.ZERO:
-			transition_state(Player.State.TACKLING)
 		return
 
 	# 特殊键：切换球员（无球时） / 假动作（持球时，M2 实现）（从输入缓冲消费）

@@ -283,7 +283,8 @@ func _execute_shot(target_pos: Vector2) -> void:
 		Vector2.ZERO,
 		player.power,
 		player.shooting,
-		1.0
+		1.0,
+		player.technique
 	)
 	var data := PlayerStateData.build().set_shot_power(shot.power).set_shot_direction(shot.direction)
 	player.switch_state(Player.State.SHOOTING, data)

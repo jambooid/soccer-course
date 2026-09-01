@@ -29,7 +29,7 @@ func shoot_ball() -> void:
 		var goal_center := player.target_goal.get_center_target_position()
 		var shot := ShootingPhysics.build_shot(
 			player.position, player.heading, goal_center, Vector2.ZERO,
-			player.power, player.shooting, 1.0
+			player.power, player.shooting, 1.0, player.technique
 		)
 		direction = shot.direction
 		power = shot.power

@@ -20,14 +20,21 @@ static func compute_aim_direction(
 	heading: Vector2,
 	goal_center: Vector2,
 	input_direction: Vector2,
-	shooting: float
+	shooting: float,
+	technique: float = 50.0,
+	player_power: float = 50.0
 ) -> Vector2:
 	var safe_heading := heading.normalized()
 	if safe_heading.length_squared() < 0.01:
 		safe_heading = Vector2.RIGHT
-	var aim_strength := lerpf(0.65, 1.0, clampf(shooting / 100.0, 0.0, 1.0))
-	var aim_offset := Vector2(0.0, clampf(input_direction.y, -1.0, 1.0) * AIM_VERTICAL_RANGE * aim_strength)
-	var goal_direction := origin.direction_to(goal_center + aim_offset)
+	var accuracy := _accuracy_factor(shooting, technique)
+	var power_control := clampf(player_power / 100.0, 0.0, 1.0)
+	# Better technique and shooting preserve deliberate lane input. Lower stats
+	# soften the target toward the center so most attempts stay on goal.
+	var lane_strength := lerpf(0.35, 1.0, accuracy)
+	var power_error := lerpf(1.15, 0.75, power_control)
+	var lane_offset := clampf(input_direction.y, -1.0, 1.0) * AIM_VERTICAL_RANGE * lane_strength * power_error
+	var goal_direction := origin.direction_to(goal_center + Vector2(0.0, lane_offset))
 	if goal_direction.length_squared() < 0.01:
 		goal_direction = safe_heading
 	# The target is always the goal line; input only selects its vertical lane.
@@ -38,13 +45,15 @@ static func compute_shot_speed(
 	player_power: float,
 	shooting: float,
 	charge: float,
-	distance_to_goal: float
+	distance_to_goal: float,
+	technique: float = 50.0
 ) -> float:
 	var ratio := clampf(charge, MIN_CHARGE_RATIO, 1.0)
 	var eased_charge := ease(ratio, 1.35)
 	var attribute_factor := lerpf(0.78, 1.18, clampf(shooting / 100.0, 0.0, 1.0))
+	var technique_factor := lerpf(0.9, 1.08, clampf(technique / 100.0, 0.0, 1.0))
 	var distance_factor := clampf(distance_to_goal / DISTANCE_REFERENCE, 0.75, 1.35)
-	var speed := player_power * lerpf(0.55, 1.0, eased_charge) * attribute_factor * distance_factor
+	var speed := player_power * lerpf(0.55, 1.0, eased_charge) * attribute_factor * technique_factor * distance_factor
 	return clampf(speed, MIN_SHOT_SPEED, MAX_SHOT_SPEED)
 
 static func build_shot(
@@ -54,8 +63,12 @@ static func build_shot(
 	input_direction: Vector2,
 	player_power: float,
 	shooting: float,
-	charge: float
+	charge: float,
+	technique: float = 50.0
 ) -> Dictionary:
-	var direction := compute_aim_direction(origin, heading, goal_center, input_direction, shooting)
-	var speed := compute_shot_speed(player_power, shooting, charge, origin.distance_to(goal_center))
+	var direction := compute_aim_direction(origin, heading, goal_center, input_direction, shooting, technique, player_power)
+	var speed := compute_shot_speed(player_power, shooting, charge, origin.distance_to(goal_center), technique)
 	return {"direction": direction, "power": speed, "charge": clampf(charge, 0.0, 1.0)}
+
+static func _accuracy_factor(shooting: float, technique: float) -> float:
+	return clampf((clampf(shooting, 0.0, 100.0) * 0.6 + clampf(technique, 0.0, 100.0) * 0.4) / 100.0, 0.0, 1.0)
