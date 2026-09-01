@@ -23,12 +23,6 @@ scenes/ball/ball_state_factory.gd
 scenes/ball/ball_states/ball_state_freeform.gd
 scenes/characters/ai/ai_behavior_field.gd
 scenes/characters/character_states/player_state_moving.gd
-scenes/characters/player.gd
-scenes/characters/player.tscn
-scenes/characters/animations/player_turn_45.tres
-scenes/characters/animations/player_turn_45_down.tres
-assets/art/characters/player_diagonal_turn.png
-tools/extract_player_diagonal_frames.swift
 ```
 
 ## 调试工具
@@ -80,13 +74,6 @@ scenes/ball/ball_states/ball_state_carried.gd
 - AI 带球适配：AI 控制球员时自动施加球位置修正力
 - 保持球在可控范围内
 
-### 斜向转身动画
-- `assets/art/characters/player_diagonal_turn.png` - 从 `player_turnning.png` 提取的 4x2 序列帧图
-- `scenes/characters/animations/player_turn_45.tres` - 右上四帧转身动画
-- `scenes/characters/animations/player_turn_45_down.tres` - 右下四帧转身动画
-- `scenes/characters/player.gd` / `player.tscn` - 转身期间切换专用精灵并按目标方向镜像
-- `tools/extract_player_diagonal_frames.swift` - 可重复执行的帧提取工具
-
 ### scenes/debug/dribble_debug_draw.gd
 - 可视化调试工具
 - 绘制：触球区（绿色）、速度向量（黄色）、可控圈（白色虚线）
@@ -94,7 +81,7 @@ scenes/ball/ball_states/ball_state_carried.gd
 
 ## 总结
 
-- **新增文件**：斜向转身序列帧、动画资源和回归测试
-- **修改文件**：带球移动状态及球员场景/脚本
+- **新增文件**：2 个（dribble_physics.gd, ball_state_dribbling.gd）
+- **修改文件**：6 个
 - **保留文件**：1 个（ball_state_carried.gd 作为回退）
 - **总代码行数**：约 800 行（不含测试）

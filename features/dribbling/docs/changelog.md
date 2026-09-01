@@ -1,16 +1,5 @@
 # 带球功能变更日志
 
-## [1.1.0] - 2026-08-31 - TESTING
-
-### 新增
-- ✅ 从 `assets/art/characters/player_turnning.png` 提取右上、右下两组四帧序列
-- ✅ 转向角度小于 60° 时按目标 Y 方向播放对应动画
-- ✅ 左向移动复用同一组帧并水平镜像
-- ✅ 增加无窗口资源级回归测试
-
-### 验证
-- `features/dribbling/tests/test_diagonal_turn_animation.gd`
-
 ## [1.0.0] - 2026-08-27 - INTEGRATED
 
 ### 新增
