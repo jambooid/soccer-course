@@ -32,9 +32,23 @@ const DIVING_SAVE_DISTANCE := PitchConstants.AI.GOALIE_DIVING_SAVE_DISTANCE
 
 var time_ball_held_ms := 0
 var time_since_last_ai_tick_goalie := 0
+var was_holding_ball := false
 
 func _ready() -> void:
 	time_since_last_ai_tick_goalie = Time.get_ticks_msec() + randi_range(0, AI_TICK_MS)
+
+func _process(_delta: float) -> void:
+	var is_holding_ball := ball != null and ball.carrier == player
+	if is_holding_ball and not was_holding_ball:
+		time_ball_held_ms = Time.get_ticks_msec()
+	elif not is_holding_ball:
+		time_ball_held_ms = 0
+	was_holding_ball = is_holding_ball
+
+	# 发球决策不能依赖门将当前是否处于 MOVING；扑救抱球后也必须继续运行。
+	# 无球时仍由球员状态机调度，避免干扰 RESETING 等动作状态。
+	if is_holding_ball and player.control_scheme == Player.ControlScheme.CPU:
+		process_ai()
 
 func process_ai() -> void:
 	# 门将使用自己的 tick 频率（更快）
@@ -92,6 +106,8 @@ func perform_ai_decisions() -> void:
 func _can_catch_ball() -> bool:
 	## 判断门将是否能抱住球
 	## 检查项：队友带球排除 + 高度 + 当前距离 + 预判距离
+	if ball.is_recapture_locked_for(player):
+		return false
 
 	# 队友带的球不能抢
 	if ball.carrier != null and ball.carrier.country == player.country and ball.carrier != player:
@@ -121,6 +137,7 @@ func _can_catch_ball() -> bool:
 func _catch_ball() -> void:
 	## 抱住球
 	time_ball_held_ms = Time.get_ticks_msec()
+	was_holding_ball = true
 	ball.hold_by_goalkeeper(player)
 
 # ============================================================

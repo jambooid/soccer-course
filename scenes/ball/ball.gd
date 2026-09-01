@@ -28,6 +28,8 @@ var height_velocity := 0.0
 var spawn_position := Vector2.ZERO
 var state_factory := BallStateFactory.new()
 var velocity := Vector2.ZERO
+var _recapture_lock_player : Player = null
+var _recapture_lock_until_ms := 0
 
 func _ready() -> void:
 	switch_state(State.FREEFORM)
@@ -151,6 +153,12 @@ func deflect_by(deflector: Player, new_velocity: Vector2) -> void:
 
 func hold_by_goalkeeper(goalie: Player) -> void:
 	## 门将抱住球
+	if is_recapture_locked_for(goalie):
+		return
+	# 扑救时球状态和门将动作状态可能在同一帧同时报告接球。
+	# 保持该操作幂等，避免旧 HELD 节点退出时清掉新状态的 carrier。
+	if carrier == goalie and current_state is BallStateHeldByGoalkeeper:
+		return
 	carrier = goalie
 	switch_state(State.HELD_BY_GOALKEEPER)
 
@@ -166,6 +174,22 @@ func release_with_kick(target_pos: Vector2) -> void:
 		return
 	current_state.release_with_kick(target_pos)
 
+func lock_recapture_for(context_player: Player, duration_ms: int) -> void:
+	## 仅阻止发球队员本人立即重新获得球权，不影响其他球员接球。
+	_recapture_lock_player = context_player
+	_recapture_lock_until_ms = Time.get_ticks_msec() + duration_ms
+
+func is_recapture_locked_for(context_player: Player) -> bool:
+	if Time.get_ticks_msec() >= _recapture_lock_until_ms:
+		_recapture_lock_player = null
+		_recapture_lock_until_ms = 0
+		return false
+	return context_player == _recapture_lock_player
+
+func clear_recapture_lock() -> void:
+	_recapture_lock_player = null
+	_recapture_lock_until_ms = 0
+
 func stop() -> void:
 	velocity = Vector2.ZERO
 
@@ -176,6 +200,7 @@ func place_at(pos: Vector2) -> void:
 	height = 0.0
 	height_velocity = 0.0
 	carrier = null
+	clear_recapture_lock()
 	switch_state(State.FREEFORM)
 
 
@@ -278,6 +303,7 @@ func on_team_reset() -> void:
 	velocity = Vector2.ZERO
 	height = 0
 	carrier = null
+	clear_recapture_lock()
 	switch_state(State.FREEFORM)
 
 func on_kickoff_started() -> void:

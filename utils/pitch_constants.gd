@@ -171,6 +171,8 @@ class BALL:
 	const HELD_DURATION_MAX_MS := 3000                  ## ms：最大持球时间
 	const HELD_OFFSET_Y := -10.0                        ## 绝对：抱球垂直偏移
 	const HELD_OFFSET_X := 6.0                          ## 绝对：抱球水平偏移
+	const HELD_FALLBACK_KICK_DISTANCE := SCALE_FACTOR * 250.0 ## 相对：超时兜底开球距离
+	const GOALIE_RELEASE_RECAPTURE_LOCK_MS := 800       ## ms：门将发球后禁止自己立即重新抱球
 
 	## SAVED 状态
 	const SAVED_TRANSITION_SPEED := SCALE_FACTOR * 25.0 ## 相对：转为其他状态的速度阈值

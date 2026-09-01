@@ -10,12 +10,6 @@ const LOD_CORE_COUNT := 3     ## 核心层人数（最近的 2-3 人，每 50ms 
 const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms 决策）
 ## 远端 = 其余球员（每 1000ms 决策）
 
-## === 控球权自动切换（PossessionManager）===
-const SWAP_COOLDOWN_MS := 800          ## 自动切换冷却时间，防止频繁跳变
-const DEFENSE_SWAP_DIST_THRESHOLD := 45.0  ## 防守时切换的距离阈值（当前球员比最近的远多少才切）
-const DEFENSE_SWAP_HYSTERESIS := 15.0       ## 滞回阈值：切换后新球员必须比旧的近这么多才稳定，防止来回跳
-const DEFENSE_SWAP_MIN_BALL_DIST := 60.0    ## 球离己方球员小于这个距离时不切换（避免贴身缠斗时乱切）
-
 @export var ball : Ball
 @export var goal_home : Goal
 @export var goal_away : Goal
@@ -27,7 +21,6 @@ var is_checking_for_kickoff_readiness := false
 var squad_home : Array[Player] = []
 var squad_away : Array[Player] = []
 var time_since_last_cache_refresh := Time.get_ticks_msec()
-var _last_auto_swap_ms := 0  ## 上次自动切换时间（冷却用）
 
 func _init() -> void:
 	GameEvents.team_reset.connect(on_team_reset.bind())
@@ -48,7 +41,6 @@ func _process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:
 		time_since_last_cache_refresh = Time.get_ticks_msec()
 		set_on_duty_weights()
-		_auto_swap_defender()  ## 防守时自动切换到离球最近的球员
 	if is_checking_for_kickoff_readiness:
 		check_for_kickoff_readiness()
 
@@ -162,9 +154,6 @@ func _on_ball_possession_stable(player: Player) -> void:
 	## - 如果获得球权的是己方人类玩家，不切换（已经是人类控制）
 	## - 如果获得球权的是己方 CPU 球员，把控制切给它
 	## - 双人合作模式：P1/P2 各占一个球员，不抢夺
-	if Time.get_ticks_msec() - _last_auto_swap_ms < SWAP_COOLDOWN_MS:
-		return
-
 	var p1_country := GameManager.player_setup[0]
 	var p2_country := GameManager.player_setup[1]
 	var is_p1_team := player.country == p1_country
@@ -215,83 +204,6 @@ func _on_ball_possession_stable(player: Player) -> void:
 			var scheme := farthest_human.control_scheme
 			farthest_human.set_control_scheme(Player.ControlScheme.CPU)
 			player.set_control_scheme(scheme)
-			_last_auto_swap_ms = Time.get_ticks_msec()
-
-func _auto_swap_defender() -> void:
-	## 防守时自动切换：球在对方脚下或自由球时，控制离球最近的己方球员
-	## 每 200ms 评估一次（和 weight cache 同步）
-	if Time.get_ticks_msec() - _last_auto_swap_ms < SWAP_COOLDOWN_MS:
-		return
-
-	var p1_country := GameManager.player_setup[0]
-	var p2_country := GameManager.player_setup[1]
-
-	# 球在己方脚下 → 不切换（由 _on_ball_possessed 处理）
-	if ball.carrier != null and ball.carrier.country == p1_country:
-		return
-	if not p2_country.is_empty() and ball.carrier != null and ball.carrier.country == p2_country:
-		return
-
-	# 对 P1 球队评估
-	if not p1_country.is_empty():
-		var p1_squad := squad_home if squad_home[0].country == p1_country else squad_away
-		_auto_swap_defender_for_scheme(p1_squad, Player.ControlScheme.P1)
-
-	# 对 P2 球队评估（仅对战模式）
-	if not p2_country.is_empty() and not GameManager.is_coop():
-		var p2_squad := squad_home if squad_home[0].country == p2_country else squad_away
-		_auto_swap_defender_for_scheme(p2_squad, Player.ControlScheme.P2)
-
-func _auto_swap_defender_for_scheme(squad: Array[Player], scheme: int) -> void:
-	## 对指定球队的指定控制方案进行防守自动切换
-	# 找到当前被该方案控制的球员（非门将）
-	var current_player: Player = null
-	for p in squad:
-		if p.control_scheme == scheme and p.role != Player.Role.GOALIE:
-			current_player = p
-			break
-	if current_player == null:
-		return
-
-	# 找到离球最近的非门将球员
-	var field_players : Array[Player] = squad.filter(
-		func(p: Player): return p.role != Player.Role.GOALIE
-	)
-	if field_players.size() <= 1:
-		return
-	field_players.sort_custom(func(p1: Player, p2: Player):
-		return p1.position.distance_squared_to(ball.position) < p2.position.distance_squared_to(ball.position))
-
-	var closest := field_players[0]
-	if closest == current_player:
-		return  # 已经是最近的，不用切
-
-	# 距离差超过阈值才切换，避免来回跳
-	var current_dist := current_player.position.distance_to(ball.position)
-	var closest_dist := closest.position.distance_to(ball.position)
-	if current_dist - closest_dist < DEFENSE_SWAP_DIST_THRESHOLD:
-		return
-
-	# 球离当前控制球员很近时不切换（避免贴身缠斗时频繁跳）
-	if current_dist < DEFENSE_SWAP_MIN_BALL_DIST:
-		return
-
-	# 球的运动方向如果是朝向当前控制球员的，不切换
-	# （球正往当前球员飞去，下一秒他可能就是最近的了，避免来回切）
-	if ball.velocity.length() > 10.0:
-		var to_current := (current_player.position - ball.position).normalized()
-		var ball_dir := ball.velocity.normalized()
-		if ball_dir.dot(to_current) > 0.3:  # 球大致朝向当前球员
-			return
-
-	# 不能切到已经被另一个人类玩家控制的球员（合作模式）
-	if closest.control_scheme != Player.ControlScheme.CPU:
-		return
-
-	# 执行切换
-	current_player.set_control_scheme(Player.ControlScheme.CPU)
-	closest.set_control_scheme(scheme)
-	_last_auto_swap_ms = Time.get_ticks_msec()
 
 func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void:
 	## 将指定控制方案切换到目标球员
@@ -306,7 +218,6 @@ func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void
 	if current_holder != null:
 		current_holder.set_control_scheme(Player.ControlScheme.CPU)
 	target.set_control_scheme(scheme)
-	_last_auto_swap_ms = Time.get_ticks_msec()
 
 ## === 越位判定 ===
 
@@ -364,4 +275,3 @@ func handle_offside(offender: Player, offside_position: Vector2) -> void:
 	# 让球停在越位位置（FREEFORM 状态，速度为 0）
 	ball.place_at(offside_position)
 	SoundPlayer.play(SoundPlayer.Sound.WHISTLE)
-

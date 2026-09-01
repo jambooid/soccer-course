@@ -8,6 +8,8 @@ extends BallState
 const HOLD_DURATION_MAX_MS := PitchConstants.BALL.HELD_DURATION_MAX_MS
 const HOLD_OFFSET_Y := PitchConstants.BALL.HELD_OFFSET_Y
 const HOLD_OFFSET_X := PitchConstants.BALL.HELD_OFFSET_X
+const FALLBACK_KICK_DISTANCE := PitchConstants.BALL.HELD_FALLBACK_KICK_DISTANCE
+const RECAPTURE_LOCK_MS := PitchConstants.BALL.GOALIE_RELEASE_RECAPTURE_LOCK_MS
 
 var time_held := 0
 
@@ -31,15 +33,10 @@ func _process(_delta: float) -> void:
 		_auto_kick()
 
 func _auto_kick() -> void:
-	var direction := carrier.heading
-	var kick_velocity := direction * carrier.power * 0.7
-	ball.velocity = kick_velocity
-	ball.height_velocity = 6.0
-	var gk_ref := carrier
-	GameEvents.ball_released.emit()
-	carrier = null
-	ball.carrier = null
-	transition_state(Ball.State.KICKED, BallStateData.build().set_kicker(gk_ref))
+	# AI 正常情况下会选择队友；这个强制兜底也必须把球踢出抱球半径，
+	# 否则弱小的速度会让门将立刻再次抱球，形成比赛卡死循环。
+	var target_pos := carrier.position + carrier.heading * FALLBACK_KICK_DISTANCE
+	release_with_kick(target_pos)
 
 func release_with_throw(target_pos: Vector2) -> void:
 	var direction := ball.position.direction_to(target_pos)
@@ -47,6 +44,7 @@ func release_with_throw(target_pos: Vector2) -> void:
 	var intensity := sqrt(2 * distance * ball.friction_ground) * 0.8
 	ball.velocity = direction * intensity
 	var gk_ref := carrier
+	ball.lock_recapture_for(gk_ref, RECAPTURE_LOCK_MS)
 	GameEvents.ball_released.emit()
 	carrier = null
 	ball.carrier = null
@@ -59,6 +57,7 @@ func release_with_kick(target_pos: Vector2) -> void:
 	ball.velocity = direction * intensity
 	ball.height_velocity = PitchConstants.GRAVITY * distance / (1.5 * intensity)
 	var gk_ref := carrier
+	ball.lock_recapture_for(gk_ref, RECAPTURE_LOCK_MS)
 	GameEvents.ball_released.emit()
 	carrier = null
 	ball.carrier = null
