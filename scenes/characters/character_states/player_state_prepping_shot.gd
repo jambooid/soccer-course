@@ -22,8 +22,10 @@ func _process(delta: float) -> void:
 	var input_direction := Vector2.ZERO
 	if player.control_scheme != Player.ControlScheme.CPU:
 		input_direction = KeyUtils.get_input_vector(player.control_scheme)
-	# Direction input is sampled for the final aim lane only. The player keeps
-	# the velocity and heading from the moment charge began.
+	# Direction input never cancels charge. It still controls the dribble so the
+	# player can reposition while charging; the same input is sampled again on
+	# release for the shot's vertical aim lane.
+	_apply_charge_movement(input_direction, delta)
 
 	elapsed_charge += delta
 	var ratio := ShootingPhysics.charge_ratio(elapsed_charge)
@@ -62,6 +64,23 @@ func _release_shot(input_direction: Vector2, ratio: float) -> void:
 func _cancel_charge() -> void:
 	player.is_charging = false
 	player.charge_display = 0.0
+
+func _apply_charge_movement(input_direction: Vector2, delta: float) -> void:
+	if player.control_scheme == Player.ControlScheme.CPU:
+		return
+	if input_direction.length() > 0.1:
+		var direction := input_direction.normalized()
+		var speed_multiplier := PitchConstants.PLAYER.MOVING_SPRINT_SPEED_MULTIPLIER \
+			if KeyUtils.is_action_pressed(player.control_scheme, KeyUtils.Action.SPRINT) else 1.0
+		player.dribble_mode = DribblePhysics.Mode.SPRINT \
+			if speed_multiplier > 1.0 else DribblePhysics.Mode.JOG
+		player.velocity = direction * player.speed * speed_multiplier
+		if abs(direction.x) > 0.1:
+			player.heading = Vector2.LEFT if direction.x < 0.0 else Vector2.RIGHT
+		player.set_movement_animation()
+	else:
+		# Keep the pre-charge momentum when no new direction is held.
+		player.velocity = player.velocity.move_toward(Vector2.ZERO, player.speed * 2.0 * delta)
 
 func _check_cancel_input() -> void:
 	## 蓄力起手窗口内可取消为传球

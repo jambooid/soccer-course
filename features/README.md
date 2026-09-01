@@ -107,7 +107,7 @@ godot --path . -e features/dribbling/tests/test_scene.tscn
 godot --path . features/shooting/tests/test_manual_scene.tscn
 ```
 
-按住射门键蓄力，松开后才播放踢球动画；蓄力期间方向键不会改变带球方向，只会微调出球轨迹。
+按住射门键蓄力，松开后才播放踢球动画；蓄力期间方向键可改变带球方向，并微调出球轨迹。
 
 ### 创建新功能模块
 

@@ -17,7 +17,7 @@ func _ready() -> void:
 	print("高射门属性球员 (WASD/J): shooting=95, power=180")
 	print("低射门属性球员 (方向键/7): shooting=35, power=130")
 	print("按住射门键蓄力，松开后才播放射门动画")
-	print("蓄力期间按方向键：保持带球方向，仅微调出球轨迹")
+	print("蓄力期间按方向键：保持蓄力并改变带球方向，释放时微调轨迹")
 
 	initial_ball_position = ball.position
 	initial_high_position = player_high.position
@@ -92,7 +92,7 @@ func _process(_delta: float) -> void:
 		_player_name(active_player), state_name, roundi(charge * 100.0), ball.velocity.length(),
 		"有球" if ball.carrier == active_player else "无球"
 	]
-	aim_label.text = "目标球门：自动辅助到右侧中路\n蓄力期间方向键：不改变带球方向，仅微调轨迹"
+	aim_label.text = "目标球门：自动辅助到右侧中路\n蓄力期间方向键：改变带球方向并微调轨迹"
 	queue_redraw()
 
 func _draw() -> void:

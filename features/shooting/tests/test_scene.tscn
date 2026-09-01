@@ -111,7 +111,7 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 2
 theme_override_font_sizes/font_size = 12
-text = "射门系统独立手动测试\nWASD/J：高射门属性球员    方向键/7：低射门属性球员\n按住射门蓄力，松开出脚；蓄力期间方向键不改变带球方向，仅微调轨迹\n1/2：切换球员    R：重置    TAB：调试瞄准线    ESC：退出"
+text = "射门系统独立手动测试\nWASD/J：高射门属性球员    方向键/7：低射门属性球员\n按住射门蓄力，松开出脚；蓄力期间方向键可改变带球方向并微调轨迹\n1/2：切换球员    R：重置    TAB：调试瞄准线    ESC：退出"
 
 [node name="Status" type="Label" parent="UI"]
 offset_left = 10.0

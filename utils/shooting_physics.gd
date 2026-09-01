@@ -11,6 +11,7 @@ const AIM_VERTICAL_RANGE := PitchConstants.PLAYER.SHOOT_AIM_VERTICAL_RANGE
 const MIN_SHOT_SPEED := PitchConstants.PLAYER.SHOOT_MIN_SPEED
 const MAX_SHOT_SPEED := PitchConstants.PLAYER.SHOOT_MAX_SPEED
 const DISTANCE_REFERENCE := PitchConstants.PLAYER.SHOOT_DISTANCE_REFERENCE
+const POWER_MULTIPLIER := PitchConstants.PLAYER.SHOOT_POWER_MULTIPLIER
 
 static func charge_ratio(elapsed_seconds: float) -> float:
 	return clampf(elapsed_seconds / MAX_CHARGE_SECONDS, 0.0, 1.0)
@@ -53,7 +54,7 @@ static func compute_shot_speed(
 	var attribute_factor := lerpf(0.78, 1.18, clampf(shooting / 100.0, 0.0, 1.0))
 	var technique_factor := lerpf(0.9, 1.08, clampf(technique / 100.0, 0.0, 1.0))
 	var distance_factor := clampf(distance_to_goal / DISTANCE_REFERENCE, 0.75, 1.35)
-	var speed := player_power * lerpf(0.55, 1.0, eased_charge) * attribute_factor * technique_factor * distance_factor
+	var speed := player_power * lerpf(0.55, 1.0, eased_charge) * attribute_factor * technique_factor * distance_factor * POWER_MULTIPLIER
 	return clampf(speed, MIN_SHOT_SPEED, MAX_SHOT_SPEED)
 
 static func build_shot(

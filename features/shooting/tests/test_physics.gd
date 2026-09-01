@@ -25,6 +25,7 @@ func _assert(condition: bool, name: String) -> void:
 
 func test_charge_is_bounded() -> void:
 	_assert(is_equal_approx(ShootingPhysics.charge_ratio(-1.0), 0.0), "negative charge clamps to zero")
+	_assert(is_equal_approx(PitchConstants.PLAYER.SHOOT_MAX_CHARGE_SECONDS, 0.75), "charge duration is 0.75 seconds")
 	_assert(is_equal_approx(ShootingPhysics.charge_ratio(99.0), 1.0), "long charge clamps to one")
 
 func test_aim_assists_toward_goal() -> void:
