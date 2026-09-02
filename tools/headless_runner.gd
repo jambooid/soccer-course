@@ -18,6 +18,7 @@ const GoalkeeperDecisionPolicyScript := preload("res://utils/goalkeeper_decision
 const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
 const DribbleTurnReplayScript := preload("res://utils/dribble_turn_replay.gd")
 const ActionPhaseTimelineScript := preload("res://utils/action_phase_timeline.gd")
+const TackleEligibilityPolicyScript := preload("res://utils/tackle_eligibility_policy.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
@@ -45,6 +46,7 @@ func _run() -> void:
 	_run_suite("player_switch_selector", _test_player_switch_selector)
 	_run_suite("dribble_turn_replay", _test_dribble_turn_replay)
 	_run_suite("action_phase_timeline", _test_action_phase_timeline)
+	_run_suite("tackle_eligibility_policy", _test_tackle_eligibility_policy)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
@@ -406,6 +408,29 @@ func _test_action_phase_timeline() -> void:
 		_expect(timeline.can_contact(), "%s contacts only during active phase" % action)
 		timeline.advance(timeline.active + 0.001)
 		_expect(not timeline.can_contact(), "%s cannot contact during recovery" % action)
+
+func _test_tackle_eligibility_policy() -> void:
+	var standing := {"distance": 8.0, "ball_first": true, "direction_dot": 0.9,
+		"approach_speed": 25.0, "defense": 75.0, "technique": 60.0}
+	_expect(int(TackleEligibilityPolicyScript.resolve(standing).outcome) == TackleEligibilityPolicyScript.Outcome.INTERCEPT,
+		"front standing challenge intercepts")
+	var slide := standing.duplicate(true)
+	slide.sliding = true
+	slide.approach_speed = 80.0
+	_expect(int(TackleEligibilityPolicyScript.resolve(slide).outcome) == TackleEligibilityPolicyScript.Outcome.TACKLE_WIN,
+		"fast forward slide wins ball first")
+	var behind := slide.duplicate(true)
+	behind.direction_dot = -0.5
+	_expect(int(TackleEligibilityPolicyScript.resolve(behind).outcome) == TackleEligibilityPolicyScript.Outcome.MISS,
+		"backward slide misses")
+	var slow := slide.duplicate(true)
+	slow.approach_speed = 20.0
+	_expect(int(TackleEligibilityPolicyScript.resolve(slow).outcome) == TackleEligibilityPolicyScript.Outcome.MISS,
+		"slow slide misses")
+	var body_first := standing.duplicate(true)
+	body_first.ball_first = false
+	_expect(int(TackleEligibilityPolicyScript.resolve(body_first).outcome) == TackleEligibilityPolicyScript.Outcome.MISS,
+		"body-first challenge cannot win ball")
 
 func _test_dribble_touch_controller() -> void:
 	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
