@@ -58,17 +58,7 @@ func _physics_process(delta: float) -> void:
 func on_player_enter(body: Player) -> void:
 	# 射门碰到球员
 	if body.role == Player.Role.GOALIE:
-		# 低平慢球 → 直接抱住
-		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX \
-				and ball.velocity.length() <= GOALIE_CATCH_SPEED:
-			ball.hold_by_goalkeeper(body)
-			return
-		# 高速/高球击中门将 → 折射（打在门将身上弹开，防止直接穿身）
-		var deflect_dir: Vector2 = ball.velocity.bounce(
-			Vector2.UP if body.position.y < ball.position.y else Vector2.DOWN)
-		deflect_dir = deflect_dir.rotated(randf_range(-0.2, 0.2))
-		ball.deflect_by(body, deflect_dir * ball.velocity.length() * 0.4)
-		SoundPlayer.play(SoundPlayer.Sound.SAVE)
+		ball.goalkeeper_interact(body)
 		return
 
 	# 普通球员：射门打在身上 → 折射

@@ -2,6 +2,8 @@ class_name Ball
 extends AnimatableBody2D
 
 const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+const BallInteractionResolverScript := preload("res://utils/ball_interaction_resolver.gd")
+const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
 
 ## 球物理常量（使用 PitchConstants 集中管理）
 const BOUNCINESS := PitchConstants.BALL.BOUNCINESS
@@ -159,11 +161,47 @@ func deflect_by(deflector: Player, new_velocity: Vector2) -> void:
 	switch_state(State.DEFLECTED, BallStateData.build().set_kicker(deflector))
 
 func hold_by_goalkeeper(goalie: Player) -> void:
+	if not can_goalkeeper_collect(goalie):
+		return
+	_hold_by_goalkeeper(goalie)
+
+func can_goalkeeper_collect(goalie: Player) -> bool:
+	return _goalkeeper_interaction(goalie, false).get("kind", -1) \
+		== BallInteractionResolverScript.Kind.COLLECT
+
+func goalkeeper_interact(goalie: Player, allow_deflect: bool = true) -> void:
+	var resolved := _goalkeeper_interaction(goalie, allow_deflect)
+	if resolved.is_empty():
+		return
+	if int(resolved.kind) == BallInteractionResolverScript.Kind.COLLECT:
+		_hold_by_goalkeeper(goalie)
+	elif int(resolved.kind) == BallInteractionResolverScript.Kind.DEFLECT:
+		var normal := (position - goalie.position).normalized()
+		if normal == Vector2.ZERO:
+			normal = -velocity.normalized()
+		deflect_by(goalie, BallTrajectoryScript.bounce_velocity(velocity, normal, 0.4))
+
+func _goalkeeper_interaction(goalie: Player, allow_deflect: bool) -> Dictionary:
+	if goalie == null or not can_be_picked_up_by(goalie):
+		return {}
+	var goal_center := goalie.own_goal.get_center_target_position()
+	var area_extent := PitchConstants.AI.GOALIE_RUSH_OUT_DISTANCE
+	var in_penalty_area := absf(position.x - goal_center.x) <= area_extent \
+		and absf(position.y - goal_center.y) <= area_extent
+	var teammate_carrier := carrier != null and carrier != goalie and carrier.country == goalie.country
+	var intent := GoalkeeperInteractionPolicyScript.resolve(goalie.jersey_number, {
+		"in_penalty_area": in_penalty_area,
+		"release_locked": is_recapture_locked_for(goalie),
+		"teammate_carrier": teammate_carrier,
+		"height": height,
+		"speed": velocity.length(),
+		"distance": goalie.position.distance_to(position),
+		"allow_deflect": allow_deflect,
+	})
+	return BallInteractionResolverScript.resolve([intent]) if not intent.is_empty() else {}
+
+func _hold_by_goalkeeper(goalie: Player) -> void:
 	## 门将抱住球
-	if not can_be_picked_up_by(goalie):
-		return
-	if is_recapture_locked_for(goalie):
-		return
 	# 扑救时球状态和门将动作状态可能在同一帧同时报告接球。
 	# 保持该操作幂等，避免旧 HELD 节点退出时清掉新状态的 carrier。
 	if carrier == goalie and current_state is BallStateHeldByGoalkeeper:

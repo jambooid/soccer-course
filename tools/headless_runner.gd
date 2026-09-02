@@ -13,6 +13,7 @@ const ControlProfileScript := preload("res://utils/control_profile.gd")
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
 const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
+const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
 
 var _passed := 0
 var _failed := 0
@@ -33,6 +34,7 @@ func _run() -> void:
 	_run_suite("team_tactics", _test_team_tactics)
 	_run_suite("intercept_resolver", _test_intercept_resolver)
 	_run_suite("offside_judge", _test_offside_judge)
+	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -255,6 +257,37 @@ func _test_offside_judge() -> void:
 	_expect(not OffsideJudgeScript.is_target_offside(
 		Vector2(-10.0, 0.0), defenders, Vector2(40.0, 0.0), 1
 	), "attacker in own half is never offside")
+
+func _test_goalkeeper_interaction_policy() -> void:
+	var catch_data := {
+		"in_penalty_area": true,
+		"release_locked": false,
+		"teammate_carrier": false,
+		"height": 12.0,
+		"speed": 100.0,
+		"distance": 10.0,
+	}
+	var catch_intent := GoalkeeperInteractionPolicyScript.resolve(1, catch_data)
+	_expect(int(catch_intent.kind) == BallInteractionResolverScript.Kind.COLLECT,
+		"valid low-speed ball is catchable")
+	var parry_data := catch_data.duplicate(true)
+	parry_data.speed = 260.0
+	var parry_intent := GoalkeeperInteractionPolicyScript.resolve(1, parry_data)
+	_expect(int(parry_intent.kind) == BallInteractionResolverScript.Kind.DEFLECT,
+		"fast shot is parried instead of collected")
+	var outside_data := catch_data.duplicate(true)
+	outside_data.in_penalty_area = false
+	_expect(GoalkeeperInteractionPolicyScript.resolve(1, outside_data).is_empty(),
+		"keeper cannot collect outside the penalty area")
+	var locked_data := catch_data.duplicate(true)
+	locked_data.release_locked = true
+	_expect(GoalkeeperInteractionPolicyScript.resolve(1, locked_data).is_empty(),
+		"release lock blocks immediate recollection")
+	var opponent_pass := catch_data.duplicate(true)
+	opponent_pass.teammate_carrier = false
+	_expect(int(GoalkeeperInteractionPolicyScript.resolve(1, opponent_pass).kind)
+		== BallInteractionResolverScript.Kind.COLLECT,
+		"opponent pass remains legally collectible")
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

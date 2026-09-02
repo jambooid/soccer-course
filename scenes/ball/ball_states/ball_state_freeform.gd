@@ -73,7 +73,7 @@ func _check_auto_capture() -> void:
 			intents.append(BallInteractionResolverScript.create_intent(
 				BallInteractionResolverScript.Kind.COLLECT,
 				player.jersey_number, {"distance": distance,
-				"eligible": ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX}))
+				"eligible": ball.can_goalkeeper_collect(player)}))
 		elif player.can_carry_ball() and distance <= AUTO_CAPTURE_DISTANCE:
 			intents.append(BallInteractionResolverScript.create_intent(
 				BallInteractionResolverScript.Kind.CONTROL,

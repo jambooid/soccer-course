@@ -31,20 +31,4 @@ func _on_ball_entered(_body: Node) -> void:
 		return
 	has_saved = true
 
-	# 如果球速不快且高度合适 → 直接抱住（不用扑出去）
-	if ball.velocity.length() < 180.0 \
-			and ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
-		ball.hold_by_goalkeeper(player)
-		return
-
-	# 快球/高球 → 扑出
-	# 扑救方向：朝向球场前方（远离自己球门），加上侧向分量
-	var forward := player.heading  # 守门员面朝球场方向
-	# 侧向：球在守门员哪一侧就往哪一侧扑出
-	var lateral_dir: float = sign(ball.position.y - player.position.y)
-	var save_dir: Vector2 = (forward + Vector2(0, lateral_dir) * 0.5).normalized()
-	# 如果球比较高，给一个向上的分量
-	if ball.height > 10.0:
-		save_dir.y -= 0.3
-		save_dir = save_dir.normalized()
-	ball.save_by(player, save_dir, 0.4)
+	ball.goalkeeper_interact(player)

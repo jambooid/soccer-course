@@ -49,10 +49,8 @@ func _check_immediate_goalie_catch() -> void:
 	for body in bodies:
 		if not (body is Player):
 			continue
-		if body == goalie and ball.height <= PitchConstants.HEIGHT_SAVED_GOALIE_CATCH:
-			ball.carrier = body
-			carrier = body
-			transition_state(Ball.State.HELD_BY_GOALKEEPER)
+		if body == goalie and ball.can_goalkeeper_collect(body):
+			ball.hold_by_goalkeeper(body)
 			return
 
 func _check_nearby_goalie() -> void:
@@ -60,17 +58,13 @@ func _check_nearby_goalie() -> void:
 	if goalie == null:
 		return
 	if goalie.position.distance_to(ball.position) <= 12.0 \
-			and ball.height <= PitchConstants.HEIGHT_SAVED_GOALIE_CATCH:
-		ball.carrier = goalie
-		carrier = goalie
-		transition_state(Ball.State.HELD_BY_GOALKEEPER)
+			and ball.can_goalkeeper_collect(goalie):
+		ball.hold_by_goalkeeper(goalie)
 
 func on_player_enter(body: Player) -> void:
 	if body.role == Player.Role.GOALIE and goalie != null and body == goalie:
-		if ball.height < PitchConstants.HEIGHT_SAVED_GOALIE_CATCH:
-			ball.carrier = body
-			carrier = body
-			transition_state(Ball.State.HELD_BY_GOALKEEPER)
+		if ball.can_goalkeeper_collect(body):
+			ball.hold_by_goalkeeper(body)
 	elif body.can_carry_ball() and ball.height < PitchConstants.HEIGHT_SAVED_PLAYER_PICKUP:
 		ball.carrier = body
 		body.control_ball()
