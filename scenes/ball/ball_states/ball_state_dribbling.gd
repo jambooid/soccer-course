@@ -79,6 +79,37 @@ func _physics_process(delta: float) -> void:
 	# 2. 应用地面摩擦力（指数衰减）
 	ball.velocity = DribblePhysics.apply_friction(ball.velocity, delta)
 
+	# 2.5 控球稳定约束
+	#
+	# DRIBBLING 的球仍然是独立的物理实体，但在没有抢断/碰撞时，
+	# 球员应始终能把球留在自己的控制范围内。单纯依赖周期性触球会
+	# 在停步或转身期间留下一个“无触球死区”：球继续沿旧惯性滚动，
+	# 而球员已经减速/换向，下一帧就可能越过失控边界。
+	# 低速和转身时使用强约束，高速时只施加轻微回拉，保留带球惯性。
+	var turn_state: PlayerStateMoving = carrier.current_state as PlayerStateMoving
+	if turn_state != null and turn_state.turn_active:
+		# 转身是主动控球动作：收球到新方向的脚下，避免旧方向惯性把球甩开。
+		var turn_ideal_pos := carrier.position + player_dir * 12.0
+		var turn_follow_factor: float = 1.0 - pow(0.02, delta / maxf(turn_state.turn_duration, 0.01))
+		ball.position = ball.position.lerp(turn_ideal_pos, clampf(turn_follow_factor, 0.0, 1.0))
+		ball.velocity = Vector2.ZERO
+	elif current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
+		# 停步时把球收回脚边，并让残余速度快速归零。
+		var idle_ideal_pos := carrier.position + player_dir * 12.0
+		var idle_offset := idle_ideal_pos - ball.position
+		if idle_offset.length() > 3.0:
+			ball.position = ball.position.lerp(idle_ideal_pos, 0.4)
+		ball.velocity = ball.velocity.lerp(carrier.velocity, 0.5)
+		if not movement_intended and ball.velocity.length() < DribblePhysics.IDLE_SPEED_THRESHOLD:
+			ball.velocity = Vector2.ZERO
+	else:
+		# 正常跑动时只在明显偏离脚下时回拉，不覆盖触球冲量。
+		var moving_ideal_pos := carrier.position + player_dir * 12.0
+		var to_ideal := moving_ideal_pos - ball.position
+		var deviation := to_ideal.length()
+		if deviation > 8.0:
+			ball.velocity += to_ideal.normalized() * deviation * 0.15
+
 	# 3. 物理移动 + 墙壁反弹
 	var collision := ball.move_and_collide(ball.velocity * delta)
 	if collision != null:
@@ -96,11 +127,15 @@ func _physics_process(delta: float) -> void:
 	# 宽限期内失控距离放大
 	if grace_period_timer > 0.0:
 		max_control *= GRACE_CONTROL_DIST_MULT
-	if dist > max_control and to_ball.dot(player_dir) > 0:
+	# 球虽然暂时越过边界，但如果正在回到球员身边，不应被判为丢球。
+	# 这会过滤掉转身/急停时的单帧惯性超出；只有球仍在向外滚时才释放。
+	var moving_away := ball.velocity.length() < 5.0 \
+		or (dist > 0.001 and ball.velocity.dot(to_ball / dist) > 0.0)
+	if dist > max_control and to_ball.dot(player_dir) > 0 and moving_away:
 		_release_ball()
 		return
 
-	# 5. Discrete touch impulses are the sole voluntary ball correction.
+	# 5. 触球冲量负责主动推进；上面的约束只负责防止无对抗时脱离控制。
 	var touch: Dictionary = _touch_controller.advance(delta, ball.position, carrier.position,
 		player_dir, ball.velocity, carrier.velocity, carrier.speed, effective_tech,
 		mode, movement_intended)
