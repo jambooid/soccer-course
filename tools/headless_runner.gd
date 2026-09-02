@@ -15,6 +15,7 @@ const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
 const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
+const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
 var _passed := 0
 var _failed := 0
@@ -37,6 +38,7 @@ func _run() -> void:
 	_run_suite("offside_judge", _test_offside_judge)
 	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
+	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -341,6 +343,18 @@ func _touch_sequence(direction: Vector2, mode: int, movement_intended: bool) -> 
 		controller.advance(1.0 / 60.0, ball_position, Vector2.ZERO, direction,
 			Vector2.ZERO, player_velocity, 100.0, 70.0, mode, movement_intended)
 	return controller.events.duplicate(true)
+
+func _test_cpu_action_selector() -> void:
+	var safe_pass := {"kind": "PASS", "eligible": true, "reachable": true, "rule_legal": true,
+		"eta": 0.5, "utility": CpuActionSelectorScript.pass_utility(0.9, 0.5, 0.1, 80.0)}
+	var blocked_pass := {"kind": "PASS", "eligible": true, "reachable": true, "rule_legal": false,
+		"eta": 0.3, "utility": 1.0}
+	var retain := {"kind": "RETAIN", "eligible": true, "reachable": true, "rule_legal": true,
+		"eta": 0.0, "utility": 0.3}
+	var selected := CpuActionSelectorScript.select([blocked_pass, retain, safe_pass])
+	_expect(selected.kind == "PASS" and selected.rule_legal, "safe reachable pass beats retain and illegal lane")
+	_expect(selected == CpuActionSelectorScript.select([retain, safe_pass, blocked_pass]),
+		"same action snapshot selects deterministically")
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

@@ -9,6 +9,7 @@ const TACKLE_PROBABILITY := 0.3
 ## 距离判断（使用 PitchConstants 集中管理）
 const SHOT_DISTANCE := PitchConstants.AI.SHOT_DISTANCE
 const TACKLE_DISTANCE := PitchConstants.AI.TACKLE_DISTANCE
+const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
 ## 无球跑位（进攻支援）参数
 const SUPPORT_RUN_WING_WIDTH := 70.0       ## 边路球员拉开宽度
@@ -133,70 +134,33 @@ func perform_ai_decisions() -> void:
 		_make_carrier_decision()
 
 func _make_carrier_decision() -> void:
-	## CPU 持球决策树
-	## 根据场上形势、属性、位置决定：射门 / 传球(短/长/直塞) / 带球
 	var target_goal_pos := player.target_goal.get_center_target_position()
 	var dist_to_goal := player.position.distance_to(target_goal_pos)
-	var own_goal_pos := player.own_goal.get_center_target_position()
-	var dist_to_own_goal := player.position.distance_to(own_goal_pos)
-
-	# 场上区域判断
-	var in_attacking_third := dist_to_goal < SHOT_DISTANCE * 1.5
-	var in_midfield := dist_to_goal > SHOT_DISTANCE and dist_to_own_goal > SHOT_DISTANCE
-	var in_own_half := dist_to_own_goal < dist_to_goal
-
-	# 防守压力（附近对手数量）
 	var opponent_count := _count_nearby_opponents()
-	var under_pressure := opponent_count >= 2
-
-	# 玩家队伍的 AI 减少射门/传球频率（把球权交给玩家主导）
-	var is_player_team := GameManager.player_setup[0] == player.country \
-		or GameManager.player_setup[1] == player.country
-	var decision_multiplier := 0.1 if is_player_team else 1.0
-
-	# === 决策优先级 ===
-
-	# 1. 禁区内有机会 → 射门（最高优先级）
-	if in_attacking_third and dist_to_goal < SHOT_DISTANCE:
-		var shoot_prob := SHOT_PROBABILITY
-		# 射门属性高的球员更倾向射门
-		shoot_prob *= 0.5 + (player.shooting / 100.0) * 0.8
-		# 防守压力大时降低射门概率（更难起脚）
-		if under_pressure:
-			shoot_prob *= 0.5
-		if randf() < shoot_prob * decision_multiplier:
-			player.dribble_mode = DribblePhysics.Mode.JOG  # 射门前切回普通模式保证精度
-			_execute_shot(target_goal_pos)
-			return
-
-	# 2. 防守压力大 → 传球（出球）
-	if under_pressure and randf() < 0.6 * decision_multiplier:
-		var pass_result := _find_best_pass_option()
-		if pass_result.target != null:
-			player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
-			_execute_pass(pass_result.target, pass_result.pass_type)
-			return
-
-	# 3. 有好的直塞/长传机会 → 传威胁球
-	if not in_own_half:
-		var pass_result := _find_best_pass_option()
-		if pass_result.target != null and pass_result.quality > 0.7:
-			var threat_pass_prob := 0.15 + (player.technique / 100.0) * 0.2
-			if randf() < threat_pass_prob * decision_multiplier:
-				player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
-				_execute_pass(pass_result.target, pass_result.pass_type)
-				return
-
-	# 4. 中场区域，前面没人 → 偶尔长传找前锋
-	if in_midfield and opponent_count == 0 and randf() < 0.05 * decision_multiplier:
-		var forward_target := _find_most_forward_teammate()
-		if forward_target != null:
-			player.dribble_mode = DribblePhysics.Mode.JOG  # 传球前切回普通模式保证精度
-			_execute_pass(forward_target, PlayerStateData.PassType.LONG)
-			return
-
-	# 5. 默认：继续带球（不做决策，movement 系统负责推进）
-	# 技术好的球员更愿意带球推进（这里不做任何事 = 继续带球）
+	var pressure := clampf(float(opponent_count) / 3.0, 0.0, 1.0)
+	var pass_result := _find_best_pass_option()
+	var pass_distance := player.position.distance_to(pass_result.get("target_position", player.position))
+	var pass_eta := sqrt(2.0 * pass_distance / PitchConstants.BALL.KICKED_GROUND_FRICTION)
+	var actions: Array[Dictionary] = [
+		{"kind": "SHOT", "eligible": dist_to_goal <= SHOT_DISTANCE,
+			"reachable": _is_ball_ready_for_release(), "rule_legal": true,
+			"eta": dist_to_goal / maxf(player.power, 1.0),
+			"utility": CpuActionSelectorScript.shot_utility(dist_to_goal, SHOT_DISTANCE, player.shooting, pressure)},
+		{"kind": "PASS", "eligible": pass_result.target != null,
+			"reachable": pass_result.target != null and _is_ball_ready_for_release(), "rule_legal": pass_result.target != null,
+			"eta": pass_eta, "utility": CpuActionSelectorScript.pass_utility(
+				float(pass_result.get("quality", 0.0)), pass_eta, pressure, player.technique),
+			"target": pass_result.get("target"), "pass_type": pass_result.get("pass_type")},
+		{"kind": "RETAIN", "eligible": true, "reachable": true, "rule_legal": true,
+			"eta": 0.0, "utility": clampf(0.35 + player.technique / 250.0 - pressure * 0.2, 0.0, 1.0)},
+	]
+	var selected := CpuActionSelectorScript.select(actions)
+	if selected.kind == "SHOT":
+		player.dribble_mode = DribblePhysics.Mode.JOG
+		_execute_shot(target_goal_pos)
+	elif selected.kind == "PASS":
+		player.dribble_mode = DribblePhysics.Mode.JOG
+		_execute_pass(selected.target, int(selected.pass_type))
 
 func _count_nearby_opponents() -> int:
 	## 统计附近的对手数量
@@ -252,7 +216,8 @@ func _find_best_pass_option() -> Dictionary:
 			best_target = teammate
 			best_pass_type = pass_type
 
-	return {"target": best_target, "quality": best_quality, "pass_type": best_pass_type}
+	return {"target": best_target, "target_position": best_target.position if best_target != null else player.position,
+		"quality": best_quality, "pass_type": best_pass_type}
 
 func _is_tactical_offside_target(target: Vector2) -> bool:
 	if player.tactical_attacking_dir > 0:
