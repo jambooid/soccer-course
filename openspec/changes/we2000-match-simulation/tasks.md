@@ -26,7 +26,7 @@
 ## 4. WE-Style Action Rhythm
 
 - [x] 4.1 Replace per-frame dribble position/velocity correction with seeded, logged touch impulses and control-distance rules; verify straight, stop, 90-degree, 180-degree, and sprint scenarios emit expected touch sequences.
-- [ ] 4.2 Make turn handling affect player intent and action timing without directly rewriting ball movement; verify identical turn replays retain the same touch events and loss-of-control tick.
+- [x] 4.2 Make turn handling affect player intent and action timing without directly rewriting ball movement; verify identical turn replays retain the same touch events and loss-of-control tick.
 - [ ] 4.3 Model pass, shot, tackle, aerial contact, and goalkeeper actions as startup, active, and recovery phases; verify each action affects the ball only during its active window.
 - [ ] 4.4 Split standing interception and sliding tackle eligibility, including direction, approach speed, defense, technique, and ball-first ordering; verify the five canonical tackle scenarios return the expected outcome.
 - [ ] 4.5 Connect action events to existing player/ball state-machine adapters and remove superseded direct ownership mutations; verify a playable kickoff, pass, shot, save, and tackle flow has no duplicate possession events.

@@ -16,6 +16,7 @@ const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
 const GoalkeeperDecisionPolicyScript := preload("res://utils/goalkeeper_decision_policy.gd")
 const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
+const DribbleTurnReplayScript := preload("res://utils/dribble_turn_replay.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
@@ -41,6 +42,7 @@ func _run() -> void:
 	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
 	_run_suite("goalkeeper_decision_policy", _test_goalkeeper_decision_policy)
 	_run_suite("player_switch_selector", _test_player_switch_selector)
+	_run_suite("dribble_turn_replay", _test_dribble_turn_replay)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
@@ -379,6 +381,20 @@ func _test_player_switch_selector() -> void:
 	_expect(int(possession.id) == 2, "possession switch favors the new carrier")
 	_expect(possession == PlayerSwitchSelectorScript.select(candidates, Vector2.ZERO),
 		"same loose-ball snapshot has a stable switch target")
+
+func _test_dribble_turn_replay() -> void:
+	var inputs: Array[Vector2] = []
+	for ignored in range(8):
+		inputs.append(Vector2.RIGHT)
+	for ignored in range(8):
+		inputs.append(Vector2.UP)
+	for ignored in range(8):
+		inputs.append(Vector2.LEFT)
+	var replay := DribbleTurnReplayScript.run(4269, inputs, Vector2.RIGHT * 260.0, 12.0)
+	var repeated := DribbleTurnReplayScript.run(4269, inputs, Vector2.RIGHT * 260.0, 12.0)
+	_expect(replay.touches == repeated.touches, "turn replay retains identical touch events")
+	_expect(int(replay.loss_tick) == int(repeated.loss_tick) and int(replay.loss_tick) > 0,
+		"turn replay retains the same loss-of-control tick")
 
 func _test_dribble_touch_controller() -> void:
 	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
