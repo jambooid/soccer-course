@@ -39,7 +39,7 @@
 - [x] 5.4 Apply the tactical offside line to CPU support targets and pass candidate filtering; verify forward-run and pass-selection scenarios never choose a normal-pass offside target.
 - [x] 5.5 Replace CPU action coin flips with reachability and utility scoring using trajectory ETA, interception risk, attributes, and rule constraints; verify identical snapshots select the same pass, shot, or retain-ball action.
 - [x] 5.6 Rework goalkeeper line, set, rush, claim, dive, and distribution choices to use trajectory predictions; verify a shot/collection matrix produces consistent decisions and legal collection behavior.
-- [ ] 5.7 Implement possession and defensive player-switch scoring with eligibility, direction intent, goalkeeper policy, and switch lock; verify possession gain and loose-ball fixtures select a stable human-controlled player without oscillation.
+- [x] 5.7 Implement possession and defensive player-switch scoring with eligibility, direction intent, goalkeeper policy, and switch lock; verify possession gain and loose-ball fixtures select a stable human-controlled player without oscillation.
 
 ## 6. Integration And Regression Gate
 

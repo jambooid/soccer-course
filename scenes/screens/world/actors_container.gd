@@ -3,12 +3,14 @@ extends Node2D
 
 const DURATION_WEIGHT_CACHE := 200
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
+const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
 const PLAYER_PREFAB := preload("res://scenes/characters/player.tscn")
 const SPARK_PREFAB := preload("res://scenes/spark/spark.tscn")
 
 ## === AI LOD 分级 ===
 const LOD_CORE_COUNT := 3     ## 核心层人数（最近的 2-3 人，每 50ms 决策）
 const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms 决策）
+const SWITCH_LOCK_MS := 250
 ## 远端 = 其余球员（每 1000ms 决策）
 
 @export var ball : Ball
@@ -22,6 +24,7 @@ var is_checking_for_kickoff_readiness := false
 var squad_home : Array[Player] = []
 var squad_away : Array[Player] = []
 var time_since_last_cache_refresh := Time.get_ticks_msec()
+var switch_lock_until: Dictionary = {}
 
 func _init() -> void:
 	GameEvents.team_reset.connect(on_team_reset.bind())
@@ -137,18 +140,27 @@ func _apply_attacking_tactics(squad: Array[Player], opponents: Array[Player]) ->
 				assignment.target, offside_line, attacking_dir, PitchConstants.CENTER_X)
 func on_player_swap_request(requester: Player) -> void:
 	var squad := squad_home if requester.country == squad_home[0].country else squad_away
-	var cpu_players : Array[Player] = squad.filter(
-		func(p: Player): return p.control_scheme == Player.ControlScheme.CPU and p.role != Player.Role.GOALIE
-	)
-	if cpu_players.is_empty():
+	if Time.get_ticks_msec() < int(switch_lock_until.get(requester.control_scheme, 0)):
 		return
-	# 切换到离球最近的 CPU 队友（无条件，总能切换）
-	cpu_players.sort_custom(func(p1: Player, p2: Player):
-		return p1.position.distance_squared_to(ball.position) < p2.position.distance_squared_to(ball.position))
-	var closest_cpu_to_ball : Player = cpu_players[0]
+	var selected := _select_switch_target(squad, requester.control_scheme, KeyUtils.get_input_vector(requester.control_scheme))
+	var selected_id := int(selected.get("id", -1))
+	var target: Player = squad.filter(func(p: Player): return p.jersey_number == selected_id).front() if selected_id >= 0 else null
+	if target == null or target == requester:
+		return
 	var player_control_scheme := requester.control_scheme
 	requester.set_control_scheme(Player.ControlScheme.CPU)
-	closest_cpu_to_ball.set_control_scheme(player_control_scheme)
+	target.set_control_scheme(player_control_scheme)
+	switch_lock_until[player_control_scheme] = Time.get_ticks_msec() + SWITCH_LOCK_MS
+
+func _select_switch_target(squad: Array[Player], scheme: int, input_direction: Vector2 = Vector2.ZERO) -> Dictionary:
+	var candidates: Array[Dictionary] = []
+	for candidate in squad:
+		if candidate.control_scheme != Player.ControlScheme.CPU and candidate.control_scheme != scheme:
+			continue
+		candidates.append({"id": candidate.jersey_number, "position": candidate.position,
+			"speed": candidate.speed, "goalkeeper": candidate.role == Player.Role.GOALIE,
+			"has_ball": candidate == ball.carrier, "tactical_role": candidate.tactical_role})
+	return PlayerSwitchSelectorScript.select(candidates, ball.position + ball.velocity * 0.12, input_direction)
 
 func check_for_kickoff_readiness() -> void:
 	for squad in [squad_home, squad_away]:
@@ -275,6 +287,8 @@ func _on_ball_possession_stable(player: Player) -> void:
 
 func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void:
 	## 将指定控制方案切换到目标球员
+	if Time.get_ticks_msec() < int(switch_lock_until.get(scheme, 0)):
+		return
 	# 先找到当前持有该方案的球员
 	var current_holder: Player = null
 	for p in squad:
@@ -286,6 +300,7 @@ func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void
 	if current_holder != null:
 		current_holder.set_control_scheme(Player.ControlScheme.CPU)
 	target.set_control_scheme(scheme)
+	switch_lock_until[scheme] = Time.get_ticks_msec() + SWITCH_LOCK_MS
 
 ## === 越位判定 ===
 

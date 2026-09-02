@@ -15,6 +15,7 @@ const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
 const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
 const GoalkeeperDecisionPolicyScript := preload("res://utils/goalkeeper_decision_policy.gd")
+const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
@@ -39,6 +40,7 @@ func _run() -> void:
 	_run_suite("offside_judge", _test_offside_judge)
 	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
 	_run_suite("goalkeeper_decision_policy", _test_goalkeeper_decision_policy)
+	_run_suite("player_switch_selector", _test_player_switch_selector)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
@@ -363,6 +365,20 @@ func _test_goalkeeper_decision_policy() -> void:
 		"distribution_delay": 1.5, "distribution_long": true})
 	_expect(int(held.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_KICK,
 		"held ball releases through deterministic long distribution")
+
+func _test_player_switch_selector() -> void:
+	var candidates: Array[Dictionary] = [
+		{"id": 1, "position": Vector2(20.0, 0.0), "speed": 60.0, "tactical_role": "PRESS"},
+		{"id": 2, "position": Vector2(10.0, 30.0), "speed": 70.0},
+		{"id": 3, "position": Vector2(2.0, 0.0), "speed": 80.0, "goalkeeper": true},
+	]
+	var loose_ball := PlayerSwitchSelectorScript.select(candidates, Vector2.ZERO, Vector2.LEFT)
+	_expect(int(loose_ball.id) == 1, "defensive switch favors reachable presser in input direction")
+	candidates[1].has_ball = true
+	var possession := PlayerSwitchSelectorScript.select(candidates, Vector2.ZERO)
+	_expect(int(possession.id) == 2, "possession switch favors the new carrier")
+	_expect(possession == PlayerSwitchSelectorScript.select(candidates, Vector2.ZERO),
+		"same loose-ball snapshot has a stable switch target")
 
 func _test_dribble_touch_controller() -> void:
 	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
