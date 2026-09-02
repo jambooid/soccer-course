@@ -35,7 +35,10 @@ var time_since_last_ai_tick_goalie := 0
 var was_holding_ball := false
 
 func _ready() -> void:
-	time_since_last_ai_tick_goalie = Time.get_ticks_msec() + randi_range(0, AI_TICK_MS)
+	# Stagger keeper updates without global randomness. Jersey numbers are stable
+	# across squad construction and therefore produce replayable phase offsets.
+	var phase_offset := posmod(player.jersey_number, maxi(AI_TICK_MS, 1))
+	time_since_last_ai_tick_goalie = Time.get_ticks_msec() + phase_offset
 
 func _physics_process(_delta: float) -> void:
 	var is_holding_ball := ball != null and ball.carrier == player
