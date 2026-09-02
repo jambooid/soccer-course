@@ -170,6 +170,14 @@ func _test_ball_interaction_resolver() -> void:
 	_expect(int(release_event.kind) == BallInteractionResolverScript.Kind.KICK,
 		"active kick wins over passive control")
 	_expect(int(snapshot.ball.carrier_id) == -1, "kick releases the current carrier")
+	var callback_a := BallInteractionResolverScript.create_intent(
+		BallInteractionResolverScript.Kind.CONTROL, 12, {"distance": 5.0})
+	var callback_b := BallInteractionResolverScript.create_intent(
+		BallInteractionResolverScript.Kind.CONTROL, 4, {"distance": 5.0})
+	var callback_first := BallInteractionResolverScript.resolve([callback_a, callback_b])
+	var callback_reversed := BallInteractionResolverScript.resolve([callback_b, callback_a])
+	_expect(callback_first.player_id == callback_reversed.player_id and callback_first.player_id == 4,
+		"callback ordering cannot change free-ball winner")
 	var transition_sim := MatchSimulationScript.new(9, snapshot)
 	transition_sim.queue_state_transition(7, "PREPPING_SHOT", "SHOOTING", {"power": 1.0})
 	transition_sim.queue_state_transition(7, "SHOOTING", "RECOVERING")

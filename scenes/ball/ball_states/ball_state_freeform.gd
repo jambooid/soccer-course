@@ -1,6 +1,8 @@
 class_name BallStateFreeform
 extends BallState
 
+const BallInteractionResolverScript := preload("res://utils/ball_interaction_resolver.gd")
+
 const MAX_CAPTURE_HEIGHT := PitchConstants.HEIGHT_FREEFORM_PICKUP_MAX
 
 ## 自动接球常量（使用 PitchConstants 集中管理）
@@ -9,25 +11,17 @@ const AUTO_CAPTURE_CHECK_INTERVAL := PitchConstants.BALL.FREEFORM_AUTO_CAPTURE_C
 
 var time_since_freeform := Time.get_ticks_msec()
 var capture_check_frame := 0
+var _contact_candidates: Array[Player] = []
 
 func _enter_tree() -> void:
 	player_detection_area.body_entered.connect(on_player_enter.bind())
 	time_since_freeform = Time.get_ticks_msec()
 
 func on_player_enter(body: Player) -> void:
-	if not ball.can_be_picked_up_by(body):
-		return
-
-	# 守门员专用抱球逻辑
-	if body.role == Player.Role.GOALIE:
-		if ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
-			ball.hold_by_goalkeeper(body)  # 内部已切换状态，无需再调 transition_state
-		return
-
-	if body.can_carry_ball() and ball.height < MAX_CAPTURE_HEIGHT:
-		ball.carrier = body
-		body.control_ball()
-		transition_state(Ball.State.DRIBBLING)
+	# Area callbacks are broad-phase candidate collection only. Authoritative
+	# capture is resolved once per physics tick in _check_auto_capture().
+	if body != null and not _contact_candidates.has(body):
+		_contact_candidates.append(body)
 
 func _physics_process(delta: float) -> void:
 	player_detection_area.monitoring = (Time.get_ticks_msec() - time_since_freeform > state_data.lock_duration)
@@ -60,61 +54,45 @@ func _check_auto_capture() -> void:
 
 	# 获取所有在检测区内的球员
 	var nearby_players: Array[Node2D] = player_detection_area.get_overlapping_bodies()
+	for candidate in _contact_candidates:
+		if is_instance_valid(candidate) and not nearby_players.has(candidate):
+			nearby_players.append(candidate)
+	_contact_candidates.clear()
 	if nearby_players.is_empty():
 		return
 
-	# 找到最近的、可以控球的球员
-	var closest_player: Player = null
-	var closest_distance := AUTO_CAPTURE_DISTANCE
-
+	var intents: Array[Dictionary] = []
 	for body in nearby_players:
 		if not (body is Player):
 			continue
 		var player: Player = body
 		if not ball.can_be_picked_up_by(player):
 			continue
-
-		# 守门员有专门的抱球逻辑，跳过
-		if player.role == Player.Role.GOALIE:
-			continue
-
-		# 只考虑可以控球的球员
-		if not player.can_carry_ball():
-			continue
-
 		var distance := player.position.distance_to(ball.position)
-		if distance < closest_distance:
-			closest_distance = distance
-			closest_player = player
+		if player.role == Player.Role.GOALIE:
+			intents.append(BallInteractionResolverScript.create_intent(
+				BallInteractionResolverScript.Kind.COLLECT,
+				player.jersey_number, {"distance": distance,
+				"eligible": ball.height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX}))
+		elif player.can_carry_ball() and distance <= AUTO_CAPTURE_DISTANCE:
+			intents.append(BallInteractionResolverScript.create_intent(
+				BallInteractionResolverScript.Kind.CONTROL,
+				player.jersey_number, {"distance": distance,
+				"player": player}))
 
-	if closest_player == null:
+	var resolved := BallInteractionResolverScript.resolve(intents)
+	if resolved.is_empty():
 		return
-
-	# 检查是否有对抗：附近是否有对方球员距离更近或相近
-	var has_contest := false
+	var winner: Player = null
 	for body in nearby_players:
-		if not (body is Player):
-			continue
-		var other: Player = body
-		if not ball.can_be_picked_up_by(other):
-			continue
-
-		# 跳过己方球员
-		if other.country == closest_player.country:
-			continue
-
-		# 跳过不能控球的球员
-		if not other.can_carry_ball():
-			continue
-
-		var other_distance := other.position.distance_to(ball.position)
-		# 对方球员距离相近（5px 容差）→ 有对抗
-		if other_distance < closest_distance + 5.0:
-			has_contest = true
+		if body is Player and (body as Player).jersey_number == int(resolved.player_id):
+			winner = body
 			break
-
-	# 无对抗情况下，给予球权
-	if not has_contest:
-		ball.carrier = closest_player
-		closest_player.control_ball()
+	if winner == null:
+		return
+	if winner.role == Player.Role.GOALIE:
+		ball.hold_by_goalkeeper(winner)
+	else:
+		ball.carrier = winner
+		winner.control_ball()
 		transition_state(Ball.State.DRIBBLING)

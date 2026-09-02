@@ -20,7 +20,7 @@
 - [x] 3.2 Route short pass, long pass, and through pass creation through the trajectory solver; verify target-distance scenarios reach receiving areas within their position and timing tolerances.
 - [x] 3.3 Define control profiles for foot, chest, head, volley, tackle, and goalkeeper hands; verify identical height/contact geometry has the same eligibility result regardless of prior ball state.
 - [x] 3.4 Add interaction intents and a deterministic resolver for control, interception, tackle, deflection, collection, and kick; verify simultaneous candidates produce one stable outcome and one carrier.
-- [ ] 3.5 Convert free-ball capture and Area callbacks into non-authoritative candidate collection; verify collision callback ordering cannot change the winner in a repeated scenario.
+- [x] 3.5 Convert free-ball capture and Area callbacks into non-authoritative candidate collection; verify collision callback ordering cannot change the winner in a repeated scenario.
 - [ ] 3.6 Migrate goalkeeper collection and deflection to the resolver with penalty-area, height, speed, and release-lock rules; verify keeper scenario matrix covers valid catch, parry, invalid collection, and opponent pass.
 
 ## 4. WE-Style Action Rhythm
