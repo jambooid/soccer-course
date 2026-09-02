@@ -136,7 +136,8 @@ static func compute_touch_impulse(
 	player_velocity: Vector2,
 	player_max_speed: float,
 	technique: float,
-	mode: int = Mode.JOG
+	mode: int = Mode.JOG,
+	random_sample: float = 0.5
 ) -> Vector2:
 	var player_speed := player_velocity.length()
 	if player_speed < 1.0:
@@ -152,7 +153,8 @@ static func compute_touch_impulse(
 	# 速度惩罚：速度越快偏差越大
 	var speed_penalty_inaccuracy: float = SPEED_PENALTY_MAX_INACCURACY * speed_factor
 	var total_inaccuracy: float = base_inaccuracy * mode_inaccuracy_mult + speed_penalty_inaccuracy
-	push_direction = push_direction.rotated(randf_range(-total_inaccuracy, total_inaccuracy))
+	push_direction = push_direction.rotated(lerpf(-total_inaccuracy, total_inaccuracy,
+		clampf(random_sample, 0.0, 1.0)))
 
 	# 2. 推球目标速度 = 球员速度 × 倍率（速度越高倍率越低 + 模式偏移）
 	var push_mult_base: float = lerp(PUSH_MULT_LOW_SPEED, PUSH_MULT_HIGH_SPEED, speed_factor)
@@ -173,7 +175,8 @@ static func compute_touch_impulse(
 static func compute_first_touch_velocity(
 	incoming_velocity: Vector2,
 	control_direction: Vector2,
-	technique: float
+	technique: float,
+	random_sample: float = 0.5
 ) -> Vector2:
 	# 输入校验：没有来球就没有停球
 	if incoming_velocity.length() < 0.1:
@@ -194,7 +197,8 @@ static func compute_first_touch_velocity(
 	# 方向偏差：高技术准
 	var error_deg: float = lerp(FIRST_TOUCH_DIR_ERROR_MAX_DEG, FIRST_TOUCH_DIR_ERROR_MIN_DEG, t_norm)
 	var error_rad: float = deg_to_rad(error_deg)
-	var final_dir: Vector2 = dir.rotated(randf_range(-error_rad, error_rad))
+	var final_dir: Vector2 = dir.rotated(lerpf(-error_rad, error_rad,
+		clampf(random_sample, 0.0, 1.0)))
 
 	return final_dir * remaining_speed
 

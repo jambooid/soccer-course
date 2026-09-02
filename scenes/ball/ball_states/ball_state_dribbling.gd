@@ -2,6 +2,7 @@ class_name BallStateDribbling
 extends BallState
 
 const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 
 ## 物理推球式带球状态
 ## 核心机制：球有独立的速度和位置，通过摩擦力减速，球员通过周期性触球推动球前进
@@ -13,12 +14,11 @@ const GRACE_CONTROL_DIST_MULT := PitchConstants.BALL.DRIBBLING_GRACE_CONTROL_DIS
 const GRACE_INTERCEPT_MULT := PitchConstants.BALL.DRIBBLING_GRACE_INTERCEPT_MULT
 const CUTBACK_BALL_KICK_MULT := PitchConstants.BALL.DRIBBLING_CUTBACK_BALL_KICK_MULT
 
-# 触球冷却（秒）
-var touch_cooldown := 0.0
 # 抢断检测帧计数（每 3 帧检测一次，降低性能消耗）
 var intercept_check_frame := 0
 var grace_period_timer := 0.0  ## 接球宽限期剩余时间
 var _incoming_velocity := Vector2.ZERO  ## 进入状态前的入射速度（用于停球质量）
+var _touch_controller
 
 func _enter_tree() -> void:
 	if carrier == null:
@@ -27,6 +27,8 @@ func _enter_tree() -> void:
 
 	# 保存入射速度（在修改前记录）
 	_incoming_velocity = ball.velocity
+	_touch_controller = DribbleTouchControllerScript.new(
+		carrier.jersey_number * 104729 + int(ball.spawn_position.x * 31.0 + ball.spawn_position.y))
 
 	ball.carrier = carrier
 	GameEvents.ball_possessed.emit(carrier.fullname)
@@ -44,9 +46,7 @@ func _enter_tree() -> void:
 	if incoming_speed > DribblePhysics.IDLE_SPEED_THRESHOLD:
 		# 有明显入射速度 → 应用停球质量计算
 		var control_dir := carrier.heading
-		ball.velocity = DribblePhysics.compute_first_touch_velocity(
-			_incoming_velocity, control_dir, carrier.technique
-		)
+		ball.velocity = _touch_controller.first_touch(_incoming_velocity, control_dir, carrier.technique)
 	else:
 		# 入射速度很低（如从 FREEFORM 慢慢滚过来）→ 给一个同向初速度
 		var current_speed := carrier.velocity.length()
@@ -61,9 +61,8 @@ func _physics_process(delta: float) -> void:
 		_release_ball()
 		return
 
-	# 1. 冷却计时 + 宽限期计时
+	# 1. 宽限期计时
 	var prev_grace := grace_period_timer
-	touch_cooldown = max(0.0, touch_cooldown - delta)
 	grace_period_timer = max(0.0, grace_period_timer - delta)
 
 	# 宽限期刚结束 → 发出稳定控球信号（用于自动切换球员）
@@ -79,60 +78,6 @@ func _physics_process(delta: float) -> void:
 
 	# 2. 应用地面摩擦力（指数衰减）
 	ball.velocity = DribblePhysics.apply_friction(ball.velocity, delta)
-
-	# 2.3 方向跟随修正：当球员改变方向时，球的速度方向逐渐跟随
-	# 防止球员转向时球因惯性继续往旧方向滚导致失控
-	if current_speed > DribblePhysics.IDLE_SPEED_THRESHOLD:
-		var ball_speed := ball.velocity.length()
-		if ball_speed > 5.0:  # 球有明显速度时才修正
-			var ball_dir := ball.velocity.normalized()
-			var angle_diff := ball_dir.angle_to(player_dir)
-			# 当球的方向与球员方向偏差较大时（>30°），逐渐修正
-			if abs(angle_diff) > deg_to_rad(30.0):
-				# 轻微修正球的方向，让球逐渐跟随球员方向
-				# 使用较小的插值系数（0.15）保持物理感，避免过度磁吸
-				var corrected_dir := ball_dir.lerp(player_dir, 0.15)
-				ball.velocity = corrected_dir * ball_speed
-
-	# 2.5 静止/低速控球：球不会滚远，保持在脚边
-	# 当球员速度很低时，给球一个轻微的"吸回"速度调整，
-	# 让球稳定在触球区内而不是越滚越远
-	var turn_state: PlayerStateMoving = carrier.current_state as PlayerStateMoving
-	if turn_state != null and turn_state.turn_active:
-		# 转身期间只沿脚下目标位置换侧。暂停额外物理位移，避免方向连续变化
-		# 时“位置插值 + 偏移速度”叠加成绕球员的环形轨迹。
-		var turn_ideal_pos := carrier.position + player_dir * 12.0
-		var turn_follow_factor: float = 1.0 - pow(0.02, delta / maxf(turn_state.turn_duration, 0.01))
-		ball.position = ball.position.lerp(turn_ideal_pos, clampf(turn_follow_factor, 0.0, 1.0))
-		ball.velocity = Vector2.ZERO
-	elif current_speed < DribblePhysics.IDLE_SPEED_THRESHOLD:
-		# 静止/低速时使用强约束：球位置和速度都被约束
-		# 与移动状态保持相同的前方距离，避免松键时球向球员收缩。
-		var ideal_distance := 12.0
-		var ideal_pos := carrier.position + player_dir * ideal_distance
-
-		# 位置约束：球被拉向理想位置
-		var to_ideal := ideal_pos - ball.position
-		var deviation := to_ideal.length()
-		if deviation > 3.0:  # 偏离超过 3px 时
-			# 强制拉回理想位置（0.4 的强度）
-			ball.position = ball.position.lerp(ideal_pos, 0.4)
-
-		# 停止意图下只保留摩擦减速，不能把球速重新写回球员速度。
-		# 低于阈值后直接归零，避免指数摩擦的尾部让球看起来一直在动。
-		if not movement_intended and ball.velocity.length() < DribblePhysics.IDLE_SPEED_THRESHOLD:
-			ball.velocity = Vector2.ZERO
-	else:
-		# 中高速移动时使用磁吸修正：保持物理感但防止偏离太远
-		var ideal_distance := 12.0  # 移动时的理想距离
-		var ideal_pos := carrier.position + player_dir * ideal_distance
-
-		var to_ideal := ideal_pos - ball.position
-		var deviation := to_ideal.length()
-		if deviation > 8.0:  # 偏离超过 8px 时施加磁吸力
-			# 轻微的磁吸力（0.15 的强度，保留物理感）
-			var pull_force := to_ideal.normalized() * deviation * 0.15
-			ball.velocity += pull_force
 
 	# 3. 物理移动 + 墙壁反弹
 	var collision := ball.move_and_collide(ball.velocity * delta)
@@ -155,18 +100,14 @@ func _physics_process(delta: float) -> void:
 		_release_ball()
 		return
 
-	# 5. 触球检测
-	if touch_cooldown <= 0.0 and movement_intended and current_speed >= DribblePhysics.IDLE_SPEED_THRESHOLD:
-		if DribblePhysics.is_ball_in_touch_zone(
-			ball.position, carrier.position, player_dir, effective_tech, mode
-		):
-			var new_vel := DribblePhysics.compute_touch_impulse(
-				ball.velocity, carrier.velocity, carrier.speed, effective_tech, mode
-			)
-			# 只在推球方向与球员移动方向一致时触球
-			if new_vel.dot(player_dir) > ball.velocity.dot(player_dir):
-				ball.velocity = new_vel
-				touch_cooldown = DribblePhysics.get_min_touch_interval(effective_tech, mode)
+	# 5. Discrete touch impulses are the sole voluntary ball correction.
+	var touch: Dictionary = _touch_controller.advance(delta, ball.position, carrier.position,
+		player_dir, ball.velocity, carrier.velocity, carrier.speed, effective_tech,
+		mode, movement_intended)
+	if not touch.is_empty():
+		ball.velocity = touch.velocity
+		ball.dribble_touch_events.append(touch.duplicate(true))
+		GameEvents.dribble_touch.emit(touch)
 
 	# 6. 播放球滚动动画
 	set_ball_animation_from_velocity()

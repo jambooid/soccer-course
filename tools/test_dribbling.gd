@@ -414,12 +414,13 @@ func test_speed_penalty_within_mode() -> void:
 	var high_speed_avg_abs_y := 0.0
 
 	for i in range(iterations):
+		var sample := float(i % 199) / 198.0
 		var low_result := DribblePhysics.compute_touch_impulse(
-			ball_vel, low_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG)
+			ball_vel, low_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG, sample)
 		low_speed_avg_abs_y += abs(low_result.y)
 
 		var high_result := DribblePhysics.compute_touch_impulse(
-			ball_vel, high_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG)
+			ball_vel, high_speed_vel, max_speed, tech, DribblePhysics.Mode.JOG, sample)
 		high_speed_avg_abs_y += abs(high_result.y)
 
 	low_speed_avg_abs_y /= float(iterations)

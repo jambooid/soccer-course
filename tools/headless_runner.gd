@@ -14,6 +14,7 @@ const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
 const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
+const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 
 var _passed := 0
 var _failed := 0
@@ -35,6 +36,7 @@ func _run() -> void:
 	_run_suite("intercept_resolver", _test_intercept_resolver)
 	_run_suite("offside_judge", _test_offside_judge)
 	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
+	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -288,6 +290,36 @@ func _test_goalkeeper_interaction_policy() -> void:
 	_expect(int(GoalkeeperInteractionPolicyScript.resolve(1, opponent_pass).kind)
 		== BallInteractionResolverScript.Kind.COLLECT,
 		"opponent pass remains legally collectible")
+
+func _test_dribble_touch_controller() -> void:
+	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
+	_expect(not straight.is_empty(), "straight dribble emits touch impulses")
+	var straight_velocity: Vector2 = straight[0].velocity
+	_expect(straight_velocity.dot(Vector2.RIGHT) > 0.0,
+		"straight touch impulse follows movement direction")
+	var stopped := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, false)
+	_expect(stopped.is_empty(), "stopping emits no magnetic touch correction")
+	var turn_90 := _touch_sequence(Vector2.DOWN, DribblePhysics.Mode.JOG, true)
+	var turn_90_velocity: Vector2 = turn_90[0].velocity if not turn_90.is_empty() else Vector2.ZERO
+	_expect(not turn_90.is_empty() and turn_90_velocity.dot(Vector2.DOWN) > 0.0,
+		"90-degree turn waits for an impulse in the new direction")
+	var turn_180 := _touch_sequence(Vector2.LEFT, DribblePhysics.Mode.JOG, true)
+	var turn_180_velocity: Vector2 = turn_180[0].velocity if not turn_180.is_empty() else Vector2.ZERO
+	_expect(not turn_180.is_empty() and turn_180_velocity.dot(Vector2.LEFT) > 0.0,
+		"180-degree turn waits for an impulse in the new direction")
+	var sprint := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.SPRINT, true)
+	_expect(sprint.size() < straight.size(), "sprint uses a longer touch interval")
+	_expect(straight == _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true),
+		"same seed produces the same touch sequence")
+
+func _touch_sequence(direction: Vector2, mode: int, movement_intended: bool) -> Array[Dictionary]:
+	var controller := DribbleTouchControllerScript.new(90210)
+	var player_velocity := direction * 90.0
+	var ball_position := direction * 6.0
+	for ignored in range(30):
+		controller.advance(1.0 / 60.0, ball_position, Vector2.ZERO, direction,
+			Vector2.ZERO, player_velocity, 100.0, 70.0, mode, movement_intended)
+	return controller.events.duplicate(true)
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

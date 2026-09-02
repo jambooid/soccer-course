@@ -7,6 +7,7 @@ extends Node
 signal ball_possessed(player_name: String)
 signal ball_possessed_by(player: Player)
 signal ball_possession_stable(player: Player)  ## 稳定控球（宽限期结束后）
+signal dribble_touch(event: Dictionary)
 signal ball_released
 signal possession_changed(country: String)  ## 控球方变更
 signal game_over(country_winner: String)

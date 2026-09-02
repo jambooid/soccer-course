@@ -32,6 +32,7 @@ var height_velocity := 0.0
 var spawn_position := Vector2.ZERO
 var state_factory := BallStateFactory.new()
 var velocity := Vector2.ZERO
+var dribble_touch_events: Array[Dictionary] = []
 var _recapture_lock_player : Player = null
 var _recapture_lock_until_ms := 0
 var _pickup_enabled := true

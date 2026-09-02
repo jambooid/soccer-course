@@ -94,16 +94,9 @@ func _process_movement(delta: float, direction: Vector2, has_direction: bool) ->
 		# 直接设置目标速度（Turn Controller 已经处理了方向平滑）
 		player.velocity = move_dir * player.speed * speed_multiplier
 
-		# 急转：速度衰减 + 球方向修正
+		# 急转只影响球员意图和速度；下一次合法触球决定足球方向。
 		if triggered_cutback:
 			player.velocity *= CUTBACK_SPEED_PENALTY
-			if player.has_ball() and ball.current_state != null:
-				# 修正球的速度方向到新方向，避免球继续往旧方向滚导致失控
-				# 保持球速大小，但方向改为球员的新方向
-				var ball_speed := ball.velocity.length()
-				var new_direction := move_dir  # 球员的新移动方向
-				# 将球速度插值到新方向（0.7 的插值强度，保留一些惯性感）
-				ball.velocity = ball.velocity.lerp(new_direction * ball_speed, 0.7)
 
 		is_moving = true
 	else:
