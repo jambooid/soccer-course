@@ -59,6 +59,8 @@ var skin_color := Player.SkinColor.MEDIUM
 var spawn_position := Vector2.ZERO
 var tactical_role := ""
 var tactical_target := Vector2.ZERO
+var tactical_offside_line := 0.0
+var tactical_attacking_dir := 1
 var state_factory := PlayerStateFactory.new()
 var weight_on_duty_steering := 0.0
 

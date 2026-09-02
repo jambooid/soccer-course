@@ -236,6 +236,9 @@ func _test_team_tactics() -> void:
 	_expect(support_assignments[1].role == "SAFETY", "attack retains a safety outlet")
 	_expect(support_assignments[3].role == "WIDE", "attack retains a wide outlet")
 	_expect(support_assignments[4].role == "CENTRAL", "attack retains a central outlet")
+	var clamped_wide := TeamTacticsScript.clamp_support_target(
+		support_assignments[3].target, 95.0, 1, 50.0)
+	_expect(clamped_wide.x < 95.0, "forward support target is constrained by offside line")
 
 func _test_intercept_resolver() -> void:
 	var defender := {

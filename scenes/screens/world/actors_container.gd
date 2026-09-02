@@ -96,7 +96,7 @@ func _apply_defensive_tactics(squad: Array[Player], opponents: Array[Player]) ->
 		player.tactical_role = ""
 		player.tactical_target = player.spawn_position
 	if not is_defending:
-		_apply_attacking_tactics(squad)
+		_apply_attacking_tactics(squad, opponents)
 		return
 	var player_data: Array[Dictionary] = []
 	for player in squad:
@@ -112,7 +112,7 @@ func _apply_defensive_tactics(squad: Array[Player], opponents: Array[Player]) ->
 			player.tactical_role = str(assignment.role)
 			player.tactical_target = assignment.target
 
-func _apply_attacking_tactics(squad: Array[Player]) -> void:
+func _apply_attacking_tactics(squad: Array[Player], opponents: Array[Player]) -> void:
 	if ball.carrier == null:
 		return
 	var player_data: Array[Dictionary] = []
@@ -121,13 +121,20 @@ func _apply_attacking_tactics(squad: Array[Player]) -> void:
 			player_data.append({"id": player.jersey_number, "position": player.position,
 				"spawn_position": player.spawn_position})
 	var attacking_dir := 1 if ball.carrier.target_goal.position.x > ball.carrier.position.x else -1
+	var opponent_data: Array[Dictionary] = []
+	for opponent in opponents:
+		opponent_data.append({"position": opponent.position})
+	var offside_line := TeamTacticsScript.compute_offside_line(opponent_data, ball.position, attacking_dir)
 	var assignments := TeamTacticsScript.build_attacking_assignments(
 		player_data, ball.position, attacking_dir, ball.carrier.jersey_number)
 	for player in squad:
+		player.tactical_offside_line = offside_line
+		player.tactical_attacking_dir = attacking_dir
 		if assignments.has(player.jersey_number):
 			var assignment: Dictionary = assignments[player.jersey_number]
 			player.tactical_role = str(assignment.role)
-			player.tactical_target = assignment.target
+			player.tactical_target = TeamTacticsScript.clamp_support_target(
+				assignment.target, offside_line, attacking_dir, PitchConstants.CENTER_X)
 func on_player_swap_request(requester: Player) -> void:
 	var squad := squad_home if requester.country == squad_home[0].country else squad_away
 	var cpu_players : Array[Player] = squad.filter(

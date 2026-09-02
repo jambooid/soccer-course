@@ -220,6 +220,8 @@ func _find_best_pass_option() -> Dictionary:
 		var teammate: Player = body
 		if teammate == player or teammate.country != player.country:
 			continue
+		if _is_tactical_offside_target(teammate.position):
+			continue
 
 		var dist := player.position.distance_to(teammate.position)
 		if dist < 10.0 or dist > 250.0:
@@ -251,6 +253,11 @@ func _find_best_pass_option() -> Dictionary:
 			best_pass_type = pass_type
 
 	return {"target": best_target, "quality": best_quality, "pass_type": best_pass_type}
+
+func _is_tactical_offside_target(target: Vector2) -> bool:
+	if player.tactical_attacking_dir > 0:
+		return target.x > PitchConstants.CENTER_X and target.x >= player.tactical_offside_line
+	return target.x < PitchConstants.CENTER_X and target.x <= player.tactical_offside_line
 
 func _find_most_forward_teammate() -> Player:
 	## 找到最靠前的队友（用于长传冲吊）
