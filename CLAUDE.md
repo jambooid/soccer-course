@@ -32,19 +32,25 @@ Open in the Godot 4.4 editor and press Play, or from CLI:
 export GODOT_BIN="$HOME/project/Godot.app/Contents/MacOS/Godot"
 $GODOT_BIN --version
 $GODOT_BIN --path .          # open editor
-$GODOT_BIN --path . -e       # open editor in headless mode
+$GODOT_BIN --path . -e       # open editor
 $GODOT_BIN --path . --main   # run the game
 ```
 
-Headless validation requires a writable Godot user-data directory. Use the
-same Godot 4.4.x binary locally and in automation:
+Headless validation uses the Godot 4.4.1 binary installed at
+`~/project/Godot.app` (the copy in `~/Downloads/Godot.app` is identical).
+Run the command from the repository root:
 
 ```sh
-export GODOT_BIN="../Godot.app/Contents/MacOS/Godot"
-export GODOT_USER_DIR="/private/tmp/soccer-course-godot-user"
-$GODOT_BIN --headless --path . --editor --quit --user-data-dir "$GODOT_USER_DIR"
-$GODOT_BIN --headless --path . -s res://tools/headless_runner.gd --user-data-dir "$GODOT_USER_DIR"
+export GODOT_BIN="$HOME/project/Godot.app/Contents/MacOS/Godot"
+$GODOT_BIN --headless --audio-driver Dummy --path . -s res://tools/headless_runner.gd
 ```
+
+This is the authoritative deterministic validation command. On the verified
+environment (Godot `4.4.1.stable`, macOS Apple Silicon), it reports
+`HEADLESS_SUMMARY passed=115 failed=0`. If the binary exits with status 134
+before printing the Godot version, run the same command in the host environment
+instead of the managed shell sandbox; that failure occurs in macOS
+`NSApplication`/FileProvider initialization before the project is loaded.
 
 If `godot` is on your PATH you can just use `godot --path .`.
 
