@@ -28,11 +28,22 @@ Low-res pixel art: internal viewport is **560×360**, integer-scaled up to 2240�
 Open in the Godot 4.4 editor and press Play, or from CLI:
 
 ```sh
-# macOS: Godot 4.4.1 位于 ~/Downloads/Godot.app 或 ~/project/Godot.app
-GODOT="$HOME/Downloads/Godot.app/Contents/MacOS/Godot"
-$GODOT --path .          # open editor
-$GODOT --path . -e       # open editor in headless mode
-$GODOT --path . --main   # run the game
+# macOS: Godot 4.4.1 位于 ~/Downloads/Godot.app 或项目上级目录的 Godot.app
+export GODOT_BIN="$HOME/project/Godot.app/Contents/MacOS/Godot"
+$GODOT_BIN --version
+$GODOT_BIN --path .          # open editor
+$GODOT_BIN --path . -e       # open editor in headless mode
+$GODOT_BIN --path . --main   # run the game
+```
+
+Headless validation requires a writable Godot user-data directory. Use the
+same Godot 4.4.x binary locally and in automation:
+
+```sh
+export GODOT_BIN="../Godot.app/Contents/MacOS/Godot"
+export GODOT_USER_DIR="/private/tmp/soccer-course-godot-user"
+$GODOT_BIN --headless --path . --editor --quit --user-data-dir "$GODOT_USER_DIR"
+$GODOT_BIN --headless --path . -s res://tools/headless_runner.gd --user-data-dir "$GODOT_USER_DIR"
 ```
 
 If `godot` is on your PATH you can just use `godot --path .`.
@@ -132,6 +143,7 @@ Test scenes live in `tools/`. Run from editor or CLI:
 | `test_gameplay.gd` | Gameplay flow — main menu → team selection → match, 15s gameplay |
 | `test_full_game.gd` | Full match — kickoff → 60s first half → halftime → 60s second half |
 | `test_runtime.gd` | Runtime error detection — 60s match with state/player/ball checks at 10s/30s/60s |
+| `headless_runner.gd` | Authoritative deterministic utility-test runner — exits non-zero on failure |
 
 ## Conventions
 

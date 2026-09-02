@@ -13,6 +13,12 @@ var _passed := 0
 var _failed := 0
 
 func _ready() -> void:
+	var result := run_suite()
+	get_tree().quit(0 if result.failed == 0 else 1)
+
+func run_suite() -> Dictionary:
+	_passed = 0
+	_failed = 0
 	print("=== Dribble Physics Tests ===")
 	print()
 
@@ -40,7 +46,7 @@ func _ready() -> void:
 		print("Some tests FAILED.")
 	print("========================================")
 
-	get_tree().quit()
+	return {"passed": _passed, "failed": _failed}
 
 # ---- 辅助函数 ----
 func _assert(condition: bool, test_name: String, detail: String = "") -> void:

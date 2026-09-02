@@ -1,6 +1,8 @@
 class_name BallStateKicked
 extends BallState
 
+const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+
 ## 被有意识踢出的球（传球、解围、大脚等）
 ## 与 FREEFORM 的区别：
 ## - 有明确的 kicker（踢球者）
@@ -56,7 +58,8 @@ func _process(delta: float) -> void:
 func move_and_bounce_kicked(delta: float) -> void:
 	var collision := ball.move_and_collide(ball.velocity * delta)
 	if collision != null:
-		ball.velocity = ball.velocity.bounce(collision.get_normal()) * ball.BOUNCINESS
+		ball.velocity = BallTrajectoryScript.bounce_velocity(
+			ball.velocity, collision.get_normal(), ball.BOUNCINESS)
 		SoundPlayer.play(SoundPlayer.Sound.BOUNCE)
 
 func on_player_enter(body: Player) -> void:

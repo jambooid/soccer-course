@@ -4,6 +4,12 @@ var passed := 0
 var failed := 0
 
 func _ready() -> void:
+	var result := run_suite()
+	get_tree().quit(0 if result.failed == 0 else 1)
+
+func run_suite() -> Dictionary:
+	passed = 0
+	failed = 0
 	print("=== Shooting Physics Tests ===")
 	test_charge_is_bounded()
 	test_aim_assists_toward_goal()
@@ -13,7 +19,7 @@ func _ready() -> void:
 	test_technique_improves_power_control()
 	test_direction_input_adjusts_vertical_lane()
 	print("Results: %d passed, %d failed" % [passed, failed])
-	get_tree().quit(1 if failed > 0 else 0)
+	return {"passed": passed, "failed": failed}
 
 func _assert(condition: bool, name: String) -> void:
 	if condition:

@@ -17,7 +17,12 @@ var teammate_detection_area : Area2D = null
 var time_since_last_ai_tick := Time.get_ticks_msec()
 
 func _ready() -> void:
-	time_since_last_ai_tick = Time.get_ticks_msec() + randi_range(0, DURATION_AI_TICK_FREQUENCY)
+	# Deterministic staggering avoids every CPU thinking on the same frame while
+	# keeping replays independent of global RNG state and process start timing.
+	var stable_offset := 0
+	if player != null:
+		stable_offset = abs(player.jersey_number) % DURATION_AI_TICK_FREQUENCY
+	time_since_last_ai_tick = Time.get_ticks_msec() + stable_offset
 
 func setup(context_player: Player, context_ball: Ball, context_opponent_detection_area: Area2D, context_teammate_detection_area: Area2D) -> void:
 	player = context_player

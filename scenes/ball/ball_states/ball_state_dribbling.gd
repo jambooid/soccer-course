@@ -1,6 +1,8 @@
 class_name BallStateDribbling
 extends BallState
 
+const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+
 ## 物理推球式带球状态
 ## 核心机制：球有独立的速度和位置，通过摩擦力减速，球员通过周期性触球推动球前进
 ## 替换 CARRIED 状态的 lerp 跟随式带球，实现真实的惯性和物理感
@@ -137,7 +139,8 @@ func _process(delta: float) -> void:
 	if collision != null:
 		# 弹开球但保持带球状态（撞墙后仍可能在可控范围内）
 		var normal := collision.get_normal()
-		ball.velocity = ball.velocity.bounce(normal) * ball.BOUNCINESS
+		ball.velocity = BallTrajectoryScript.bounce_velocity(
+			ball.velocity, normal, ball.BOUNCINESS)
 		SoundPlayer.play(SoundPlayer.Sound.BOUNCE)
 
 	# 4. 失控检测：球在球员前方且距离超过可控范围

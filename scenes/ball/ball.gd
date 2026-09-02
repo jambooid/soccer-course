@@ -1,6 +1,8 @@
 class_name Ball
 extends AnimatableBody2D
 
+const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+
 ## 球物理常量（使用 PitchConstants 集中管理）
 const BOUNCINESS := PitchConstants.BALL.BOUNCINESS
 const DISTANCE_HIGH_PASS := PitchConstants.BALL.DISTANCE_HIGH_PASS
@@ -75,7 +77,7 @@ func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_ki
 	var distance := position.distance_to(destination)
 	if distance < 0.1:
 		return
-	var intensity := sqrt(2 * distance * friction_ground)
+	var intensity := BallTrajectoryScript.velocity_for_ground_target(position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION).length()
 	velocity = intensity * direction
 	height = 0.0
 	height_velocity = 0.0
@@ -91,12 +93,11 @@ func pass_to(destination: Vector2, lock_duration: int = DURATION_PASS_LOCK, p_ki
 
 func short_pass(destination: Vector2, p_kicker: Player, lock_duration: int = DURATION_PASS_LOCK) -> void:
 	## 短传：贴地直线，速度适中，精准
-	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
 	if distance < 0.1:
 		return
-	var intensity := sqrt(2.0 * distance * friction_ground)
-	velocity = direction * intensity
+	velocity = BallTrajectoryScript.velocity_for_ground_target(
+		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION)
 	height = 0.0
 	height_velocity = 0.0
 	carrier = null
@@ -106,16 +107,16 @@ func short_pass(destination: Vector2, p_kicker: Player, lock_duration: int = DUR
 
 func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_duration: int = DURATION_PASS_LOCK) -> void:
 	## 长传：高空抛物线，距离远
-	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
 	if distance < 0.1:
 		return
 	power = clamp(power, 0.3, 1.5)
-	var intensity := sqrt(2.0 * distance * friction_ground * 0.7) * power
-	velocity = direction * intensity
+	var base_velocity := BallTrajectoryScript.velocity_for_ground_target(
+		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION * 0.7)
+	velocity = base_velocity * power
 	height = 0.0
 	# 抛物线：根据距离和速度计算初始竖直速度，使球落在目标附近
-	height_velocity = PitchConstants.GRAVITY * distance / (1.5 * intensity)
+	height_velocity = PitchConstants.GRAVITY * distance / (1.5 * maxf(velocity.length(), 0.1))
 	carrier = null
 	switch_state(State.KICKED, BallStateData.build()
 		.set_lock_duration(lock_duration)
@@ -123,13 +124,13 @@ func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_
 
 func through_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_duration: int = DURATION_PASS_LOCK) -> void:
 	## 直塞：贴地快速直线，穿透力强
-	var direction := position.direction_to(destination)
 	var distance := position.distance_to(destination)
 	if distance < 0.1:
 		return
 	power = clamp(power, 0.7, 1.3)
-	var intensity: float = lerp(180.0, 320.0, power)
-	velocity = direction * intensity
+	var base_velocity := BallTrajectoryScript.velocity_for_ground_target(
+		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION)
+	velocity = base_velocity * lerpf(1.15, 1.8, power)
 	height = 0.0
 	height_velocity = 0.0
 	carrier = null
