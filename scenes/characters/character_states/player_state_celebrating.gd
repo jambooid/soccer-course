@@ -11,7 +11,7 @@ func _enter_tree() -> void:
 	time_since_celebrating = Time.get_ticks_msec()
 	GameEvents.team_reset.connect(on_team_reset.bind())
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if player.height == 0 and Time.get_ticks_msec() - time_since_celebrating > initial_delay:
 		celebrate()
 	player.velocity = player.velocity.move_toward(Vector2.ZERO, delta * AIR_FRICTION)

@@ -77,6 +77,8 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	flip_sprites()
 	set_sprite_visibility()
+
+func _physics_process(delta: float) -> void:
 	process_gravity(delta)
 	move_and_slide()
 

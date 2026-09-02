@@ -8,7 +8,7 @@ extends GameState
 func _enter_tree() -> void:
 	GameEvents.team_scored.connect(_on_team_scored.bind())
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	manager.time_left -= delta
 	if manager.is_time_up():
 		_on_time_up()

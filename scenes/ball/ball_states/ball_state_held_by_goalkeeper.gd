@@ -24,7 +24,7 @@ func _enter_tree() -> void:
 	GameEvents.ball_possessed_by.emit(carrier)
 	animation_player.play("idle")
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	# 球在守门员身前（手中），根据朝向调整水平偏移
 	var offset := Vector2(carrier.heading.x * HOLD_OFFSET_X, HOLD_OFFSET_Y)
 	ball.position = carrier.position + offset

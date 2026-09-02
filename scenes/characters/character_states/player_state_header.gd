@@ -20,6 +20,6 @@ func on_ball_entered(contact_ball: Ball) -> void:
 		var direction := contact_ball.position.direction_to(destination)
 		contact_ball.shoot(direction * player.power * BONUS_POWER)
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if player.height == 0:
 		transition_state(Player.State.RECOVERING)

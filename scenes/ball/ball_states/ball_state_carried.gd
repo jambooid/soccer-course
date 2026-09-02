@@ -52,7 +52,7 @@ func _enter_tree() -> void:
 	player_detection_area.body_entered.connect(_on_player_opponent_near.bind())
 	player_detection_area.monitoring = false
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if carrier.velocity == Vector2.ZERO:
 		_process_idle(delta)
 	else:

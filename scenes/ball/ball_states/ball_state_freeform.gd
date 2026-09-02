@@ -29,7 +29,7 @@ func on_player_enter(body: Player) -> void:
 		body.control_ball()
 		transition_state(Ball.State.DRIBBLING)
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	player_detection_area.monitoring = (Time.get_ticks_msec() - time_since_freeform > state_data.lock_duration)
 	set_ball_animation_from_velocity()
 	var friction := ball.friction_air if ball.height > 0 else ball.friction_ground

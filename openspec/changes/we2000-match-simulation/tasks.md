@@ -11,7 +11,7 @@
 - [x] 2.1 Define match snapshot, input-frame, event-log, and tick-hash data structures; verify a constructed snapshot serializes to a stable hash across repeated runs.
 - [x] 2.2 Add a fixed 60 Hz match simulation coordinator that advances tick state independently of rendering; verify a scripted idle replay yields the same snapshots at multiple render cadences.
 - [x] 2.3 Add match-scoped RNG state to simulation snapshots and replay diagnostics; verify a seeded contested-event replay consumes and restores the same RNG state.
-- [ ] 2.4 Convert Player and Ball movement writes from render-frame processing to the simulation path while keeping rendering as a consumer; verify player and ball transforms remain equal under 30/60/120 FPS replay harnesses.
+- [x] 2.4 Convert Player and Ball movement writes from render-frame processing to the simulation path while keeping rendering as a consumer; verify player and ball transforms remain equal under 30/60/120 FPS replay harnesses.
 - [ ] 2.5 Replace deferred gameplay state transitions with a tick-end transition queue; verify a same-tick shot, save, and possession change creates one committed state transition per owner.
 
 ## 3. Ball Trajectory And Interaction Resolution

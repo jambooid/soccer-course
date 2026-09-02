@@ -33,7 +33,7 @@ var turn_angle := 0.0
 var last_input_direction := Vector2.ZERO
 var time_since_last_direction_input := INF
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if player.control_scheme == Player.ControlScheme.CPU:
 		ai_behavior.process_ai()
 	else:

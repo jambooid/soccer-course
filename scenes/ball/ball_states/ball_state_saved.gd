@@ -22,7 +22,7 @@ func _enter_tree() -> void:
 	# 球刚被扑出时门将可能已经在检测区内，立即检查一次
 	call_deferred("_check_immediate_goalie_catch")
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var friction := ball.friction_ground * 1.5
 	if ball.height > 0:
 		friction = ball.friction_ground * 0.4

@@ -56,7 +56,7 @@ func _enter_tree() -> void:
 	# 启动宽限期
 	grace_period_timer = GRACE_PERIOD_SEC
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not is_instance_valid(carrier):
 		_release_ball()
 		return

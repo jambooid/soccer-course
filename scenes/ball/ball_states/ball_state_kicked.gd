@@ -29,7 +29,7 @@ func _enter_tree() -> void:
 	player_detection_area.monitoring = false
 	set_ball_animation_from_velocity()
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var elapsed := Time.get_ticks_msec() - time_since_kick
 	player_detection_area.monitoring = elapsed > state_data.lock_duration
 

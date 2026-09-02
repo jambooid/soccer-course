@@ -27,7 +27,7 @@ func _enter_tree() -> void:
 	player_detection_area.body_entered.connect(on_player_enter.bind())
 	player_detection_area.monitoring = true
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	var elapsed := Time.get_ticks_msec() - time_since_shot
 	if elapsed > DURATION_SHOT:
 		transition_state(Ball.State.FREEFORM)

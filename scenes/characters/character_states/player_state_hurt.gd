@@ -20,7 +20,7 @@ func _enter_tree() -> void:
 		SoundPlayer.play(SoundPlayer.Sound.HURT)
 		GameEvents.impact_received.emit(player.position, false)
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if Time.get_ticks_msec() - time_start_hurt > DURATION_HURT:
 		transition_state(Player.State.RECOVERING)
 	player.velocity = player.velocity.move_toward(Vector2.ZERO, delta * AIR_FRICTION)

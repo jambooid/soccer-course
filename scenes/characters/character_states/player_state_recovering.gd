@@ -11,7 +11,7 @@ func _enter_tree() -> void:
 	player.velocity = Vector2.ZERO
 	animation_player.play("recover")
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var elapsed := Time.get_ticks_msec() - time_start_recovery
 	if elapsed > DURATION_RECOVERY:
 		# 硬直结束，检查缓冲中是否有待执行的动作

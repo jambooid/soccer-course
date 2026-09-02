@@ -6,7 +6,7 @@ var has_arrived := false
 func _enter_tree() -> void:
 	GameEvents.kickoff_started.connect(on_kickoff_started.bind())
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if not has_arrived:
 		var direction := player.position.direction_to(state_data.reset_position)
 		if player.position.distance_squared_to(state_data.reset_position) < 2:

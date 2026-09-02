@@ -20,7 +20,7 @@ func _enter_tree() -> void:
 	# 连接球检测区域，用于扑救触球
 	ball_detection_area.body_entered.connect(_on_ball_entered.bind())
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_start_dive > DURATION_DIVE:
 		transition_state(Player.State.RECOVERING)
 

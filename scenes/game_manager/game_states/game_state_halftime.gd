@@ -18,7 +18,7 @@ func _enter_tree() -> void:
 		actors.swap_sides()
 
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_started > DURATION_HALFTIME_MS:
 		# 下半场开始：重置时间，由客队开球（足球规则：下半场由上半场开球方的对方开球）
 		manager.time_left = GameManager.DURATION_HALF_SEC

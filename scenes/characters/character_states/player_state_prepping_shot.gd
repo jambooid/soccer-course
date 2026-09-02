@@ -13,7 +13,7 @@ func _enter_tree() -> void:
 	player.charge_display = 0.0
 	elapsed_charge = 0.0
 
-func _process(delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not player.has_ball():
 		_cancel_charge()
 		transition_state(Player.State.MOVING)

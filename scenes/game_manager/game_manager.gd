@@ -29,7 +29,7 @@ func _ready() -> void:
 	GameEvents.ball_possessed_by.connect(on_ball_possessed_by.bind())
 	GameEvents.ball_released.connect(on_ball_released.bind())
 
-func _process(_delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if get_tree().paused and Time.get_ticks_msec() - time_since_paused > DURATION_IMPACT_PAUSE:
 		get_tree().paused = false
 
