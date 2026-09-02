@@ -170,6 +170,19 @@ func _test_ball_interaction_resolver() -> void:
 	_expect(int(release_event.kind) == BallInteractionResolverScript.Kind.KICK,
 		"active kick wins over passive control")
 	_expect(int(snapshot.ball.carrier_id) == -1, "kick releases the current carrier")
+	var transition_sim := MatchSimulationScript.new(9, snapshot)
+	transition_sim.queue_state_transition(7, "PREPPING_SHOT", "SHOOTING", {"power": 1.0})
+	transition_sim.queue_state_transition(7, "SHOOTING", "RECOVERING")
+	transition_sim.queue_state_transition(2, "FREEFORM", "SAVED")
+	transition_sim.queue_state_transition(3, "FREEFORM", "DRIBBLING")
+	var transitioned := transition_sim.advance()
+	var transitions: Array = transitioned.events.filter(func(item: Dictionary) -> bool:
+		return item.get("type") == "state_transition")
+	_expect(transitions.size() == 3, "same-tick transitions commit once per owner")
+	_expect(int(transitions[0].owner_id) == 2 and int(transitions[1].owner_id) == 3,
+		"transition commits use stable owner ordering")
+	_expect(int(transitions[2].owner_id) == 7 and transitions[2].to == "RECOVERING",
+		"latest transition for an owner is committed at tick end")
 
 func _test_control_profile() -> void:
 	_expect(ControlProfileScript.can_connect(ControlProfileScript.Kind.FOOT, 0.0), "foot controls ground ball")
