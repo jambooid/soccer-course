@@ -10,14 +10,14 @@ const TACKLE_PROBABILITY := 0.3
 const SHOT_DISTANCE := PitchConstants.AI.SHOT_DISTANCE
 const TACKLE_DISTANCE := PitchConstants.AI.TACKLE_DISTANCE
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
+const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 
-## 无球跑位（进攻支援）参数
-const SUPPORT_RUN_WING_WIDTH := 70.0       ## 边路球员拉开宽度
-const SUPPORT_RUN_FORWARD_PUSH := 90.0     ## 前锋向前插的距离
-const SUPPORT_MID_PUSH := 50.0            ## 中场向前支援的距离
-const SUPPORT_FULLBACK_PUSH := 60.0       ## 边后卫插上距离
-const SUPPORT_CENTRAL_HOLD_DIST := PitchConstants.AI.SUPPORT_CENTRAL_HOLD_DIST
-const SUPPORT_RUN_ACTIVATION_DIST := PitchConstants.AI.SUPPORT_RUN_ACTIVATION_DIST
+## Tactical target arrival radii. Players settle into shape inside the stop
+## radius and progressively slow down inside the larger radius.
+const TACTICAL_STOP_RADIUS := 8.0
+const TACTICAL_SLOW_RADIUS := 55.0
+const PRESS_STOP_RADIUS := 3.0
+const PRESS_SLOW_RADIUS := 18.0
 
 ## 带球模式 AI 参数
 const SPRINT_TECH_THRESHOLD := PitchConstants.AI.SPRINT_TECH_THRESHOLD
@@ -29,18 +29,6 @@ const AI_TURN_RATE_LOW := 10.0         # rad/s, 低速
 const AI_TURN_RATE_HIGH := 3.5        # rad/s, 高速
 const AI_SPRINT_TURN_PENALTY := 0.6
 
-## 无球跑位状态机
-enum OffBallRunState {
-	HOLD_POSITION,   ## 保持位置
-	BREAK_OFFSIDE,   ## 反越位前插
-	PULL_WIDE,       ## 拉边
-	DROP_DEEP,       ## 回撤接应
-	OVERLAP_RUN      ## 套边助攻
-}
-const RUN_STATE_COOLDOWN_MS := 800    ## 跑位状态切换冷却（毫秒），防止抖动
-var current_run_state : int = OffBallRunState.HOLD_POSITION
-var run_state_cooldown_ms := 0.0       ## 剩余冷却时间
-var cached_run_target := Vector2.ZERO ## 缓存的跑位目标位置（冷却期内使用）
 var _ai_move_direction := Vector2.RIGHT  ## AI 平滑移动方向
 
 func perform_ai_movement() -> void:
@@ -48,15 +36,10 @@ func perform_ai_movement() -> void:
 	if player.has_ball():
 		total_steering_force += get_carrier_steering_force()
 	elif is_ball_carried_by_teammate():
-		if _is_carrier_human_controlled():
-			# 队友是人类玩家 → 智能无球跑位，创造传球选项
-			total_steering_force += get_offensive_support_steering_force()
-		else:
-			# 队友是 AI → 保持阵型跟随
-			total_steering_force += get_assist_formation_steering_force()
+		total_steering_force += get_assist_formation_steering_force()
 	else:
 		total_steering_force += get_onduty_steering_force()
-		if total_steering_force.length_squared() < 1:
+		if player.tactical_role.is_empty() and total_steering_force.length_squared() < 1:
 			if is_ball_possessed_by_opponent():
 				total_steering_force += get_spawn_steering_force()
 			elif ball.carrier == null:
@@ -64,6 +47,7 @@ func perform_ai_movement() -> void:
 				total_steering_force += get_density_around_ball_steering_force()
 
 	total_steering_force = total_steering_force.limit_length(1.0)
+	var intent_strength := total_steering_force.length()
 
 	# 带球模式决策（只有持球时才需要）
 	if player.has_ball():
@@ -78,9 +62,10 @@ func perform_ai_movement() -> void:
 
 	# AI 转向平滑（与人类玩家 TurnController 一致的手感）
 	var target_dir := total_steering_force
-	if target_dir.length() > 0.1:
-		_ai_apply_turning(target_dir.normalized(), get_process_delta_time())
-		player.velocity = _ai_move_direction * player.speed * speed_mult
+	if intent_strength > 0.05:
+		var ai_tick_delta := float(_get_tick_interval_ms()) / 1000.0
+		_ai_apply_turning(target_dir.normalized(), ai_tick_delta)
+		player.velocity = _ai_move_direction * player.speed * speed_mult * intent_strength
 	else:
 		player.velocity = Vector2.ZERO
 
@@ -104,6 +89,9 @@ func _decide_dribble_mode() -> void:
 
 func _ai_apply_turning(target_direction: Vector2, delta: float) -> void:
 	if target_direction.length() < 0.01:
+		return
+	if player.velocity.length() < player.speed * 0.1:
+		_ai_move_direction = target_direction.normalized()
 		return
 
 	var current_dir: Vector2 = _ai_move_direction.normalized()
@@ -269,129 +257,9 @@ func _execute_pass(target: Player, pass_type: int) -> void:
 	var data := PlayerStateData.build().set_pass_type(pass_type).set_pass_target(target)
 	player.switch_state(Player.State.PASSING, data)
 
-func _is_carrier_human_controlled() -> bool:
-	## 判断球的持有者是否是人类玩家（P1 或 P2）
-	if ball.carrier == null:
-		return false
-	return ball.carrier.control_scheme == Player.ControlScheme.P1 \
-		or ball.carrier.control_scheme == Player.ControlScheme.P2
-
-func get_offensive_support_steering_force() -> Vector2:
-	## 人类队友持球时的无球跑位（状态机驱动，带冷却防抖）
-	## 跑位状态每 800ms 重新评估一次，冷却期内维持当前跑位目标
-	var carrier := ball.carrier
-	if carrier == null:
-		return Vector2.ZERO
-	if not player.tactical_role.is_empty():
-		return player.position.direction_to(player.tactical_target)
-
-	# 太远了就先回到阵型位置（防止乱跑）
-	var dist_to_ball := player.position.distance_to(carrier.position)
-	if dist_to_ball > SUPPORT_RUN_ACTIVATION_DIST:
-		current_run_state = OffBallRunState.HOLD_POSITION
-		return get_assist_formation_steering_force()
-
-	# 更新冷却 + 判断是否需要重新选择跑位状态
-	if run_state_cooldown_ms <= 0:
-		# 冷却结束，重新选择跑位状态
-		_select_run_state(carrier)
-		# 根据新状态计算目标位置
-		cached_run_target = _compute_run_target_for_state(carrier, current_run_state)
-		run_state_cooldown_ms = RUN_STATE_COOLDOWN_MS
-	else:
-		run_state_cooldown_ms -= _get_tick_interval_ms()
-
-	var target_pos := cached_run_target
-	var direction := player.position.direction_to(target_pos)
-	var dist_to_target := player.position.distance_to(target_pos)
-
-	# 靠近目标时减速，保持位置
-	var weight := get_bicircular_weight(player.position, target_pos, 20, 0.1, 50, 1.0)
-
-	# 离球越近，跑位越积极
-	var proximity_factor: float = clamp(1.0 - dist_to_ball / SUPPORT_RUN_ACTIVATION_DIST, 0.3, 1.0)
-
-	return weight * direction * proximity_factor
-
-func _select_run_state(carrier: Player) -> void:
-	## 根据场上形势选择跑位状态
-	var goal_pos := player.target_goal.get_center_target_position()
-	var dist_to_goal := player.position.distance_to(goal_pos)
-	var dist_to_ball := player.position.distance_to(carrier.position)
-	var attack_dir := carrier.position.direction_to(goal_pos)
-
-	# 计算球员在阵型中的横向位置
-	var spawn_y_offset := player.spawn_position.y - carrier.spawn_position.y
-	var is_wide_player: bool = abs(spawn_y_offset) > 40
-
-	match player.role:
-		Player.Role.OFFENSE:
-			# 前锋：大部分时间尝试反越位前插，偶尔拉边
-			if is_wide_player and randf() < 0.4:
-				current_run_state = OffBallRunState.PULL_WIDE
-			else:
-				current_run_state = OffBallRunState.BREAK_OFFSIDE
-
-		Player.Role.MIDFIELD:
-			# 中场：根据距离选择回撤或前插
-			if dist_to_ball > 120.0:
-				current_run_state = OffBallRunState.DROP_DEEP
-			elif is_wide_player and randf() < 0.3:
-				current_run_state = OffBallRunState.PULL_WIDE
-			else:
-				current_run_state = OffBallRunState.BREAK_OFFSIDE
-
-		Player.Role.DEFENSE:
-			# 后卫：边后卫套边，中后卫留守
-			if is_wide_player and dist_to_goal > 150.0:
-				current_run_state = OffBallRunState.OVERLAP_RUN
-			else:
-				current_run_state = OffBallRunState.HOLD_POSITION
-
-		_:
-			current_run_state = OffBallRunState.HOLD_POSITION
-
-func _compute_run_target_for_state(carrier: Player, state: int) -> Vector2:
-	## 根据跑位状态计算目标位置
-	var goal_pos := player.target_goal.get_center_target_position()
-	var carrier_pos := carrier.position
-	var attack_dir := carrier_pos.direction_to(goal_pos)
-	var lateral_dir := Vector2(-attack_dir.y, attack_dir.x)
-	var spawn_y_offset := player.spawn_position.y - carrier.spawn_position.y
-
-	match state:
-		OffBallRunState.BREAK_OFFSIDE:
-			# 反越位：向球门方向前插
-			var forward_push := SUPPORT_RUN_FORWARD_PUSH
-			return carrier_pos + attack_dir * forward_push
-
-		OffBallRunState.PULL_WIDE:
-			# 拉边：向边路拉开宽度
-			var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
-			var mid_push := SUPPORT_MID_PUSH * 0.5
-			return carrier_pos + attack_dir * mid_push + lateral_dir * wide_amount
-
-		OffBallRunState.DROP_DEEP:
-			# 回撤：回到球后方接应
-			var drop_back := SUPPORT_CENTRAL_HOLD_DIST * 0.8
-			return carrier_pos - attack_dir * drop_back
-
-		OffBallRunState.OVERLAP_RUN:
-			# 套边：沿边路插上
-			var fb_push := SUPPORT_FULLBACK_PUSH
-			var wide_amount: float = sign(spawn_y_offset) * SUPPORT_RUN_WING_WIDTH
-			return carrier_pos + attack_dir * fb_push + lateral_dir * wide_amount
-
-		_:  # HOLD_POSITION
-			# 保持位置：停在当前位置附近
-			return player.position + attack_dir * 20.0
-
-
-
 func get_onduty_steering_force() -> Vector2:
 	if not player.tactical_role.is_empty():
-		var tactical_weight := 1.0 if player.tactical_role == "PRESS" else 0.7
-		return tactical_weight * player.position.direction_to(player.tactical_target)
+		return _get_tactical_steering_force()
 	return player.weight_on_duty_steering * player.position.direction_to(ball.position)
 
 func get_carrier_steering_force() -> Vector2:
@@ -407,12 +275,19 @@ func get_carrier_steering_force() -> Vector2:
 
 func get_assist_formation_steering_force() -> Vector2:
 	if not player.tactical_role.is_empty():
-		return player.position.direction_to(player.tactical_target)
+		return _get_tactical_steering_force()
 	var spawn_difference := ball.carrier.spawn_position - player.spawn_position
 	var assist_destination := ball.carrier.position - spawn_difference * SPREAD_ASSIST_FACTOR
-	var direction := player.position.direction_to(assist_destination)
-	var weight := get_bicircular_weight(player.position, assist_destination, 30, 0.2, 60, 1)
-	return weight * direction
+	return TeamTacticsScript.arrival_intent(
+		player.position, assist_destination, TACTICAL_STOP_RADIUS, TACTICAL_SLOW_RADIUS)
+
+func _get_tactical_steering_force() -> Vector2:
+	var is_pressing := player.tactical_role == "PRESS"
+	var stop_radius := PRESS_STOP_RADIUS if is_pressing else TACTICAL_STOP_RADIUS
+	var slow_radius := PRESS_SLOW_RADIUS if is_pressing else TACTICAL_SLOW_RADIUS
+	var role_speed := 1.0 if is_pressing else 0.85
+	return TeamTacticsScript.arrival_intent(
+		player.position, player.tactical_target, stop_radius, slow_radius) * role_speed
 
 func get_ball_proximity_steering_force() -> Vector2:
 	var weight := get_bicircular_weight(player.position, ball.position, 50, 1, 120, 0)

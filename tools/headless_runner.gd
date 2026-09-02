@@ -255,6 +255,49 @@ func _test_team_tactics() -> void:
 	var clamped_wide := TeamTacticsScript.clamp_support_target(
 		support_assignments[3].target, 95.0, 1, 50.0)
 	_expect(clamped_wide.x < 95.0, "forward support target is constrained by offside line")
+	_expect(TeamTacticsScript.arrival_intent(
+		Vector2.ZERO, Vector2(5.0, 0.0), 8.0, 55.0) == Vector2.ZERO,
+		"player settles inside tactical target stop radius")
+	var slowing_intent: Vector2 = TeamTacticsScript.arrival_intent(
+		Vector2.ZERO, Vector2(30.0, 0.0), 8.0, 55.0)
+	_expect(slowing_intent.length() > 0.0 and slowing_intent.length() < 1.0,
+		"player slows while approaching tactical target")
+	_expect(is_equal_approx(TeamTacticsScript.arrival_intent(
+		Vector2.ZERO, Vector2(100.0, 0.0), 8.0, 55.0).length(), 1.0),
+		"distant tactical target requests full movement speed")
+
+	var full_team: Array[Dictionary] = [
+		{"id": 2, "position": Vector2(165.0, 110.0), "spawn_position": Vector2(165.0, 110.0)},
+		{"id": 3, "position": Vector2(185.0, 155.0), "spawn_position": Vector2(185.0, 155.0)},
+		{"id": 4, "position": Vector2(185.0, 205.0), "spawn_position": Vector2(185.0, 205.0)},
+		{"id": 5, "position": Vector2(165.0, 250.0), "spawn_position": Vector2(165.0, 250.0)},
+		{"id": 6, "position": Vector2(275.0, 135.0), "spawn_position": Vector2(275.0, 135.0)},
+		{"id": 8, "position": Vector2(285.0, 180.0), "spawn_position": Vector2(285.0, 180.0)},
+		{"id": 10, "position": Vector2(275.0, 225.0), "spawn_position": Vector2(275.0, 225.0)},
+		{"id": 7, "position": Vector2(375.0, 105.0), "spawn_position": Vector2(375.0, 105.0)},
+		{"id": 9, "position": Vector2(395.0, 180.0), "spawn_position": Vector2(395.0, 180.0)},
+		{"id": 11, "position": Vector2(375.0, 255.0), "spawn_position": Vector2(375.0, 255.0)},
+	]
+	var full_assignments := TeamTacticsScript.build_attacking_assignments(
+		full_team, Vector2(470.0, 120.0), 1, 10)
+	_expect(full_assignments.size() == 9, "11v11 attack assigns every off-ball outfielder")
+	var safety_count := 0
+	var distinct_targets := {}
+	for assignment: Dictionary in full_assignments.values():
+		if assignment.role == "SAFETY":
+			safety_count += 1
+		var target: Vector2 = assignment.target
+		distinct_targets[Vector2i(roundi(target.x), roundi(target.y))] = true
+	_expect(safety_count == 1, "11v11 attack retains exactly one safety outlet")
+	_expect(distinct_targets.size() == full_assignments.size(),
+		"11v11 off-ball players receive distinct formation targets")
+	_expect((full_assignments[7].target as Vector2).y < (full_assignments[9].target as Vector2).y \
+		and (full_assignments[9].target as Vector2).y < (full_assignments[11].target as Vector2).y,
+		"11v11 forward line preserves left, central, and right lanes")
+	var rear_target_x: float = (full_assignments[3].target as Vector2).x
+	var forward_target_x: float = (full_assignments[9].target as Vector2).x
+	_expect(forward_target_x - rear_target_x > 120.0,
+		"11v11 support targets preserve defensive-to-forward depth")
 
 func _test_intercept_resolver() -> void:
 	var defender := {

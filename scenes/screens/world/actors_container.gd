@@ -41,6 +41,7 @@ func _ready() -> void:
 	squad_away = spawn_players(GameManager.current_match.country_away, goal_away)
 	goal_away.initialize(GameManager.current_match.country_away)
 	setup_control_schemes()
+	set_on_duty_weights()
 
 func _process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:

@@ -6,6 +6,9 @@ extends RefCounted
 
 const MAX_PRESSERS := 1
 const COVER_DISTANCE := 90.0
+const SUPPORT_WIDTH_SCALE := 1.08
+const SUPPORT_BALL_SIDE_SHIFT := 0.18
+const SUPPORT_MAX_BALL_SIDE_SHIFT := 18.0
 
 ## Build executable defensive roles. Only the presser targets the ball; cover
 ## protects the goal-side lane and the rest retain shifted formation anchors.
@@ -46,28 +49,82 @@ static func build_attacking_assignments(
 			non_carriers.append(player)
 	if non_carriers.is_empty():
 		return assignments
+
+	var formation_center_y := 0.0
+	var min_forward_anchor := INF
+	var max_forward_anchor := -INF
+	for player in team_players:
+		var anchor: Vector2 = player.get("spawn_position", player.get("position", Vector2.ZERO))
+		var forward_anchor := anchor.x * attacking_dir_x
+		formation_center_y += anchor.y
+		min_forward_anchor = minf(min_forward_anchor, forward_anchor)
+		max_forward_anchor = maxf(max_forward_anchor, forward_anchor)
+	formation_center_y /= team_players.size()
+
+	var max_lane_offset := 0.0
+	for player in team_players:
+		var anchor: Vector2 = player.get("spawn_position", player.get("position", Vector2.ZERO))
+		max_lane_offset = maxf(max_lane_offset, absf(anchor.y - formation_center_y))
+	var wide_lane_threshold := maxf(30.0, max_lane_offset * 0.55)
+	var ball_forward := ball_position.x * attacking_dir_x
+	var ball_side_shift := clampf(
+		(ball_position.y - formation_center_y) * SUPPORT_BALL_SIDE_SHIFT,
+		-SUPPORT_MAX_BALL_SIDE_SHIFT,
+		SUPPORT_MAX_BALL_SIDE_SHIFT)
+
 	var safety := non_carriers[0]
 	for candidate in non_carriers:
 		var candidate_anchor: Vector2 = candidate.get("spawn_position", candidate.get("position", Vector2.ZERO))
 		var safety_anchor: Vector2 = safety.get("spawn_position", safety.get("position", Vector2.ZERO))
-		if (attacking_dir_x > 0 and candidate_anchor.x < safety_anchor.x) \
-				or (attacking_dir_x < 0 and candidate_anchor.x > safety_anchor.x):
+		var candidate_score := candidate_anchor.x * attacking_dir_x \
+			+ absf(candidate_anchor.y - formation_center_y) * 0.6
+		var safety_score := safety_anchor.x * attacking_dir_x \
+			+ absf(safety_anchor.y - formation_center_y) * 0.6
+		if candidate_score < safety_score:
 			safety = candidate
+
 	for player in non_carriers:
 		var player_id := int(player.get("id", -1))
 		var anchor: Vector2 = player.get("spawn_position", player.get("position", Vector2.ZERO))
+		var anchor_forward := anchor.x * attacking_dir_x
+		var depth_ratio := inverse_lerp(min_forward_anchor, max_forward_anchor, anchor_forward) \
+			if not is_equal_approx(min_forward_anchor, max_forward_anchor) else 0.5
+		var advance_factor := lerpf(0.28, 0.68, depth_ratio)
+		var max_advance := lerpf(85.0, 150.0, depth_ratio)
+		var forward_shift := clampf(
+			(ball_forward - anchor_forward) * advance_factor, -45.0, max_advance)
+		var line_lead := lerpf(-15.0, 42.0, depth_ratio)
+		var target_forward := anchor_forward + forward_shift + line_lead
+		var lane_offset := anchor.y - formation_center_y
 		var role := "CENTRAL"
-		var target := Vector2(ball_position.x + attacking_dir_x * 45.0,
-			lerpf(anchor.y, ball_position.y, 0.35))
+		var target := Vector2(target_forward * attacking_dir_x,
+			formation_center_y + lane_offset * SUPPORT_WIDTH_SCALE + ball_side_shift)
 		if player == safety:
 			role = "SAFETY"
-			target = Vector2(ball_position.x - attacking_dir_x * 65.0, anchor.y)
-		elif absf(anchor.y - ball_position.y) > 42.0:
+			var safety_shift := clampf((ball_forward - anchor_forward) * 0.18, -25.0, 70.0)
+			target.x = (anchor_forward + safety_shift) * attacking_dir_x
+		elif absf(lane_offset) >= wide_lane_threshold:
 			role = "WIDE"
-			target = Vector2(ball_position.x + attacking_dir_x * 30.0,
-				anchor.y + clampf(ball_position.y - anchor.y, -20.0, 20.0))
 		assignments[player_id] = {"role": role, "target": target}
 	return assignments
+
+## Produces a movement intent that reaches a target and settles there instead
+## of repeatedly overshooting it. The intent magnitude is the desired speed
+## ratio, while its direction remains suitable for the player's turn controller.
+static func arrival_intent(
+	position: Vector2,
+	target: Vector2,
+	stop_radius: float,
+	slow_radius: float
+) -> Vector2:
+	var offset := target - position
+	var distance := offset.length()
+	if distance <= stop_radius or distance <= 0.001:
+		return Vector2.ZERO
+	var usable_slow_radius := maxf(slow_radius, stop_radius + 0.001)
+	var speed_ratio := clampf(
+		(distance - stop_radius) / (usable_slow_radius - stop_radius), 0.0, 1.0)
+	return offset / distance * speed_ratio
 
 static func build_snapshot(team_players: Array[Dictionary], opponents: Array[Dictionary], ball_position: Vector2, attacking_dir_x: int, pitch_center_x: float = 0.0) -> Dictionary:
 	var ordered := team_players.duplicate(true)
