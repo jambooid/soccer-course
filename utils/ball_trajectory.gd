@@ -34,6 +34,26 @@ static func velocity_for_ground_target(origin: Vector2, target: Vector2, frictio
 	var speed := sqrt(2.0 * maxf(friction, EPSILON) * distance)
 	return offset.normalized() * speed
 
+## Solves an initial velocity that first reaches target at arrival_time while
+## decelerating with the same constant friction used by the live ball state.
+static func velocity_for_ground_target_at_time(
+	origin: Vector2,
+	target: Vector2,
+	friction: float,
+	arrival_time: float
+) -> Vector2:
+	var offset := target - origin
+	var distance := offset.length()
+	if distance <= EPSILON:
+		return Vector2.ZERO
+	var deceleration := maxf(friction, EPSILON)
+	# A ball that stops at the target is the latest valid arrival. Clamp to that
+	# bound so the analytical equation never asks a stopped ball to travel again.
+	var latest_arrival := sqrt(2.0 * distance / deceleration)
+	var time := clampf(arrival_time, EPSILON, latest_arrival)
+	var speed := distance / time + 0.5 * deceleration * time
+	return offset.normalized() * speed
+
 static func bounce_velocity(velocity: Vector2, normal: Vector2, bounciness: float) -> Vector2:
 	if normal.length_squared() <= EPSILON:
 		return velocity

@@ -11,6 +11,8 @@ const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
 const BallInteractionResolverScript := preload("res://utils/ball_interaction_resolver.gd")
 const ControlProfileScript := preload("res://utils/control_profile.gd")
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
+const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
+const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 
 var _passed := 0
 var _failed := 0
@@ -29,6 +31,8 @@ func _run() -> void:
 	_run_suite("ball_interaction_resolver", _test_ball_interaction_resolver)
 	_run_suite("control_profile", _test_control_profile)
 	_run_suite("team_tactics", _test_team_tactics)
+	_run_suite("intercept_resolver", _test_intercept_resolver)
+	_run_suite("offside_judge", _test_offside_judge)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -119,6 +123,18 @@ func _test_ball_trajectory() -> void:
 	var short_velocity := BallTrajectoryScript.velocity_for_ground_target(Vector2.ZERO, Vector2(60.0, 0.0), 60.0)
 	var long_velocity := BallTrajectoryScript.velocity_for_ground_target(Vector2.ZERO, Vector2(240.0, 0.0), 60.0)
 	_expect(long_velocity.length() > short_velocity.length(), "pass speed follows target distance")
+	for scenario in [
+		{"distance": 30.0, "arrival": 0.20},
+		{"distance": 120.0, "arrival": 0.55},
+		{"distance": 250.0, "arrival": 0.90},
+	]:
+		var pass_target := Vector2(float(scenario.distance), 0.0)
+		var pass_velocity := BallTrajectoryScript.velocity_for_ground_target_at_time(
+			Vector2.ZERO, pass_target, 60.0, float(scenario.arrival))
+		var arrival_position := BallTrajectoryScript.ground_position_after(
+			Vector2.ZERO, pass_velocity, 60.0, float(scenario.arrival))
+		_expect(arrival_position.distance_to(pass_target) < 0.01,
+			"timed ground pass reaches %d px target" % int(scenario.distance))
 	var bounced := BallTrajectoryScript.bounce_velocity(Vector2(10.0, 0.0), Vector2(-1.0, 0.0), 0.8)
 	_expect(is_equal_approx(bounced.x, -8.0), "bounce reflects and loses energy")
 
@@ -135,6 +151,25 @@ func _test_ball_interaction_resolver() -> void:
 		{"eligible": true, "priority": 1, "distance": 4.0, "player_id": 3},
 	])
 	_expect(int(tie.player_id) == 3, "tie breaks by stable player id")
+	var snapshot := MatchSnapshotScript.new()
+	snapshot.tick = 18
+	var inactive_tackle := BallInteractionResolverScript.create_intent(
+		BallInteractionResolverScript.Kind.TACKLE, 8,
+		{"distance": 1.0, "active_window": false})
+	var collection := BallInteractionResolverScript.create_intent(
+		BallInteractionResolverScript.Kind.COLLECT, 4, {"distance": 3.0})
+	var event := BallInteractionResolverScript.resolve_and_commit(
+		snapshot, [inactive_tackle, collection])
+	_expect(int(event.player_id) == 4, "inactive actions cannot win a contest")
+	_expect(int(snapshot.ball.carrier_id) == 4, "one resolved capture assigns one carrier")
+	_expect(snapshot.events.size() == 1, "one committed interaction emits one event")
+	var release_event := BallInteractionResolverScript.resolve_and_commit(snapshot, [
+		BallInteractionResolverScript.create_intent(BallInteractionResolverScript.Kind.CONTROL, 4),
+		BallInteractionResolverScript.create_intent(BallInteractionResolverScript.Kind.KICK, 4),
+	])
+	_expect(int(release_event.kind) == BallInteractionResolverScript.Kind.KICK,
+		"active kick wins over passive control")
+	_expect(int(snapshot.ball.carrier_id) == -1, "kick releases the current carrier")
 
 func _test_control_profile() -> void:
 	_expect(ControlProfileScript.can_connect(ControlProfileScript.Kind.FOOT, 0.0), "foot controls ground ball")
@@ -158,6 +193,47 @@ func _test_team_tactics() -> void:
 	_expect(is_equal_approx(snapshot.offside_line_x, 50.0), "offside line respects ball position")
 	var clamped := TeamTacticsScript.clamp_support_target(Vector2(100.0, 0.0), snapshot.offside_line_x, 1, 50.0)
 	_expect(clamped.x < snapshot.offside_line_x, "support target stays onside")
+
+func _test_intercept_resolver() -> void:
+	var defender := {
+		"position": Vector2(8.0, 0.0),
+		"velocity": Vector2(100.0, 0.0),
+		"defense": 90.0,
+	}
+	var dribbler := {
+		"position": Vector2.ZERO,
+		"technique": 40.0,
+	}
+	var distant_defender := {
+		"position": Vector2(40.0, 0.0),
+		"velocity": Vector2.ZERO,
+		"defense": 90.0,
+	}
+	var probability := InterceptResolverScript.compute_intercept_probability(
+		defender, dribbler, Vector2.ZERO, Vector2.RIGHT * 80.0)
+	_expect(probability > 0.0, "eligible defender has a positive intercept chance")
+	_expect(is_zero_approx(InterceptResolverScript.compute_intercept_probability(
+		distant_defender, dribbler, Vector2.ZERO, Vector2.RIGHT * 80.0
+	)), "distant defender is ineligible")
+	var winner := InterceptResolverScript.find_best_interceptor_probability(
+		[distant_defender, defender], dribbler, Vector2.ZERO, Vector2.RIGHT * 80.0)
+	_expect(winner.player == defender, "highest probability interceptor wins")
+
+func _test_offside_judge() -> void:
+	var passer := {"global_position": Vector2(40.0, 0.0), "role": 2}
+	var onside_attacker := {"global_position": Vector2(56.0, 0.0), "role": 3}
+	var offside_attacker := {"global_position": Vector2(72.0, 0.0), "role": 3}
+	var defenders := [
+		{"global_position": Vector2(58.0, 0.0), "role": 1},
+		{"global_position": Vector2(64.0, 0.0), "role": 1},
+	]
+	var result := OffsideJudgeScript.check_offside_at_pass(
+		passer, [onside_attacker, offside_attacker], defenders, Vector2(40.0, 0.0), 1)
+	_expect(result.is_offside, "forward beyond second-last defender is offside")
+	_expect(result.offender == offside_attacker, "furthest offending attacker is selected")
+	_expect(not OffsideJudgeScript.is_target_offside(
+		Vector2(-10.0, 0.0), defenders, Vector2(40.0, 0.0), 1
+	), "attacker in own half is never offside")
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

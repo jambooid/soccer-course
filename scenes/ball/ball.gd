@@ -111,12 +111,16 @@ func long_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lock_
 	if distance < 0.1:
 		return
 	power = clamp(power, 0.3, 1.5)
-	var base_velocity := BallTrajectoryScript.velocity_for_ground_target(
-		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION * 0.7)
-	velocity = base_velocity * power
+	var air_friction := PitchConstants.BALL.KICKED_GROUND_FRICTION \
+		* PitchConstants.BALL.KICKED_AIR_FRICTION_MULT
+	var travel_speed := lerpf(150.0, 260.0, (power - 0.3) / 1.2)
+	var flight_time := distance / travel_speed
+	velocity = BallTrajectoryScript.velocity_for_ground_target_at_time(
+		position, destination, air_friction, flight_time)
 	height = 0.0
-	# 抛物线：根据距离和速度计算初始竖直速度，使球落在目标附近
-	height_velocity = PitchConstants.GRAVITY * distance / (1.5 * maxf(velocity.length(), 0.1))
+	# Launch and landing share the selected flight time, so the horizontal solver
+	# and vertical arc reach the receiving area together.
+	height_velocity = PitchConstants.GRAVITY * flight_time * 0.5
 	carrier = null
 	switch_state(State.KICKED, BallStateData.build()
 		.set_lock_duration(lock_duration)
@@ -128,9 +132,9 @@ func through_pass(destination: Vector2, p_kicker: Player, power: float = 1.0, lo
 	if distance < 0.1:
 		return
 	power = clamp(power, 0.7, 1.3)
-	var base_velocity := BallTrajectoryScript.velocity_for_ground_target(
-		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION)
-	velocity = base_velocity * lerpf(1.15, 1.8, power)
+	var travel_speed := lerpf(160.0, 280.0, (power - 0.7) / 0.6)
+	velocity = BallTrajectoryScript.velocity_for_ground_target_at_time(
+		position, destination, PitchConstants.BALL.KICKED_GROUND_FRICTION, distance / travel_speed)
 	height = 0.0
 	height_velocity = 0.0
 	carrier = null

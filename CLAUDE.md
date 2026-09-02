@@ -134,15 +134,18 @@ Built into `GameManager` — tracks `possession_home` / `possession_away` (cumul
 
 ## Testing
 
-Test scenes live in `tools/`. Run from editor or CLI:
+The only authoritative command for local automation and CI is the Godot 4.4.x
+`headless_runner.gd` command in **Running**. It reports assertions and exits
+non-zero on every failure. The older scripts below are diagnostic-only: they
+exercise scenes or print runtime observations, but are not a merge gate.
 
 | File | What it tests |
 |------|---------------|
-| `test_runner.gd` | Smoke test — loads all 4 screens, runs each 1s, checks for crashes |
-| `test_automated.gd` | Automated game — creates match, simulates kickoff, runs 30s |
-| `test_gameplay.gd` | Gameplay flow — main menu → team selection → match, 15s gameplay |
-| `test_full_game.gd` | Full match — kickoff → 60s first half → halftime → 60s second half |
-| `test_runtime.gd` | Runtime error detection — 60s match with state/player/ball checks at 10s/30s/60s |
+| `test_runner.gd` | Diagnostic smoke script — scene loading only |
+| `test_automated.gd` | Diagnostic match script — prints kickoff/runtime observations |
+| `test_gameplay.gd` | Diagnostic flow script — observes menu-to-match startup |
+| `test_full_game.gd` | Diagnostic full-match script — prints match progression |
+| `test_runtime.gd` | Diagnostic runtime script — prints state/player/ball observations |
 | `headless_runner.gd` | Authoritative deterministic utility-test runner — exits non-zero on failure |
 
 ## Conventions

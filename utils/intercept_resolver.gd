@@ -29,41 +29,41 @@ const TECHNIQUE_MAX := 98.0
 
 ## 检测防守球员是否能自动断下带球队员的球（二元判定）
 ## 返回 {success: bool, reason: String, quality: float}
-static func check_auto_intercept(defender: Player, ball: Ball) -> Dictionary:
+static func check_auto_intercept(defender, ball) -> Dictionary:
 	# 只有球处于"离脚"状态时才能被断
 	if not ball.is_ball_free():
 		return {"success": false, "reason": "ball_not_free"}
 
-	var ball_pos := ball.position
-	var ball_vel := ball.velocity
+	var ball_pos: Vector2 = ball.position
+	var ball_vel: Vector2 = ball.velocity
 	if ball_vel == Vector2.ZERO:
 		return {"success": false, "reason": "ball_stationary"}
 
-	var dist := defender.position.distance_to(ball_pos)
-	var defense_bonus := defender.defense / 100.0 * 4.0
-	var effective_radius := AUTO_INTERCEPT_RADIUS + defense_bonus
+	var dist: float = defender.position.distance_to(ball_pos)
+	var defense_bonus: float = defender.defense / 100.0 * 4.0
+	var effective_radius: float = AUTO_INTERCEPT_RADIUS + defense_bonus
 	if dist > effective_radius:
 		return {"success": false, "reason": "too_far"}
 
-	var ball_to_defender := defender.position - ball_pos
+	var ball_to_defender: Vector2 = defender.position - ball_pos
 	var angle_diff: float = rad_to_deg(abs(ball_vel.angle_to(ball_to_defender)))
 
 	if ball.carrier != null:
-		var technique_evasion := (ball.carrier.technique / 100.0) * TECHNIQUE_EVASION_BONUS
-		var effective_angle_tolerance := INTERCEPT_ANGLE_TOLERANCE - technique_evasion
+		var technique_evasion: float = (ball.carrier.technique / 100.0) * TECHNIQUE_EVASION_BONUS
+		var effective_angle_tolerance: float = INTERCEPT_ANGLE_TOLERANCE - technique_evasion
 		if angle_diff > effective_angle_tolerance:
 			return {"success": false, "reason": "bad_angle_evaded"}
 	else:
 		if angle_diff > INTERCEPT_ANGLE_TOLERANCE:
 			return {"success": false, "reason": "bad_angle"}
 
-	var dist_quality := 1.0 - dist / effective_radius
+	var dist_quality: float = 1.0 - dist / effective_radius
 	var angle_quality := 1.0 - angle_diff / INTERCEPT_ANGLE_TOLERANCE
 	var quality: float = clamp(dist_quality * 0.6 + angle_quality * 0.4, 0.0, 1.0)
 	return {"success": true, "quality": quality, "reason": "intercepted"}
 
-static func find_best_interceptor(defenders: Array, ball: Ball) -> Dictionary:
-	var best: Player = null
+static func find_best_interceptor(defenders: Array, ball) -> Dictionary:
+	var best = null
 	var best_quality := -1.0
 
 	for defender in defenders:
@@ -85,13 +85,13 @@ static func find_best_interceptor(defenders: Array, ball: Ball) -> Dictionary:
 #
 # 使用真实的 defense vs technique 属性（范围 24-94 vs 30-98）
 static func compute_intercept_probability(
-	defender: Player,
-	dribbler: Player,
+	defender,
+	dribbler,
 	ball_pos: Vector2,
 	ball_vel: Vector2
 ) -> float:
 	# 1. 距离分：球离防守者越近，分越高
-	var dist_to_ball := defender.position.distance_to(ball_pos)
+	var dist_to_ball: float = defender.position.distance_to(ball_pos)
 	if dist_to_ball > INTERCEPT_MAX_DISTANCE:
 		return 0.0
 	var dist_score: float = clamp(1.0 - dist_to_ball / INTERCEPT_MAX_DISTANCE, 0.0, 1.0)
@@ -100,7 +100,7 @@ static func compute_intercept_probability(
 	var angle_score: float = 1.0
 	var ball_speed := ball_vel.length()
 	if ball_speed >= 5.0:
-		var ball_to_defender := (defender.position - ball_pos).normalized()
+		var ball_to_defender: Vector2 = (defender.position - ball_pos).normalized()
 		var angle_diff: float = abs(ball_vel.angle_to(ball_to_defender))
 		if angle_diff > PI / 2.0:
 			# 身后（>90°）也能断但概率大幅降低，固定为 15% 角度分
@@ -110,7 +110,7 @@ static func compute_intercept_probability(
 			angle_score = clamp(1.0 - angle_diff / INTERCEPT_ANGLE_MAX, 0.0, 1.0)
 
 	# 3. 相对速度分：接近速度越快越突然（越容易断）
-	var defender_to_ball := (ball_pos - defender.position).normalized()
+	var defender_to_ball: Vector2 = (ball_pos - defender.position).normalized()
 	var defender_approach_speed: float = max(0.0, defender.velocity.dot(defender_to_ball))
 	var total_approach := ball_speed + defender_approach_speed
 	var speed_score: float = clamp(total_approach / INTERCEPT_SPEED_REF, 0.0, 1.0)
@@ -131,17 +131,17 @@ static func compute_intercept_probability(
 # 找到附近最合适的断球者（概率最高的那个）
 # 返回 {player: Player, probability: float} 或空字典
 static func find_best_interceptor_probability(
-	candidates: Array[Player],
-	dribbler: Player,
+	candidates: Array,
+	dribbler,
 	ball_pos: Vector2,
 	ball_vel: Vector2
 ) -> Dictionary:
-	var best: Player = null
+	var best = null
 	var best_prob := 0.0
 	for defender in candidates:
 		if defender == dribbler:
 			continue
-		if not is_instance_valid(defender):
+		if defender is Object and not is_instance_valid(defender):
 			continue
 		var prob := compute_intercept_probability(defender, dribbler, ball_pos, ball_vel)
 		if prob > best_prob:

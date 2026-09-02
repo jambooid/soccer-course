@@ -21,7 +21,7 @@ const OFFSIDE_TOLERANCE := 2.0
 ## pitch_center_x: 球场中线的 x 坐标（用于判断本方半场）
 ## 返回 {is_offside: bool, offender: Player, offside_position: Vector2}
 static func check_offside_at_pass(
-	passer: Player,
+	passer,
 	attackers: Array,
 	defenders: Array,
 	ball_pos: Vector2,
@@ -44,13 +44,13 @@ static func check_offside_at_pass(
 		offside_line_x = max(second_last_def_x, ball_x)
 
 	# 找最越位的攻方球员
-	var worst_offender: Player = null
+	var worst_offender = null
 	var worst_offside_amount := 0.0
 
 	for attacker in attackers:
 		if attacker == null or attacker == passer:
 			continue
-		if attacker.role == Player.Role.GOALIE:
+		if int(attacker.role) == 0:
 			continue  # 门将不会越位
 
 		var attacker_x: float = attacker.global_position.x
