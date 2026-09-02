@@ -5,6 +5,10 @@ extends SceneTree
 var current_test := 0
 var test_timer := 0.0
 var test_results := []
+var finalized := false
+
+const TEST_HOME_COUNTRY := "GERMANY"
+const TEST_AWAY_COUNTRY := "FRANCE"
 
 const TESTS = [
 	{"name": "MainMenuScreen", "scene_path": "res://scenes/screens/main_menu/main_menu_screen.tscn"},
@@ -65,9 +69,26 @@ func _run_next_test():
 		call_deferred("_run_next_test_skip")
 		return
 
+	_setup_test_context(instance, test.name)
 	get_root().add_child(instance)
 	print("[OK] Loaded and instantiated: ", test.name)
 	test_results.append({"name": test.name, "status": "LOADED", "node": instance})
+
+func _setup_test_context(instance: Node, test_name: String) -> void:
+	# Screens are normally created through SoccerGame.switch_screen(), which calls
+	# setup() before adding the node. The smoke test adds them directly, so provide
+	# the same minimum context here instead of testing an impossible null state.
+	if instance is Screen:
+		var context_data := ScreenData.build()
+		if test_name == "TournamentScreen":
+			context_data.set_tournament(Tournament.new())
+		(instance as Screen).setup(null, context_data)
+
+	# WorldScreen creates actors during _ready(), which requires a match already
+	# selected in the real game flow.
+	if test_name == "WorldScreen":
+		GameManager.player_setup = [TEST_AWAY_COUNTRY, ""]
+		GameManager.current_match = Match.new(TEST_HOME_COUNTRY, TEST_AWAY_COUNTRY)
 
 func _run_next_test_skip():
 	current_test += 1
@@ -90,9 +111,16 @@ func _unload_current():
 	if idx >= 0 and idx < test_results.size():
 		var result = test_results[idx]
 		if result.has("node") and result.node and is_instance_valid(result.node):
-			result.node.queue_free()
+			# The runner exits immediately after the last test. Free synchronously so
+			# queued nodes do not survive into SceneTree cleanup.
+			result.node.free()
+			result.erase("node")
 
 func _finalize():
+	if finalized:
+		return
+	finalized = true
+	_cleanup_test_context()
 	print("\n=== Test Results ===")
 	var passed = 0
 	var failed = 0
@@ -112,3 +140,11 @@ func _finalize():
 	else:
 		print("All tests passed!")
 		quit(0)
+
+func _cleanup_test_context() -> void:
+	# WorldScreen starts a GameManager state asynchronously. Dispose of it before
+	# quitting so the runner does not leave state-machine nodes in ObjectDB.
+	if is_instance_valid(GameManager.current_state):
+		GameManager.current_state.free()
+	GameManager.current_state = null
+	GameManager.current_match = null
