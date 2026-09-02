@@ -1,6 +1,8 @@
 class_name AIBehaviorGoalie
 extends AIBehavior
 
+const GoalkeeperDecisionPolicyScript := preload("res://utils/goalkeeper_decision_policy.gd")
+
 ## 门将 AI 行为（反应式决策树，非分层式）
 ##
 ## 设计原则：
@@ -70,34 +72,35 @@ func perform_ai_movement() -> void:
 		player.velocity = Vector2.ZERO
 		return
 
-	var total_force := Vector2.ZERO
-
-	if _should_rush_out():
-		total_force += _get_rush_out_steering_force()
-	else:
-		total_force += _get_positioning_steering_force()
-
-	total_force = total_force.limit_length(1.0)
-	player.velocity = total_force * player.speed
+	var decision := _goalkeeper_decision()
+	var target: Vector2 = decision.get("target", player.spawn_position)
+	if int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.LINE \
+			or int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.SET:
+		target.x = player.spawn_position.x
+	var distance := player.position.distance_to(target)
+	player.velocity = player.position.direction_to(target) * player.speed * clampf(distance / PROXIMITY_CONCERN, 0.0, 1.0)
 
 # ============================================================
 # 决策树（按优先级从高到低）
 # ============================================================
 
 func perform_ai_decisions() -> void:
+	var decision := _goalkeeper_decision()
 	# 优先级 1：持有球 → 决定发球
 	if ball.carrier == player:
-		_decide_distribution()
+		if int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_THROW \
+				or int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_KICK:
+			_distribute_ball()
 		return
 
 	# 优先级 2：近距离能直接抱球 → 抱球（兜底防止漏球）
-	if _can_catch_ball():
+	if int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.CLAIM:
 		_catch_ball()
 		return
 
 	# 优先级 3：球飞向球门且需要飞身扑救 → 扑救
-	if _should_dive_save():
-		_dive_save()
+	if int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.DIVE:
+		_dive_save(decision.get("target", ball.position))
 		return
 
 	# 优先级 4 & 5：出击/站位 → 已在 perform_ai_movement 中处理
@@ -106,36 +109,38 @@ func perform_ai_decisions() -> void:
 # 抱球逻辑
 # ============================================================
 
+func _goalkeeper_decision() -> Dictionary:
+	var goal_center := player.own_goal.get_center_target_position()
+	var goal_top := player.own_goal.get_top_target_position().y
+	var goal_bottom := player.own_goal.get_bottom_target_position().y
+	var goal_dir := player.own_goal.goal_facing_dir
+	var in_front_of_goal := (ball.position - goal_center).dot(-goal_dir) >= 0.0
+	var distribution := _find_best_distribution_target() if ball.carrier == player else {}
+	return GoalkeeperDecisionPolicyScript.decide({
+		"holding_ball": ball.carrier == player,
+		"held_seconds": float(Time.get_ticks_msec() - time_ball_held_ms) / 1000.0,
+		"distribution_delay": float(HOLD_DURATION_MIN_MS) / 1000.0,
+		"distribution_long": not distribution.is_empty() and bool(distribution.get("long", false)),
+		"can_collect_now": ball.can_goalkeeper_collect(player),
+		"opponent_carrier": ball.carrier != null and ball.carrier.country != player.country,
+		"inside_rush_zone": in_front_of_goal and ball.position.distance_to(goal_center) <= RUSH_OUT_TRIGGER_DIST,
+		"keeper_position": player.position,
+		"keeper_speed": player.speed,
+		"goal_position": goal_center,
+		"goal_top": goal_top,
+		"goal_bottom": goal_bottom,
+		"ball_position": ball.position,
+		"ball_velocity": ball.velocity,
+		"ball_height": ball.height,
+		"height_velocity": ball.height_velocity,
+		"friction": ball.friction_ground,
+		"gravity": PitchConstants.GRAVITY,
+		"dive_range": DIVING_SAVE_DISTANCE,
+		"save_height_max": 58.0,
+	})
+
 func _can_catch_ball() -> bool:
-	## 判断门将是否能抱住球
-	## 检查项：队友带球排除 + 高度 + 当前距离 + 预判距离
-	if ball.is_recapture_locked_for(player):
-		return false
-
-	# 队友带的球不能抢
-	if ball.carrier != null and ball.carrier.country == player.country and ball.carrier != player:
-		return false
-
-	# 球太高抱不到
-	if ball.height > PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
-		return false
-
-	# 当前距离是否在抱球范围内
-	var dist := player.position.distance_to(ball.position)
-	if dist < CATCH_RADIUS:
-		return true
-
-	# 预判：球在短时间内是否会进入抱球范围
-	var predict_time := float(CATCH_PREDICT_MS) / 1000.0
-	var future_ball_pos := ball.position + ball.velocity * predict_time
-	var future_dist := player.position.distance_to(future_ball_pos)
-	if future_dist < CATCH_RADIUS:
-		# 同时检查预判时刻的高度
-		var future_height := ball.predict_height_at_time(predict_time)
-		if future_height <= PitchConstants.HEIGHT_GOALIE_CATCH_MAX:
-			return true
-
-	return false
+	return int(_goalkeeper_decision().kind) == GoalkeeperDecisionPolicyScript.Kind.CLAIM
 
 func _catch_ball() -> void:
 	## 抱住球
@@ -148,102 +153,22 @@ func _catch_ball() -> void:
 # ============================================================
 
 func _should_dive_save() -> bool:
-	## 判断是否需要飞身扑救
-	## 条件：球飞向球门 + 门将靠移动赶不上 + 球在扑救范围内
+	return player.can_carry_ball() and int(_goalkeeper_decision().kind) == GoalkeeperDecisionPolicyScript.Kind.DIVE
 
-	if not player.can_carry_ball():
-		return false  # 正在做其他动作（扑救中、恢复中等），不能再扑
-
-	# 检查球是否会飞入球门
-	var goal_x := player.own_goal.get_center_target_position().x
-	var goal_top := player.own_goal.get_top_target_position().y
-	var goal_bottom := player.own_goal.get_bottom_target_position().y
-
-	if not ball.will_reach_goal_area(goal_x, goal_top, goal_bottom):
-		# 射线作为近距离补充判断
-		if not ball.is_headed_for_scoring_area(player.own_goal.get_scoring_area()):
-			return false
-
-	# 球距离门将太远 → 不扑救（用移动去拦截）
-	var ball_dist := player.position.distance_to(ball.position)
-	if ball_dist > DIVING_SAVE_DISTANCE:
-		return false
-
-	# 估算球到达门将位置的时间
-	var time_to_goalie := _estimate_time_to_reach_goalie()
-	if time_to_goalie < 0 or time_to_goalie > 1.0:
-		return false  # 球不会到达，或者时间太长用移动就行
-
-	# 如果球很快就到（赶不上移动拦截）→ 飞身扑救
-	if time_to_goalie < DIVING_REACTION_TIME:
-		return true
-
-	return false
-
-func _dive_save() -> void:
+func _dive_save(target: Vector2 = Vector2.ZERO) -> void:
 	## 触发飞身扑救
+	player.goalkeeper_dive_target = target
 	player.switch_state(Player.State.DIVING)
 
 func _estimate_time_to_reach_goalie() -> float:
-	## 估算球到达门将所在 x 坐标的时间（秒）
-	## 如果球不朝门将方向移动，返回 -1
-	if abs(ball.velocity.x) < 1.0:
-		return -1
-
-	var dx := player.position.x - ball.position.x
-	# 球不朝门将方向移动
-	if dx * ball.velocity.x < 0:
-		return -1
-
-	var speed: float = abs(ball.velocity.x)
-	# 考虑摩擦减速，用平均速度估算
-	var avg_speed: float = speed * 0.75
-	return abs(dx) / max(avg_speed, 1.0)
+	return float(_goalkeeper_decision().prediction.get("goal_eta", -1.0))
 
 # ============================================================
 # 出击判断
 # ============================================================
 
 func _should_rush_out() -> bool:
-	## 判断是否应该出击拦截
-	## 三种情况：
-	## 1. 对方带球接近禁区
-	## 2. 无主球飞向禁区（预判落点在出击范围内）
-	## 3. 慢速地滚球靠近球门
-
-	var goal_center := player.own_goal.get_center_target_position()
-	var dist_ball_to_goal := ball.position.distance_to(goal_center)
-
-	# 球离球门太远 → 不出击
-	if dist_ball_to_goal > RUSH_OUT_TRIGGER_DIST:
-		return false
-
-	# 球在球门后面 → 不出击（已经进了或出界了）
-	var goal_dir := player.own_goal.goal_facing_dir
-	if (ball.position - goal_center).dot(-goal_dir) < 0:
-		return false
-
-	# 情况 1：对方带球 → 出击
-	if ball.carrier != null and ball.carrier.country != player.country:
-		return true
-
-	# 情况 2 & 3：无主球
-	if ball.carrier == null:
-		# 球不朝球门移动 → 不出击
-		if not _is_ball_approaching_goal():
-			return false
-
-		# 预判落点是否在出击范围内
-		var landing_pos := ball.predict_landing_position()
-		var dist_landing_to_goal := landing_pos.distance_to(goal_center)
-		if dist_landing_to_goal < RUSH_OUT_DISTANCE:
-			return true
-
-		# 地滚球接近球门 → 出击抱球
-		if ball.height < GROUND_BALL_HEIGHT and dist_ball_to_goal < RUSH_OUT_DISTANCE:
-			return true
-
-	return false
+	return int(_goalkeeper_decision().kind) == GoalkeeperDecisionPolicyScript.Kind.RUSH
 
 func _is_ball_approaching_goal() -> bool:
 	## 判断球是否在接近球门
@@ -307,30 +232,18 @@ func _get_positioning_steering_force() -> Vector2:
 # ============================================================
 
 func _decide_distribution() -> void:
-	## 决定何时发球以及如何发球
-	var time_held := Time.get_ticks_msec() - time_ball_held_ms
-
-	# 最少抱球时间内不发球
-	if time_held < HOLD_DURATION_MIN_MS:
-		return
-
-	# 超过最大抱球时间必须发球
-	if time_held > HOLD_DURATION_MAX_MS:
-		_distribute_ball()
-		return
-
-	# 概率性决定发球时机（越接近最大时间，概率越高）
-	var urgency := float(time_held - HOLD_DURATION_MIN_MS) / (HOLD_DURATION_MAX_MS - HOLD_DURATION_MIN_MS)
-	if randf() < urgency * 0.08:
+	var decision := _goalkeeper_decision()
+	if int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_THROW \
+			or int(decision.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_KICK:
 		_distribute_ball()
 
 func _distribute_ball() -> void:
-	## 发球：根据场上情况选手抛球或大脚
-	var target := _find_best_distribution_target()
+	## 发球目标由同一地面轨迹 ETA 和对手到达时间筛选。
+	var option := _find_best_distribution_target()
+	var target: Player = option.get("target")
 
 	if target != null:
-		var dist_to_target := player.position.distance_to(target.position)
-		if dist_to_target > DISTRIBUTION_KICK_DIST:
+		if bool(option.get("long", false)):
 			# 距离远 → 大脚开球
 			ball.release_with_kick(target.position)
 		else:
@@ -344,10 +257,9 @@ func _distribute_ball() -> void:
 	# 发球后回到移动状态
 	player.switch_state(Player.State.MOVING)
 
-func _find_best_distribution_target() -> Player:
-	## 找最佳发球目标（前场队友优先，考虑对方封堵）
-	var best_target: Player = null
-	var best_score := -1.0
+func _find_best_distribution_target() -> Dictionary:
+	## 只选择接球队员先于对手到达的、可由真实地面轨迹送达的目标。
+	var options: Array[Dictionary] = []
 
 	for body in teammate_detection_area.get_overlapping_bodies():
 		if not (body is Player):
@@ -358,21 +270,32 @@ func _find_best_distribution_target() -> Player:
 		if teammate.role == Player.Role.GOALIE:
 			continue
 
-		# 越靠近对方球门的队友越优先（进攻推进）
+		var distance := player.position.distance_to(teammate.position)
+		if distance <= 1.0:
+			continue
+		var ball_eta := sqrt(2.0 * distance / maxf(ball.friction_ground, 1.0))
+		var opponent_eta := INF
+		for opponent_body in opponent_detection_area.get_overlapping_bodies():
+			if opponent_body is Player and opponent_body.country != player.country:
+				var opponent: Player = opponent_body
+				opponent_eta = minf(opponent_eta, opponent.position.distance_to(teammate.position) / maxf(opponent.speed, 1.0))
+
+		# 越靠近对方球门的队友越优先，同时惩罚慢到达的传球。
 		var goal_pos := player.target_goal.get_center_target_position()
 		var dist_to_opponent_goal := teammate.position.distance_to(goal_pos)
 		var pos_score: float = 1.0 - clamp(dist_to_opponent_goal / 300.0, 0.0, 1.0)
-
-		# 对方封堵惩罚：如果有对方球员在发球路线上，降低优先级
-		var safety_score := _calc_distribution_safety(teammate.position)
-
-		var score := pos_score * 0.5 + safety_score * 0.5
-
-		if score > best_score:
-			best_score = score
-			best_target = teammate
-
-	return best_target
+		var safety_score := clampf((opponent_eta - ball_eta) / 1.0, 0.0, 1.0)
+		options.append({
+			"target": teammate,
+			"player_id": teammate.jersey_number,
+			"rule_legal": true,
+			"receiver_eta": 0.0,
+			"ball_eta": ball_eta,
+			"opponent_eta": opponent_eta,
+			"utility": pos_score * 0.55 + safety_score * 0.45,
+			"long": distance > DISTRIBUTION_KICK_DIST,
+		})
+	return GoalkeeperDecisionPolicyScript.select_distribution(options)
 
 func _calc_distribution_safety(target_pos: Vector2) -> float:
 	## 计算发球路线的安全性（对方球员在路线上的惩罚）

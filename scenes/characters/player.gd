@@ -51,6 +51,7 @@ var current_ai_behavior : AIBehavior = null
 var current_state: PlayerState = null
 var fullname := ""
 var heading := Vector2.RIGHT
+var goalkeeper_dive_target := Vector2.ZERO
 var height := 0.0
 var height_velocity := 0.0
 var kickoff_position := Vector2.ZERO

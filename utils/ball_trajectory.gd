@@ -18,6 +18,24 @@ static func ground_position_after(initial_position: Vector2, initial_velocity: V
 	var distance := speed * travel_time - 0.5 * deceleration * travel_time * travel_time
 	return initial_position + initial_velocity.normalized() * distance
 
+## Returns the first time a decelerating trajectory reaches an x or y coordinate.
+## INF means the ball is travelling away from, or stops before, that coordinate.
+static func time_to_axis_position(origin_axis: float, velocity_axis: float, target_axis: float, friction: float) -> float:
+	var offset := target_axis - origin_axis
+	if absf(offset) <= EPSILON:
+		return 0.0
+	if absf(velocity_axis) <= EPSILON or offset * velocity_axis < 0.0:
+		return INF
+	var distance := absf(offset)
+	var speed := absf(velocity_axis)
+	var deceleration := maxf(friction, 0.0)
+	if deceleration <= EPSILON:
+		return distance / speed
+	var discriminant := speed * speed - 2.0 * deceleration * distance
+	if discriminant < 0.0:
+		return INF
+	return (speed - sqrt(discriminant)) / deceleration
+
 static func landing_time(height: float, vertical_velocity: float, gravity: float) -> float:
 	var safe_gravity := maxf(gravity, EPSILON)
 	var discriminant := vertical_velocity * vertical_velocity + 2.0 * safe_gravity * maxf(height, 0.0)

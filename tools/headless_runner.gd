@@ -14,6 +14,7 @@ const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 const InterceptResolverScript := preload("res://utils/intercept_resolver.gd")
 const OffsideJudgeScript := preload("res://utils/offside_judge.gd")
 const GoalkeeperInteractionPolicyScript := preload("res://utils/goalkeeper_interaction_policy.gd")
+const GoalkeeperDecisionPolicyScript := preload("res://utils/goalkeeper_decision_policy.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
@@ -37,6 +38,7 @@ func _run() -> void:
 	_run_suite("intercept_resolver", _test_intercept_resolver)
 	_run_suite("offside_judge", _test_offside_judge)
 	_run_suite("goalkeeper_interaction_policy", _test_goalkeeper_interaction_policy)
+	_run_suite("goalkeeper_decision_policy", _test_goalkeeper_decision_policy)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
@@ -313,6 +315,54 @@ func _test_goalkeeper_interaction_policy() -> void:
 	_expect(int(GoalkeeperInteractionPolicyScript.resolve(1, opponent_pass).kind)
 		== BallInteractionResolverScript.Kind.COLLECT,
 		"opponent pass remains legally collectible")
+
+func _test_goalkeeper_decision_policy() -> void:
+	var base := {
+		"keeper_position": Vector2(15.0, 0.0), "keeper_speed": 50.0,
+		"goal_position": Vector2.ZERO, "goal_top": -20.0, "goal_bottom": 20.0,
+		"ball_position": Vector2(30.0, 4.0), "ball_velocity": Vector2(-200.0, 0.0),
+		"ball_height": 4.0, "height_velocity": 0.0, "friction": 60.0, "gravity": 600.0,
+		"dive_range": 60.0, "save_height_max": 58.0, "inside_rush_zone": true,
+	}
+	var dive := GoalkeeperDecisionPolicyScript.decide(base)
+	_expect(int(dive.kind) == GoalkeeperDecisionPolicyScript.Kind.DIVE,
+		"fast goal-bound shot selects a trajectory-led dive")
+	var set_data := base.duplicate(true)
+	set_data.keeper_position = Vector2(5.0, 0.0)
+	var set := GoalkeeperDecisionPolicyScript.decide(set_data)
+	_expect(int(set.kind) == GoalkeeperDecisionPolicyScript.Kind.SET,
+		"reachable goal-bound shot selects a set position")
+	var claim_data := base.duplicate(true)
+	claim_data.can_collect_now = true
+	var claim := GoalkeeperDecisionPolicyScript.decide(claim_data)
+	_expect(int(claim.kind) == GoalkeeperDecisionPolicyScript.Kind.CLAIM,
+		"legal current collection beats a dive decision")
+	var rush_data := base.duplicate(true)
+	rush_data.erase("can_collect_now")
+	rush_data.ball_position = Vector2(40.0, 0.0)
+	rush_data.ball_velocity = Vector2.ZERO
+	rush_data.ball_height = 20.0
+	rush_data.keeper_position = Vector2(10.0, 0.0)
+	rush_data.keeper_speed = 200.0
+	var rush := GoalkeeperDecisionPolicyScript.decide(rush_data)
+	_expect(int(rush.kind) == GoalkeeperDecisionPolicyScript.Kind.RUSH,
+		"reachable loose-ball landing selects a rush")
+	var safe_option := {"player_id": 2, "rule_legal": true, "receiver_eta": 0.0,
+		"ball_eta": 0.7, "opponent_eta": 1.1, "utility": 0.6}
+	var blocked_option := {"player_id": 1, "rule_legal": true, "receiver_eta": 0.0,
+		"ball_eta": 0.7, "opponent_eta": 0.4, "utility": 0.9}
+	var distribution := GoalkeeperDecisionPolicyScript.select_distribution([blocked_option, safe_option])
+	_expect(int(distribution.player_id) == 2, "distribution rejects an opponent-reachable lane")
+	var line_data := base.duplicate(true)
+	line_data.inside_rush_zone = false
+	line_data.ball_velocity = Vector2(0.0, 80.0)
+	var line := GoalkeeperDecisionPolicyScript.decide(line_data)
+	_expect(int(line.kind) == GoalkeeperDecisionPolicyScript.Kind.LINE,
+		"non-threatening trajectory keeps the keeper on the line")
+	var held := GoalkeeperDecisionPolicyScript.decide({"holding_ball": true, "held_seconds": 1.6,
+		"distribution_delay": 1.5, "distribution_long": true})
+	_expect(int(held.kind) == GoalkeeperDecisionPolicyScript.Kind.DISTRIBUTE_KICK,
+		"held ball releases through deterministic long distribution")
 
 func _test_dribble_touch_controller() -> void:
 	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
