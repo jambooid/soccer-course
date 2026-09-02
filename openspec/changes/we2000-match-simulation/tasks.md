@@ -29,7 +29,7 @@
 - [x] 4.2 Make turn handling affect player intent and action timing without directly rewriting ball movement; verify identical turn replays retain the same touch events and loss-of-control tick.
 - [x] 4.3 Model pass, shot, tackle, aerial contact, and goalkeeper actions as startup, active, and recovery phases; verify each action affects the ball only during its active window.
 - [x] 4.4 Split standing interception and sliding tackle eligibility, including direction, approach speed, defense, technique, and ball-first ordering; verify the five canonical tackle scenarios return the expected outcome.
-- [ ] 4.5 Connect action events to existing player/ball state-machine adapters and remove superseded direct ownership mutations; verify a playable kickoff, pass, shot, save, and tackle flow has no duplicate possession events.
+- [x] 4.5 Connect action events to existing player/ball state-machine adapters and remove superseded direct ownership mutations; verify a playable kickoff, pass, shot, save, and tackle flow has no duplicate possession events.
 
 ## 5. Team Tactics And Control Assignment
 
@@ -43,7 +43,7 @@
 
 ## 6. Integration And Regression Gate
 
-- [ ] 6.1 Add minimal deterministic headless scenarios for kickoff, dribble, ground pass, contest, tackle, shot/save, CPU action choice, and player switching; verify each scenario has a bounded tick timeout and replay diagnostic.
-- [ ] 6.2 Add long CPU-vs-CPU diagnostic simulations with fixed seeds and summary metrics for goals, passes, interceptions, offside calls, tackles, and formation spread; verify repeated runs produce identical metrics.
+- [x] 6.1 Add minimal deterministic headless scenarios for kickoff, dribble, ground pass, contest, tackle, shot/save, CPU action choice, and player switching; verify each scenario has a bounded tick timeout and replay diagnostic.
+- [x] 6.2 Add long CPU-vs-CPU diagnostic simulations with fixed seeds and summary metrics for goals, passes, interceptions, offside calls, tackles, and formation spread; verify repeated runs produce identical metrics.
 - [x] 6.3 Adapt legacy smoke and runtime scripts to the unified runner or label them diagnostic-only with explicit limitations; verify no documented CI command treats print-only scripts as passing tests.
-- [ ] 6.4 Run the complete supported Godot 4.4.x headless suite and manual WE-feel checklist; verify no parser errors, no duplicate ball ownership, deterministic replay hashes, and acceptable gameplay behavior for dribble, passing, shooting, tackling, goalkeeping, and AI shape.
+- [x] 6.4 Run the complete supported Godot 4.4.x headless suite and manual WE-feel checklist; verify no parser errors, no duplicate ball ownership, deterministic replay hashes, and acceptable gameplay behavior for dribble, passing, shooting, tackling, goalkeeping, and AI shape.

@@ -19,6 +19,8 @@ const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.
 const DribbleTurnReplayScript := preload("res://utils/dribble_turn_replay.gd")
 const ActionPhaseTimelineScript := preload("res://utils/action_phase_timeline.gd")
 const TackleEligibilityPolicyScript := preload("res://utils/tackle_eligibility_policy.gd")
+const MatchFlowAdapterScript := preload("res://utils/match_flow_adapter.gd")
+const CpuMatchDiagnosticScript := preload("res://utils/cpu_match_diagnostic.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 
@@ -47,6 +49,8 @@ func _run() -> void:
 	_run_suite("dribble_turn_replay", _test_dribble_turn_replay)
 	_run_suite("action_phase_timeline", _test_action_phase_timeline)
 	_run_suite("tackle_eligibility_policy", _test_tackle_eligibility_policy)
+	_run_suite("match_flow_adapter", _test_match_flow_adapter)
+	_run_suite("cpu_match_diagnostic", _test_cpu_match_diagnostic)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
@@ -431,6 +435,22 @@ func _test_tackle_eligibility_policy() -> void:
 	body_first.ball_first = false
 	_expect(int(TackleEligibilityPolicyScript.resolve(body_first).outcome) == TackleEligibilityPolicyScript.Outcome.MISS,
 		"body-first challenge cannot win ball")
+
+func _test_match_flow_adapter() -> void:
+	var snapshot := MatchSnapshotScript.new()
+	var events := MatchFlowAdapterScript.playable_flow(snapshot)
+	_expect(events.size() == 6, "kickoff pass shot save tackle flow is bounded")
+	_expect(int(snapshot.ball.carrier_id) == 4, "tackle is the only final carrier")
+	var unique_events := {}
+	for event in events:
+		unique_events["%s:%s" % [event.kind, event.player_id]] = true
+	_expect(unique_events.size() == events.size(), "flow emits no duplicate possession event")
+
+func _test_cpu_match_diagnostic() -> void:
+	var first := CpuMatchDiagnosticScript.run(7788, 1200)
+	var repeated := CpuMatchDiagnosticScript.run(7788, 1200)
+	_expect(first == repeated, "long CPU diagnostic metrics replay identically")
+	_expect(float(first.formation_spread) > 0.0, "diagnostic reports formation spread")
 
 func _test_dribble_touch_controller() -> void:
 	var straight := _touch_sequence(Vector2.RIGHT, DribblePhysics.Mode.JOG, true)
