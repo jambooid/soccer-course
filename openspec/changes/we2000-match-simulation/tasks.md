@@ -35,7 +35,7 @@
 
 - [x] 5.1 Build a team tactical snapshot containing possession phase, formation anchors, offside line, active presser, cover player, defensive line, and support slots; verify a fixture exposes stable assignments for both teams.
 - [x] 5.2 Replace nearest-ball team steering with role-aware pressure, cover, marking, and goal-side protection; verify an attack fixture retains defensive shape while only the designated presser commits.
-- [ ] 5.3 Add possession-aware width, depth, ball-side shifting, and support movement from formation anchors; verify wing and central attack fixtures retain central, wide, and safety options.
+- [x] 5.3 Add possession-aware width, depth, ball-side shifting, and support movement from formation anchors; verify wing and central attack fixtures retain central, wide, and safety options.
 - [ ] 5.4 Apply the tactical offside line to CPU support targets and pass candidate filtering; verify forward-run and pass-selection scenarios never choose a normal-pass offside target.
 - [ ] 5.5 Replace CPU action coin flips with reachability and utility scoring using trajectory ETA, interception risk, attributes, and rule constraints; verify identical snapshots select the same pass, shot, or retain-ball action.
 - [ ] 5.6 Rework goalkeeper line, set, rush, claim, dive, and distribution choices to use trajectory predictions; verify a shot/collection matrix produces consistent decisions and legal collection behavior.

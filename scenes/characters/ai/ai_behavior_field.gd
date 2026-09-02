@@ -310,6 +310,8 @@ func get_offensive_support_steering_force() -> Vector2:
 	var carrier := ball.carrier
 	if carrier == null:
 		return Vector2.ZERO
+	if not player.tactical_role.is_empty():
+		return player.position.direction_to(player.tactical_target)
 
 	# 太远了就先回到阵型位置（防止乱跑）
 	var dist_to_ball := player.position.distance_to(carrier.position)
@@ -432,6 +434,8 @@ func get_carrier_steering_force() -> Vector2:
 	return forward_force + ball_correction
 
 func get_assist_formation_steering_force() -> Vector2:
+	if not player.tactical_role.is_empty():
+		return player.position.direction_to(player.tactical_target)
 	var spawn_difference := ball.carrier.spawn_position - player.spawn_position
 	var assist_destination := ball.carrier.position - spawn_difference * SPREAD_ASSIST_FACTOR
 	var direction := player.position.direction_to(assist_destination)

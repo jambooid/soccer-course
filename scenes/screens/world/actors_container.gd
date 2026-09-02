@@ -96,6 +96,7 @@ func _apply_defensive_tactics(squad: Array[Player], opponents: Array[Player]) ->
 		player.tactical_role = ""
 		player.tactical_target = player.spawn_position
 	if not is_defending:
+		_apply_attacking_tactics(squad)
 		return
 	var player_data: Array[Dictionary] = []
 	for player in squad:
@@ -105,6 +106,23 @@ func _apply_defensive_tactics(squad: Array[Player], opponents: Array[Player]) ->
 	var defensive_goal := squad[0].own_goal.get_center_target_position()
 	var assignments := TeamTacticsScript.build_defensive_assignments(
 		player_data, ball.position, defensive_goal)
+	for player in squad:
+		if assignments.has(player.jersey_number):
+			var assignment: Dictionary = assignments[player.jersey_number]
+			player.tactical_role = str(assignment.role)
+			player.tactical_target = assignment.target
+
+func _apply_attacking_tactics(squad: Array[Player]) -> void:
+	if ball.carrier == null:
+		return
+	var player_data: Array[Dictionary] = []
+	for player in squad:
+		if player.role != Player.Role.GOALIE:
+			player_data.append({"id": player.jersey_number, "position": player.position,
+				"spawn_position": player.spawn_position})
+	var attacking_dir := 1 if ball.carrier.target_goal.position.x > ball.carrier.position.x else -1
+	var assignments := TeamTacticsScript.build_attacking_assignments(
+		player_data, ball.position, attacking_dir, ball.carrier.jersey_number)
 	for player in squad:
 		if assignments.has(player.jersey_number):
 			var assignment: Dictionary = assignments[player.jersey_number]

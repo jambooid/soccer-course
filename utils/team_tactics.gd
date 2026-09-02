@@ -31,6 +31,44 @@ static func build_defensive_assignments(
 		assignments[player_id] = assignment
 	return assignments
 
+## Generate a central option, ball-side/wide option, and a conservative safety
+## option from formation anchors while a team has possession.
+static func build_attacking_assignments(
+	team_players: Array[Dictionary],
+	ball_position: Vector2,
+	attacking_dir_x: int,
+	carrier_id: int
+) -> Dictionary:
+	var assignments := {}
+	var non_carriers: Array[Dictionary] = []
+	for player in team_players:
+		if int(player.get("id", -1)) != carrier_id:
+			non_carriers.append(player)
+	if non_carriers.is_empty():
+		return assignments
+	var safety := non_carriers[0]
+	for candidate in non_carriers:
+		var candidate_anchor: Vector2 = candidate.get("spawn_position", candidate.get("position", Vector2.ZERO))
+		var safety_anchor: Vector2 = safety.get("spawn_position", safety.get("position", Vector2.ZERO))
+		if (attacking_dir_x > 0 and candidate_anchor.x < safety_anchor.x) \
+				or (attacking_dir_x < 0 and candidate_anchor.x > safety_anchor.x):
+			safety = candidate
+	for player in non_carriers:
+		var player_id := int(player.get("id", -1))
+		var anchor: Vector2 = player.get("spawn_position", player.get("position", Vector2.ZERO))
+		var role := "CENTRAL"
+		var target := Vector2(ball_position.x + attacking_dir_x * 45.0,
+			lerpf(anchor.y, ball_position.y, 0.35))
+		if player == safety:
+			role = "SAFETY"
+			target = Vector2(ball_position.x - attacking_dir_x * 65.0, anchor.y)
+		elif absf(anchor.y - ball_position.y) > 42.0:
+			role = "WIDE"
+			target = Vector2(ball_position.x + attacking_dir_x * 30.0,
+				anchor.y + clampf(ball_position.y - anchor.y, -20.0, 20.0))
+		assignments[player_id] = {"role": role, "target": target}
+	return assignments
+
 static func build_snapshot(team_players: Array[Dictionary], opponents: Array[Dictionary], ball_position: Vector2, attacking_dir_x: int, pitch_center_x: float = 0.0) -> Dictionary:
 	var ordered := team_players.duplicate(true)
 	ordered.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:

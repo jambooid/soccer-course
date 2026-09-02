@@ -225,6 +225,17 @@ func _test_team_tactics() -> void:
 	_expect(defensive_assignments[3].role == "HOLD", "remaining defender retains shape")
 	_expect((defensive_assignments[2].target as Vector2).x < 50.0,
 		"cover target stays goal-side of the ball")
+	var attacking_team: Array[Dictionary] = [
+		{"id": 1, "position": Vector2(20.0, -70.0), "spawn_position": Vector2(20.0, -70.0)},
+		{"id": 2, "position": Vector2(80.0, 0.0), "spawn_position": Vector2(80.0, 0.0)},
+		{"id": 3, "position": Vector2(120.0, 70.0), "spawn_position": Vector2(120.0, 70.0)},
+		{"id": 4, "position": Vector2(150.0, 0.0), "spawn_position": Vector2(150.0, 0.0)},
+	]
+	var support_assignments := TeamTacticsScript.build_attacking_assignments(
+		attacking_team, Vector2(80.0, 0.0), 1, 2)
+	_expect(support_assignments[1].role == "SAFETY", "attack retains a safety outlet")
+	_expect(support_assignments[3].role == "WIDE", "attack retains a wide outlet")
+	_expect(support_assignments[4].role == "CENTRAL", "attack retains a central outlet")
 
 func _test_intercept_resolver() -> void:
 	var defender := {
