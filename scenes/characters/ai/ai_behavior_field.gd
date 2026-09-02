@@ -415,6 +415,9 @@ func _compute_run_target_for_state(carrier: Player, state: int) -> Vector2:
 
 
 func get_onduty_steering_force() -> Vector2:
+	if not player.tactical_role.is_empty():
+		var tactical_weight := 1.0 if player.tactical_role == "PRESS" else 0.7
+		return tactical_weight * player.position.direction_to(player.tactical_target)
 	return player.weight_on_duty_steering * player.position.direction_to(ball.position)
 
 func get_carrier_steering_force() -> Vector2:

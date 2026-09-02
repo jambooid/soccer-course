@@ -7,6 +7,30 @@ extends RefCounted
 const MAX_PRESSERS := 1
 const COVER_DISTANCE := 90.0
 
+## Build executable defensive roles. Only the presser targets the ball; cover
+## protects the goal-side lane and the rest retain shifted formation anchors.
+static func build_defensive_assignments(
+	team_players: Array[Dictionary],
+	ball_position: Vector2,
+	defensive_goal: Vector2
+) -> Dictionary:
+	var ordered := team_players.duplicate(true)
+	ordered.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return _distance_sq(left, ball_position) < _distance_sq(right, ball_position)
+	)
+	var assignments := {}
+	for index in ordered.size():
+		var player: Dictionary = ordered[index]
+		var player_id := int(player.get("id", -1))
+		var anchor: Vector2 = player.get("spawn_position", player.get("position", Vector2.ZERO))
+		var assignment := {"role": "HOLD", "target": _hold_target(anchor, ball_position, defensive_goal)}
+		if index < MAX_PRESSERS:
+			assignment = {"role": "PRESS", "target": ball_position}
+		elif index == MAX_PRESSERS:
+			assignment = {"role": "COVER", "target": ball_position.lerp(defensive_goal, 0.35)}
+		assignments[player_id] = assignment
+	return assignments
+
 static func build_snapshot(team_players: Array[Dictionary], opponents: Array[Dictionary], ball_position: Vector2, attacking_dir_x: int, pitch_center_x: float = 0.0) -> Dictionary:
 	var ordered := team_players.duplicate(true)
 	ordered.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
@@ -59,3 +83,7 @@ static func _build_anchors(players: Array[Dictionary]) -> Dictionary:
 	for player in players:
 		anchors[int(player.get("id", -1))] = player.get("spawn_position", player.get("position", Vector2.ZERO))
 	return anchors
+
+static func _hold_target(anchor: Vector2, ball_position: Vector2, defensive_goal: Vector2) -> Vector2:
+	var ball_side_shift := clampf((ball_position.y - defensive_goal.y) * 0.2, -35.0, 35.0)
+	return Vector2(anchor.x, anchor.y + ball_side_shift)

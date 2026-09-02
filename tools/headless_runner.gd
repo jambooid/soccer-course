@@ -218,6 +218,13 @@ func _test_team_tactics() -> void:
 	_expect(is_equal_approx(snapshot.offside_line_x, 50.0), "offside line respects ball position")
 	var clamped := TeamTacticsScript.clamp_support_target(Vector2(100.0, 0.0), snapshot.offside_line_x, 1, 50.0)
 	_expect(clamped.x < snapshot.offside_line_x, "support target stays onside")
+	var defensive_assignments := TeamTacticsScript.build_defensive_assignments(
+		team, Vector2(50.0, 20.0), Vector2(0.0, 0.0))
+	_expect(defensive_assignments[1].role == "PRESS", "only nearest defender presses")
+	_expect(defensive_assignments[2].role == "COVER", "next defender provides goal-side cover")
+	_expect(defensive_assignments[3].role == "HOLD", "remaining defender retains shape")
+	_expect((defensive_assignments[2].target as Vector2).x < 50.0,
+		"cover target stays goal-side of the ball")
 
 func _test_intercept_resolver() -> void:
 	var defender := {
