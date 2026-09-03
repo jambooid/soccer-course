@@ -10,7 +10,7 @@ var time_started := 0
 
 
 func _enter_tree() -> void:
-	time_started = Time.get_ticks_msec()
+	time_started = manager.get_match_time_ms()
 	GameEvents.halftime_started.emit()
 	# 交换场地
 	var actors := get_tree().get_first_node_in_group("actors_container")
@@ -19,7 +19,7 @@ func _enter_tree() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if Time.get_ticks_msec() - time_started > DURATION_HALFTIME_MS:
+	if manager.get_match_time_ms() - time_started > DURATION_HALFTIME_MS:
 		# 下半场开始：重置时间，由客队开球（足球规则：下半场由上半场开球方的对方开球）
 		manager.time_left = GameManager.DURATION_HALF_SEC
 		var kickoff_country := manager.current_match.country_away

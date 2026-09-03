@@ -1,0 +1,16 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scenes/world3d/pitch_3d.gd" id="1_pitch"]
+[ext_resource type="Script" path="res://scenes/world3d/match_3d_presenter.gd" id="2_presenter"]
+[ext_resource type="Script" path="res://scenes/world3d/world3d_camera.gd" id="3_camera"]
+
+[node name="World3DMatch" type="Node3D"]
+
+[node name="Pitch" type="Node3D" parent="."]
+script = ExtResource("1_pitch")
+
+[node name="Presenter" type="Node3D" parent="."]
+script = ExtResource("2_presenter")
+
+[node name="Camera" type="Camera3D" parent="."]
+script = ExtResource("3_camera")

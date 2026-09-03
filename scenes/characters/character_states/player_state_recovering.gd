@@ -4,15 +4,15 @@ extends PlayerState
 const DURATION_RECOVERY := 500
 const ACCEPT_INPUT_WINDOW := 100  # 硬直结束前多少毫秒开始接受缓冲输入
 
-var time_start_recovery := Time.get_ticks_msec()
+var time_start_recovery := 0
 
 func _enter_tree() -> void:
-	time_start_recovery = Time.get_ticks_msec()
+	time_start_recovery = GameManager.get_match_time_ms()
 	player.velocity = Vector2.ZERO
 	animation_player.play("recover")
 
 func _physics_process(_delta: float) -> void:
-	var elapsed := Time.get_ticks_msec() - time_start_recovery
+	var elapsed := GameManager.get_match_time_ms() - time_start_recovery
 	if elapsed > DURATION_RECOVERY:
 		# 硬直结束，检查缓冲中是否有待执行的动作
 		if player.control_scheme != Player.ControlScheme.CPU:

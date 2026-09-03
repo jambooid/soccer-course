@@ -13,7 +13,7 @@ var time_started := 0
 var goalie : Player = null
 
 func _enter_tree() -> void:
-	time_started = Time.get_ticks_msec()
+	time_started = GameManager.get_match_time_ms()
 	goalie = state_data.kicker
 	player_detection_area.body_entered.connect(on_player_enter.bind())
 	player_detection_area.monitoring = true
@@ -35,7 +35,7 @@ func _physics_process(delta: float) -> void:
 	# 持续检测门将是否在附近（二次扑救兜底）
 	_check_nearby_goalie()
 
-	var elapsed := Time.get_ticks_msec() - time_started
+	var elapsed := GameManager.get_match_time_ms() - time_started
 	if elapsed > MAX_DURATION_MS:
 		transition_state(Ball.State.FREEFORM)
 	elif ball.velocity.length() < TRANSITION_SPEED and ball.height == 0:

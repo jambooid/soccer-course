@@ -28,7 +28,7 @@ const TACKLE_CONTACT_DISTANCE := 20.0
 var is_checking_for_kickoff_readiness := false
 var squad_home : Array[Player] = []
 var squad_away : Array[Player] = []
-var time_since_last_cache_refresh := Time.get_ticks_msec()
+var time_since_last_cache_refresh := 0
 var switch_lock_until: Dictionary = {}
 
 func _init() -> void:
@@ -49,6 +49,7 @@ func _ready() -> void:
 	squad_away = spawn_players(GameManager.current_match.country_away, goal_away)
 	goal_away.initialize(GameManager.current_match.country_away)
 	setup_control_schemes()
+	time_since_last_cache_refresh = GameManager.get_match_time_ms()
 	set_on_duty_weights()
 
 func _physics_process(_delta: float) -> void:
@@ -121,9 +122,33 @@ func _find_player_by_stable_id(id: int) -> Player:
 			return player
 	return null
 
+## A copied render snapshot is the only data the 3D presentation needs from
+## the live 2D match. It intentionally exposes no mutable gameplay objects.
+func build_presentation_snapshot() -> Dictionary:
+	var player_snapshots: Array[Dictionary] = []
+	for player in squad_home + squad_away:
+		if not is_instance_valid(player):
+			continue
+		player_snapshots.append({
+			"id": _stable_player_id(player),
+			"position": player.position,
+			"height": player.height,
+			"home": player.country == GameManager.current_match.country_home,
+		})
+	player_snapshots.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return int(left.id) < int(right.id))
+	return {
+		"tick": GameManager.match_tick,
+		"players": player_snapshots,
+		"ball": {
+			"position": ball.position if ball != null else Vector2.ZERO,
+			"height": ball.height if ball != null else 0.0,
+		},
+	}
+
 func _process(_delta: float) -> void:
-	if Time.get_ticks_msec() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:
-		time_since_last_cache_refresh = Time.get_ticks_msec()
+	if GameManager.get_match_time_ms() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:
+		time_since_last_cache_refresh = GameManager.get_match_time_ms()
 		set_on_duty_weights()
 	if is_checking_for_kickoff_readiness:
 		check_for_kickoff_readiness()
@@ -219,7 +244,7 @@ func _apply_attacking_tactics(squad: Array[Player], opponents: Array[Player]) ->
 				assignment.target, offside_line, attacking_dir, PitchConstants.CENTER_X)
 func on_player_swap_request(requester: Player) -> void:
 	var squad := squad_home if requester.country == squad_home[0].country else squad_away
-	if Time.get_ticks_msec() < int(switch_lock_until.get(requester.control_scheme, 0)):
+	if GameManager.get_match_time_ms() < int(switch_lock_until.get(requester.control_scheme, 0)):
 		return
 	var selected := _select_switch_target(squad, requester.control_scheme, KeyUtils.get_input_vector(requester.control_scheme))
 	var selected_id := int(selected.get("id", -1))
@@ -229,7 +254,7 @@ func on_player_swap_request(requester: Player) -> void:
 	var player_control_scheme := requester.control_scheme
 	requester.set_control_scheme(Player.ControlScheme.CPU)
 	target.set_control_scheme(player_control_scheme)
-	switch_lock_until[player_control_scheme] = Time.get_ticks_msec() + SWITCH_LOCK_MS
+	switch_lock_until[player_control_scheme] = GameManager.get_match_time_ms() + SWITCH_LOCK_MS
 
 func _select_switch_target(squad: Array[Player], scheme: int, input_direction: Vector2 = Vector2.ZERO) -> Dictionary:
 	var candidates: Array[Dictionary] = []
@@ -366,7 +391,7 @@ func _on_ball_possession_stable(player: Player) -> void:
 
 func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void:
 	## 将指定控制方案切换到目标球员
-	if Time.get_ticks_msec() < int(switch_lock_until.get(scheme, 0)):
+	if GameManager.get_match_time_ms() < int(switch_lock_until.get(scheme, 0)):
 		return
 	# 先找到当前持有该方案的球员
 	var current_holder: Player = null
@@ -379,7 +404,7 @@ func _swap_control_to(target: Player, scheme: int, squad: Array[Player]) -> void
 	if current_holder != null:
 		current_holder.set_control_scheme(Player.ControlScheme.CPU)
 	target.set_control_scheme(scheme)
-	switch_lock_until[scheme] = Time.get_ticks_msec() + SWITCH_LOCK_MS
+	switch_lock_until[scheme] = GameManager.get_match_time_ms() + SWITCH_LOCK_MS
 
 ## === 越位判定 ===
 

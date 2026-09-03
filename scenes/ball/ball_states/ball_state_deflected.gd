@@ -13,14 +13,14 @@ var time_started := 0
 var deflector : Player = null
 
 func _enter_tree() -> void:
-	time_started = Time.get_ticks_msec()
+	time_started = GameManager.get_match_time_ms()
 	deflector = state_data.kicker
 	player_detection_area.body_entered.connect(on_player_enter.bind())
 	player_detection_area.monitoring = false
 	set_ball_animation_from_velocity()
 
 func _physics_process(delta: float) -> void:
-	var elapsed := Time.get_ticks_msec() - time_started
+	var elapsed := GameManager.get_match_time_ms() - time_started
 	player_detection_area.monitoring = elapsed > LOCK_DURATION_MS
 
 	var friction := ball.friction_ground * 0.8

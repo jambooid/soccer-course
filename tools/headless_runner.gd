@@ -25,6 +25,7 @@ const DribbleTouchControllerScript := preload("res://utils/dribble_touch_control
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 const Presentation3DScript := preload("res://utils/presentation_3d.gd")
 const World3DPreviewScene := preload("res://scenes/world3d/world3d_preview.tscn")
+const World3DMatchScene := preload("res://scenes/world3d/world3d_match.tscn")
 const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
 const KickoffPolicyScript := preload("res://utils/kickoff_policy.gd")
 const PassDirectionPolicyScript := preload("res://utils/pass_direction_policy.gd")
@@ -563,6 +564,15 @@ func _test_presentation_3d() -> void:
 	_expect(preview.get_node("Camera").get_script() != null,
 		"3D preview has bounded camera controller")
 	preview.free()
+	var match_world := World3DMatchScene.instantiate()
+	var presenter := match_world.get_node("Presenter")
+	presenter.consume_snapshot({
+		"players": [{"id": 1, "position": Vector2(10.0, 20.0), "height": 0.0, "home": true}],
+		"ball": {"position": Vector2(14.0, 20.0), "height": 4.0},
+	})
+	_expect(presenter._current_snapshot.players.size() == 1,
+		"3D presenter accepts a copied gameplay snapshot")
+	match_world.free()
 
 func _test_player_footprint() -> void:
 	var players: Array[Dictionary] = [

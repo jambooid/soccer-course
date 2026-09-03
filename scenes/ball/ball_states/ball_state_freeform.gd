@@ -9,13 +9,13 @@ const MAX_CAPTURE_HEIGHT := PitchConstants.HEIGHT_FREEFORM_PICKUP_MAX
 const AUTO_CAPTURE_DISTANCE := PitchConstants.BALL.FREEFORM_AUTO_CAPTURE_DIST
 const AUTO_CAPTURE_CHECK_INTERVAL := PitchConstants.BALL.FREEFORM_AUTO_CAPTURE_CHECK_INTERVAL
 
-var time_since_freeform := Time.get_ticks_msec()
+var time_since_freeform := 0
 var capture_check_frame := 0
 var _contact_candidates: Array[Player] = []
 
 func _enter_tree() -> void:
 	player_detection_area.body_entered.connect(on_player_enter.bind())
-	time_since_freeform = Time.get_ticks_msec()
+	time_since_freeform = GameManager.get_match_time_ms()
 
 func on_player_enter(body: Player) -> void:
 	# Area callbacks are broad-phase candidate collection only. Authoritative
@@ -24,7 +24,7 @@ func on_player_enter(body: Player) -> void:
 		_contact_candidates.append(body)
 
 func _physics_process(delta: float) -> void:
-	player_detection_area.monitoring = (Time.get_ticks_msec() - time_since_freeform > state_data.lock_duration)
+	player_detection_area.monitoring = (GameManager.get_match_time_ms() - time_since_freeform > state_data.lock_duration)
 	set_ball_animation_from_velocity()
 	var friction := ball.friction_air if ball.height > 0 else ball.friction_ground
 	ball.velocity = ball.velocity.move_toward(Vector2.ZERO, friction * delta)

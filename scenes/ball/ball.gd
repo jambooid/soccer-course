@@ -225,10 +225,10 @@ func release_with_kick(target_pos: Vector2) -> void:
 func lock_recapture_for(context_player: Player, duration_ms: int) -> void:
 	## 仅阻止发球队员本人立即重新获得球权，不影响其他球员接球。
 	_recapture_lock_player = context_player
-	_recapture_lock_until_ms = Time.get_ticks_msec() + duration_ms
+	_recapture_lock_until_ms = GameManager.get_match_time_ms() + duration_ms
 
 func is_recapture_locked_for(context_player: Player) -> bool:
-	if Time.get_ticks_msec() >= _recapture_lock_until_ms:
+	if GameManager.get_match_time_ms() >= _recapture_lock_until_ms:
 		_recapture_lock_player = null
 		_recapture_lock_until_ms = 0
 		return false
@@ -242,7 +242,7 @@ func can_be_picked_up_by(context_player: Player) -> bool:
 	if not _pickup_enabled:
 		return false
 	if not _pickup_country.is_empty():
-		if Time.get_ticks_msec() >= _pickup_country_until_ms:
+		if GameManager.get_match_time_ms() >= _pickup_country_until_ms:
 			_clear_pickup_country_lock()
 		elif context_player.country != _pickup_country:
 			return false
@@ -274,7 +274,7 @@ func start_kickoff(kicker: Player) -> void:
 	carrier = null
 	_pickup_enabled = true
 	_pickup_country = kicker.country
-	_pickup_country_until_ms = Time.get_ticks_msec() + KICKOFF_TEAM_LOCK_MS
+	_pickup_country_until_ms = GameManager.get_match_time_ms() + KICKOFF_TEAM_LOCK_MS
 	carrier = kicker
 	switch_state(State.DRIBBLING)
 

@@ -16,7 +16,7 @@ var time_held := 0
 func _enter_tree() -> void:
 	assert(carrier != null)
 	assert(carrier.role == Player.Role.GOALIE)
-	time_held = Time.get_ticks_msec()
+	time_held = GameManager.get_match_time_ms()
 	ball.velocity = Vector2.ZERO
 	ball.height = 0.0
 	ball.height_velocity = 0.0
@@ -29,7 +29,7 @@ func _physics_process(_delta: float) -> void:
 	var offset := Vector2(carrier.heading.x * HOLD_OFFSET_X, HOLD_OFFSET_Y)
 	ball.position = carrier.position + offset
 
-	if Time.get_ticks_msec() - time_held > HOLD_DURATION_MAX_MS:
+	if GameManager.get_match_time_ms() - time_held > HOLD_DURATION_MAX_MS:
 		_auto_kick()
 
 func _auto_kick() -> void:

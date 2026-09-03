@@ -21,12 +21,12 @@ func _input(event: InputEvent) -> void:
 
 
 func press(action: String) -> void:
-    _buffer[action] = Time.get_ticks_msec()
+    _buffer[action] = GameManager.get_match_time_ms()
 
 
 func consume(action: String) -> bool:
     if _buffer.has(action):
-        if Time.get_ticks_msec() - _buffer[action] < BUFFER_WINDOW_MS:
+        if GameManager.get_match_time_ms() - _buffer[action] < BUFFER_WINDOW_MS:
             _buffer.erase(action)
             return true
         _buffer.erase(action)
@@ -43,7 +43,7 @@ func consume_any(actions: Array) -> String:
 func has(action: String) -> bool:
     if not _buffer.has(action):
         return false
-    if Time.get_ticks_msec() - _buffer[action] >= BUFFER_WINDOW_MS:
+    if GameManager.get_match_time_ms() - _buffer[action] >= BUFFER_WINDOW_MS:
         _buffer.erase(action)
         return false
     return true

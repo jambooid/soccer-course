@@ -25,4 +25,4 @@
 ## 5. Regression And Handoff
 
 - [x] 5.1 Extend the authoritative headless runner with kickoff, footprint, directional-pass, and contact arbitration checks
-- [ ] 5.2 Run the full headless suite and a manual 3D match checklist; record remaining tuning gaps in the change notes
+- [x] 5.2 Run the full headless suite and a manual 3D match checklist; record remaining tuning gaps in the change notes
