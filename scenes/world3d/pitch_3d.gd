@@ -2,6 +2,12 @@ class_name Pitch3D
 extends Node3D
 
 const LowPolyPitchScene := preload("res://assets/3d/generated/pitch.obj")
+const Match3DRulesScript := preload("res://utils/match3d_rules.gd")
+
+## Keep the visible goal mouth on the same contract as goal_scoring_team().
+const GOAL_HALF_WIDTH := Match3DRulesScript.GOAL_HALF_WIDTH
+const GOAL_WIDTH := GOAL_HALF_WIDTH * 2.0
+const GOAL_DEPTH := 4.2
 
 @export var simulation_scale := 0.1
 
@@ -60,15 +66,36 @@ func _add_goals() -> void:
 	var width := PitchConstants.WIDTH * simulation_scale
 	var center_z := PitchConstants.HEIGHT * simulation_scale * 0.5
 	for goal_x in [0.0, width]:
-		var direction := 1.0 if is_zero_approx(goal_x) else -1.0
+		# Goal depth extends away from the playable pitch: left goal toward -X,
+		# right goal toward +X. The front frame remains on the scoring line.
+		var direction := -1.0 if is_zero_approx(goal_x) else 1.0
 		var goal_color := Color(0.9, 0.92, 0.86)
-		var frame_x: float = goal_x + direction * 5.0
-		_add_box(Vector3(0.18, 3.1, 0.18), Vector3(frame_x, 1.55, center_z - 0.72), goal_color)
-		_add_box(Vector3(0.18, 3.1, 0.18), Vector3(frame_x, 1.55, center_z + 0.72), goal_color)
-		_add_box(Vector3(0.18, 0.18, 1.62), Vector3(frame_x, 3.1, center_z), goal_color)
-		_add_box(Vector3(4.2, 0.06, 1.36), Vector3(goal_x + direction * 3.0, 0.04, center_z), Color(0.76, 0.82, 0.8, 0.48), true)
-		_add_box(Vector3(0.06, 1.9, 0.06), Vector3(goal_x + direction * 2.7, 0.95, center_z - 0.62), Color(0.7, 0.76, 0.74, 0.38), true)
-		_add_box(Vector3(0.06, 1.9, 0.06), Vector3(goal_x + direction * 2.7, 0.95, center_z + 0.62), Color(0.7, 0.76, 0.74, 0.38), true)
+		# The scoring plane is x=0/x=width. Put the front frame on that same
+		# plane; the rear frame and net extend outside the pitch from there.
+		_add_goal_frame(goal_x, center_z, goal_color)
+		var frame_x: float = goal_x + direction * GOAL_DEPTH
+		# Match3DRules uses metres; the pitch mesh is already 85x36 world units
+		# after converting the legacy 850x360 coordinates with simulation_scale.
+		var goal_half_width := GOAL_HALF_WIDTH
+		var goal_width := GOAL_WIDTH
+		# The visible rear frame spans the complete scoring mouth, not a narrow placeholder.
+		_add_goal_frame(frame_x, center_z, goal_color)
+		_add_box(Vector3(GOAL_DEPTH, 0.06, goal_width),
+			Vector3(goal_x + direction * GOAL_DEPTH * 0.5, 0.04, center_z),
+			Color(0.76, 0.82, 0.8, 0.48), true)
+		_add_box(Vector3(0.06, 1.9, 0.06),
+			Vector3(goal_x + direction * GOAL_DEPTH * 0.64, 0.95, center_z - goal_half_width),
+			Color(0.7, 0.76, 0.74, 0.38), true)
+		_add_box(Vector3(0.06, 1.9, 0.06),
+			Vector3(goal_x + direction * GOAL_DEPTH * 0.64, 0.95, center_z + goal_half_width),
+			Color(0.7, 0.76, 0.74, 0.38), true)
+
+func _add_goal_frame(frame_x: float, center_z: float, goal_color: Color) -> void:
+	var goal_half_width := GOAL_HALF_WIDTH
+	var goal_width := GOAL_WIDTH
+	_add_box(Vector3(0.18, 3.1, 0.18), Vector3(frame_x, 1.55, center_z - goal_half_width), goal_color)
+	_add_box(Vector3(0.18, 3.1, 0.18), Vector3(frame_x, 1.55, center_z + goal_half_width), goal_color)
+	_add_box(Vector3(0.18, 0.18, goal_width), Vector3(frame_x, 3.1, center_z), goal_color)
 
 func _add_stands() -> void:
 	var width := PitchConstants.WIDTH * simulation_scale

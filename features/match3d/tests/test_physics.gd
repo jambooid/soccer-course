@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Rules := preload("res://utils/match3d_rules.gd")
+const Pitch3D := preload("res://scenes/world3d/pitch_3d.gd")
 
 var passed := 0
 var failed := 0
@@ -21,6 +22,9 @@ func run_suite() -> Dictionary:
 	_test_nearest_player_filtering()
 	_test_switch_target()
 	_test_player_separation()
+	_test_visible_goal_matches_scoring_mouth()
+	_test_visible_goal_front_frames_are_on_goal_lines()
+	_test_goal_depth_extends_outside_pitch()
 	print("Results: %d passed, %d failed" % [passed, failed])
 	return {"passed": passed, "failed": failed}
 
@@ -99,3 +103,49 @@ func _test_switch_target() -> void:
 	]
 	_expect(Rules.select_switch_target(players, 1, Vector2.RIGHT, Vector2(12.0, 18.0)) == 2,
 		"directional switch selects a teammate in the requested lane")
+
+func _test_visible_goal_matches_scoring_mouth() -> void:
+	_expect(is_equal_approx(Pitch3D.GOAL_WIDTH, 10.4),
+		"visible 3D goal uses the intended 10.4 metre mouth width")
+	_expect(is_equal_approx(Pitch3D.GOAL_WIDTH, Rules.GOAL_HALF_WIDTH * 2.0),
+		"visible 3D goal width matches the scoring mouth width")
+
+func _test_visible_goal_front_frames_are_on_goal_lines() -> void:
+	var pitch := Pitch3D.new()
+	pitch._add_goals()
+	var has_left_front_frame := false
+	var has_right_front_frame := false
+	for child in pitch.get_children():
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance == null:
+			continue
+		var box := mesh_instance.mesh as BoxMesh
+		if box == null or not is_equal_approx(box.size.y, 0.18) or not is_equal_approx(box.size.z, Pitch3D.GOAL_WIDTH):
+			continue
+		if is_zero_approx(mesh_instance.position.x):
+			has_left_front_frame = true
+		if is_equal_approx(mesh_instance.position.x, Rules.PITCH_SIZE.x):
+			has_right_front_frame = true
+	pitch.free()
+	_expect(has_left_front_frame and has_right_front_frame,
+		"visible goal front frames sit on both scoring goal lines")
+
+func _test_goal_depth_extends_outside_pitch() -> void:
+	var pitch := Pitch3D.new()
+	pitch._add_goals()
+	var has_left_rear_frame := false
+	var has_right_rear_frame := false
+	for child in pitch.get_children():
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance == null:
+			continue
+		var box := mesh_instance.mesh as BoxMesh
+		if box == null or not is_equal_approx(box.size.y, 0.18) or not is_equal_approx(box.size.z, Pitch3D.GOAL_WIDTH):
+			continue
+		if is_equal_approx(mesh_instance.position.x, -Pitch3D.GOAL_DEPTH):
+			has_left_rear_frame = true
+		if is_equal_approx(mesh_instance.position.x, Rules.PITCH_SIZE.x + Pitch3D.GOAL_DEPTH):
+			has_right_rear_frame = true
+	pitch.free()
+	_expect(has_left_rear_frame and has_right_rear_frame,
+		"goal nets and rear frames extend outside the playable pitch")
