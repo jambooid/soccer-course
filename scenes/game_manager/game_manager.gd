@@ -2,6 +2,8 @@ extends Node
 
 const DURATION_IMPACT_PAUSE := 100
 const DURATION_HALF_SEC := 60  # 半场 1 分钟（默认全场 2 分钟）
+const SeededRngScript := preload("res://utils/seeded_rng.gd")
+const DEFAULT_MATCH_SEED := 20_000
 
 enum State {FIRST_HALF, SECOND_HALF, HALFTIME, SCORED, RESET, KICKOFF, OVERTIME, GAMEOVER}
 
@@ -14,6 +16,8 @@ var player_setup : Array[String] = ["FRANCE", ""]
 var state_factory := GameStateFactory.new()
 var time_left : float
 var time_since_paused := Time.get_ticks_msec()
+var match_seed := DEFAULT_MATCH_SEED
+var match_rng: SeededRng
 
 ## === 控球权管理 ===
 var possession_home : float = 0.0
@@ -36,7 +40,18 @@ func _physics_process(_delta: float) -> void:
 func start_game() -> void:
 	current_half = 1
 	time_left = DURATION_HALF_SEC
+	match_rng = SeededRngScript.new(match_seed)
 	switch_state(State.RESET, GameStateData.build().set_half(1))
+
+func next_random() -> float:
+	if match_rng == null:
+		match_rng = SeededRngScript.new(match_seed)
+	return match_rng.randf()
+
+func next_random_range(from: float, to: float) -> float:
+	if match_rng == null:
+		match_rng = SeededRngScript.new(match_seed)
+	return match_rng.randf_range(from, to)
 
 func switch_state(state: State, data: GameStateData = GameStateData.new()) -> void:
 	if current_state != null:

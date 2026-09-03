@@ -113,7 +113,7 @@ func _ai_apply_turning(target_direction: Vector2, delta: float) -> void:
 
 func perform_ai_decisions() -> void:
 	# 防守时的断球决策
-	if is_ball_possessed_by_opponent() and player.position.distance_to(ball.position) < TACKLE_DISTANCE and randf() < TACKLE_PROBABILITY:
+	if is_ball_possessed_by_opponent() and player.position.distance_to(ball.position) < TACKLE_DISTANCE and GameManager.next_random() < TACKLE_PROBABILITY:
 		player.switch_state(Player.State.TACKLING)
 		return
 

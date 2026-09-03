@@ -233,7 +233,7 @@ func _check_auto_intercept(delta: float) -> void:
 
 	# 概率判定：probability 是每秒概率，delta 是时间窗口，概率 × delta 是实际判定阈值
 	var chance := probability * delta
-	if randf() < chance:
+	if GameManager.next_random() < chance:
 		_trigger_intercept(best_defender, probability)
 
 # 抢断成功：球权转移给防守者，直接切换到新携带者的 DRIBBLING 状态

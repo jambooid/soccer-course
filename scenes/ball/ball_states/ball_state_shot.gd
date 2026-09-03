@@ -64,7 +64,7 @@ func on_player_enter(body: Player) -> void:
 	# 普通球员：射门打在身上 → 折射
 	if body.can_carry_ball() and ball.height <= PitchConstants.HEIGHT_BALL_CONTROL_MAX:
 		var deflect_dir := ball.velocity.bounce(Vector2.UP if body.position.y < ball.position.y else Vector2.DOWN)
-		deflect_dir = deflect_dir.rotated(randf_range(-0.3, 0.3))  # 随机折射角度
+		deflect_dir = deflect_dir.rotated(GameManager.next_random_range(-0.3, 0.3))
 		ball.deflect_by(body, deflect_dir * ball.velocity.length() * 0.5)
 
 func process_gravity(delta: float, bounciness: float = 0.0, scale: float = 1.0) -> void:
