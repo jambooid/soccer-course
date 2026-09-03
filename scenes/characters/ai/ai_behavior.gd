@@ -14,7 +14,7 @@ var ball : Ball = null
 var opponent_detection_area : Area2D = null
 var player : Player = null
 var teammate_detection_area : Area2D = null
-var time_since_last_ai_tick := Time.get_ticks_msec()
+var time_since_last_ai_tick := 0
 
 func _ready() -> void:
 	# Deterministic staggering avoids every CPU thinking on the same frame while
@@ -22,7 +22,7 @@ func _ready() -> void:
 	var stable_offset := 0
 	if player != null:
 		stable_offset = abs(player.jersey_number) % DURATION_AI_TICK_FREQUENCY
-	time_since_last_ai_tick = Time.get_ticks_msec() + stable_offset
+	time_since_last_ai_tick = GameManager.get_match_time_ms() + stable_offset
 
 func setup(context_player: Player, context_ball: Ball, context_opponent_detection_area: Area2D, context_teammate_detection_area: Area2D) -> void:
 	player = context_player
@@ -47,8 +47,8 @@ func _get_tick_interval_ms() -> int:
 			return LOD_MID_TICK_MS
 
 func process_ai() -> void:
-	if Time.get_ticks_msec() - time_since_last_ai_tick > _get_tick_interval_ms():
-		time_since_last_ai_tick = Time.get_ticks_msec()
+	if GameManager.get_match_time_ms() - time_since_last_ai_tick > _get_tick_interval_ms():
+		time_since_last_ai_tick = GameManager.get_match_time_ms()
 		perform_ai_movement()
 		perform_ai_decisions()
 

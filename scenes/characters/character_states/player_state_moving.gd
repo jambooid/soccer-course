@@ -1,6 +1,8 @@
 class_name PlayerStateMoving
 extends PlayerState
 
+const PassDirectionPolicyScript := preload("res://utils/pass_direction_policy.gd")
+
 ## 转向参数（Turn Controller）— 使用 PitchConstants 集中管理
 const TURN_RATE_LOW_SPEED := PitchConstants.PLAYER.MOVING_TURN_RATE_LOW_SPEED
 const TURN_RATE_HIGH_SPEED := PitchConstants.PLAYER.MOVING_TURN_RATE_HIGH_SPEED
@@ -288,7 +290,7 @@ func can_pass() -> bool:
 
 func _get_action_direction() -> Vector2:
 	var input_direction := KeyUtils.get_input_vector(player.control_scheme)
-	return input_direction.normalized() if input_direction.length_squared() > 0.01 else player.heading
+	return PassDirectionPolicyScript.resolve(input_direction, player.heading)
 
 func _can_attempt_aerial_action() -> bool:
 	if ball == null or not ball.can_air_interact():

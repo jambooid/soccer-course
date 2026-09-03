@@ -26,6 +26,8 @@ const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 const Presentation3DScript := preload("res://utils/presentation_3d.gd")
 const World3DPreviewScene := preload("res://scenes/world3d/world3d_preview.tscn")
 const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
+const KickoffPolicyScript := preload("res://utils/kickoff_policy.gd")
+const PassDirectionPolicyScript := preload("res://utils/pass_direction_policy.gd")
 
 var _passed := 0
 var _failed := 0
@@ -58,6 +60,7 @@ func _run() -> void:
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
 	_run_suite("presentation_3d", _test_presentation_3d)
 	_run_suite("player_footprint", _test_player_footprint)
+	_run_suite("we2000_core_loop", _test_we2000_core_loop)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -573,6 +576,24 @@ func _test_player_footprint() -> void:
 		"overlapping player footprints separate")
 	_expect(resolved == PlayerFootprintResolverScript.separate(players, 14.0, 3),
 		"footprint separation is stable")
+
+func _test_we2000_core_loop() -> void:
+	_expect(not KickoffPolicyScript.should_start(89, 90, false),
+		"kickoff waits before deterministic timeout")
+	_expect(KickoffPolicyScript.should_start(90, 90, false),
+		"idle kickoff starts at deterministic timeout")
+	_expect(KickoffPolicyScript.should_start(0, 90, true),
+		"kickoff input starts immediately")
+	_expect(PassDirectionPolicyScript.resolve(Vector2(1.0, -1.0), Vector2.RIGHT)
+		.is_equal_approx(Vector2(1.0, -1.0).normalized()),
+		"diagonal input controls pass direction")
+	var winner := BallInteractionResolverScript.resolve([
+		BallInteractionResolverScript.create_intent(BallInteractionResolverScript.Kind.TACKLE, 8,
+			{"distance": 8.0, "active_window": true}),
+		BallInteractionResolverScript.create_intent(BallInteractionResolverScript.Kind.TACKLE, 4,
+			{"distance": 8.0, "active_window": true}),
+	])
+	_expect(int(winner.player_id) == 4, "same-tick tackle contest has one stable winner")
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

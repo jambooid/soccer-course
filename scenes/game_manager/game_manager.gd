@@ -4,6 +4,7 @@ const DURATION_IMPACT_PAUSE := 100
 const DURATION_HALF_SEC := 60  # 半场 1 分钟（默认全场 2 分钟）
 const SeededRngScript := preload("res://utils/seeded_rng.gd")
 const DEFAULT_MATCH_SEED := 20_000
+const SIMULATION_TICKS_PER_SECOND := 60
 
 enum State {FIRST_HALF, SECOND_HALF, HALFTIME, SCORED, RESET, KICKOFF, OVERTIME, GAMEOVER}
 
@@ -15,9 +16,10 @@ var current_state : GameState = null
 var player_setup : Array[String] = ["FRANCE", ""]
 var state_factory := GameStateFactory.new()
 var time_left : float
-var time_since_paused := Time.get_ticks_msec()
+var time_since_paused := 0
 var match_seed := DEFAULT_MATCH_SEED
 var match_rng: SeededRng
+var match_tick := 0
 
 ## === 控球权管理 ===
 var possession_home : float = 0.0
@@ -34,12 +36,14 @@ func _ready() -> void:
 	GameEvents.ball_released.connect(on_ball_released.bind())
 
 func _physics_process(_delta: float) -> void:
-	if get_tree().paused and Time.get_ticks_msec() - time_since_paused > DURATION_IMPACT_PAUSE:
+	match_tick += 1
+	if get_tree().paused and get_match_time_ms() - time_since_paused > DURATION_IMPACT_PAUSE:
 		get_tree().paused = false
 
 func start_game() -> void:
 	current_half = 1
 	time_left = DURATION_HALF_SEC
+	match_tick = 0
 	match_rng = SeededRngScript.new(match_seed)
 	switch_state(State.RESET, GameStateData.build().set_half(1))
 
@@ -52,6 +56,9 @@ func next_random_range(from: float, to: float) -> float:
 	if match_rng == null:
 		match_rng = SeededRngScript.new(match_seed)
 	return match_rng.randf_range(from, to)
+
+func get_match_time_ms() -> int:
+	return int(match_tick * 1000.0 / SIMULATION_TICKS_PER_SECOND)
 
 func switch_state(state: State, data: GameStateData = GameStateData.new()) -> void:
 	if current_state != null:
@@ -81,7 +88,7 @@ func increase_score(country_scored_on: String) -> void:
 
 func on_impact_received(_impact_position: Vector2, is_high_impact: bool) -> void:
 	if is_high_impact:
-		time_since_paused = Time.get_ticks_msec()
+		time_since_paused = get_match_time_ms()
 		get_tree().paused = true
 
 ## === 控球权管理方法 ===
@@ -94,7 +101,7 @@ func on_ball_possessed_by(player: Player) -> void:
 	if new_country != possession_country:
 		possession_country = new_country
 		GameEvents.possession_changed.emit(new_country)
-	possession_last_switch_ms = Time.get_ticks_msec()
+	possession_last_switch_ms = get_match_time_ms()
 
 func on_ball_released() -> void:
 	# 球被释放时先累计当前控球方的时间
@@ -105,7 +112,7 @@ func on_ball_released() -> void:
 func _accumulate_possession() -> void:
 	if possession_country == "" or possession_last_switch_ms == 0:
 		return
-	var elapsed := (Time.get_ticks_msec() - possession_last_switch_ms) / 1000.0
+	var elapsed := (get_match_time_ms() - possession_last_switch_ms) / 1000.0
 	if current_match == null:
 		return
 	if possession_country == current_match.country_home:
@@ -117,7 +124,7 @@ func set_possession(country: String) -> void:
 	## 显式设置控球方（供 ball.carrier 变化时主动调用）
 	_accumulate_possession()
 	possession_country = country
-	possession_last_switch_ms = Time.get_ticks_msec()
+	possession_last_switch_ms = get_match_time_ms()
 
 func get_possession_ratio(country: String) -> float:
 	## 获取指定球队的控球率（0.0-1.0）

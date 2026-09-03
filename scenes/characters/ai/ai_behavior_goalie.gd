@@ -40,12 +40,12 @@ func _ready() -> void:
 	# Stagger keeper updates without global randomness. Jersey numbers are stable
 	# across squad construction and therefore produce replayable phase offsets.
 	var phase_offset := posmod(player.jersey_number, maxi(AI_TICK_MS, 1))
-	time_since_last_ai_tick_goalie = Time.get_ticks_msec() + phase_offset
+	time_since_last_ai_tick_goalie = GameManager.get_match_time_ms() + phase_offset
 
 func _physics_process(_delta: float) -> void:
 	var is_holding_ball := ball != null and ball.carrier == player
 	if is_holding_ball and not was_holding_ball:
-		time_ball_held_ms = Time.get_ticks_msec()
+		time_ball_held_ms = GameManager.get_match_time_ms()
 	elif not is_holding_ball:
 		time_ball_held_ms = 0
 	was_holding_ball = is_holding_ball
@@ -57,8 +57,8 @@ func _physics_process(_delta: float) -> void:
 
 func process_ai() -> void:
 	# 门将使用自己的 tick 频率（更快）
-	if Time.get_ticks_msec() - time_since_last_ai_tick_goalie > AI_TICK_MS:
-		time_since_last_ai_tick_goalie = Time.get_ticks_msec()
+	if GameManager.get_match_time_ms() - time_since_last_ai_tick_goalie > AI_TICK_MS:
+		time_since_last_ai_tick_goalie = GameManager.get_match_time_ms()
 		perform_ai_movement()
 		perform_ai_decisions()
 
@@ -118,7 +118,7 @@ func _goalkeeper_decision() -> Dictionary:
 	var distribution := _find_best_distribution_target() if ball.carrier == player else {}
 	return GoalkeeperDecisionPolicyScript.decide({
 		"holding_ball": ball.carrier == player,
-		"held_seconds": float(Time.get_ticks_msec() - time_ball_held_ms) / 1000.0,
+		"held_seconds": float(GameManager.get_match_time_ms() - time_ball_held_ms) / 1000.0,
 		"distribution_delay": float(HOLD_DURATION_MIN_MS) / 1000.0,
 		"distribution_long": not distribution.is_empty() and bool(distribution.get("long", false)),
 		"can_collect_now": ball.can_goalkeeper_collect(player),
@@ -144,7 +144,7 @@ func _can_catch_ball() -> bool:
 
 func _catch_ball() -> void:
 	## 抱住球
-	time_ball_held_ms = Time.get_ticks_msec()
+	time_ball_held_ms = GameManager.get_match_time_ms()
 	was_holding_ball = true
 	ball.hold_by_goalkeeper(player)
 

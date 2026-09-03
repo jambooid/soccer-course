@@ -13,14 +13,14 @@ const GROUND_FRICTION := PitchConstants.BALL.SHOT_GROUND_FRICTION
 const SHOT_DROP_MS := PitchConstants.BALL.SHOT_DROP_MS
 const GOALIE_CATCH_SPEED := PitchConstants.BALL.SHOT_GOALIE_CATCH_SPEED
 
-var time_since_shot := Time.get_ticks_msec()
+var time_since_shot := 0
 
 func _enter_tree() -> void:
 	set_ball_animation_from_velocity()
 	sprite.scale.y = SHOT_SPRITE_SCALE
 	ball.height = SHOT_HEIGHT
 	ball.height_velocity = 0.0  ## 初始平射，稍后下落
-	time_since_shot = Time.get_ticks_msec()
+	time_since_shot = GameManager.get_match_time_ms()
 	shot_particles.emitting = true
 	GameEvents.impact_received.emit(ball.position, true)
 	# 连接球员检测 — 射门的球可以被门将抱住/挡出，也可以被防守球员折射
@@ -28,7 +28,7 @@ func _enter_tree() -> void:
 	player_detection_area.monitoring = true
 
 func _physics_process(delta: float) -> void:
-	var elapsed := Time.get_ticks_msec() - time_since_shot
+	var elapsed := GameManager.get_match_time_ms() - time_since_shot
 	if elapsed > DURATION_SHOT:
 		transition_state(Ball.State.FREEFORM)
 		return

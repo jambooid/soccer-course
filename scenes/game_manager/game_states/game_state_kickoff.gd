@@ -1,6 +1,8 @@
 class_name GameStateKickoff
 extends GameState
 
+const KickoffPolicyScript := preload("res://utils/kickoff_policy.gd")
+
 var valid_control_schemes := []
 var ticks_waited := 0
 
@@ -23,7 +25,7 @@ func _physics_process(_delta: float) -> void:
 		if KeyUtils.is_action_just_pressed(control_scheme, KeyUtils.Action.SHORT_PASS):
 			_start_kickoff()
 			return
-	if ticks_waited >= KICKOFF_TIMEOUT_TICKS:
+	if KickoffPolicyScript.should_start(ticks_waited, KICKOFF_TIMEOUT_TICKS, false):
 		_start_kickoff()
 
 func _start_kickoff() -> void:

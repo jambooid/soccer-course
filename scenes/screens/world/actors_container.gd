@@ -5,6 +5,8 @@ const DURATION_WEIGHT_CACHE := 200
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
 const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
+const BallInteractionResolverScript := preload("res://utils/ball_interaction_resolver.gd")
+const TackleEligibilityPolicyScript := preload("res://utils/tackle_eligibility_policy.gd")
 const PLAYER_PREFAB := preload("res://scenes/characters/player.tscn")
 const SPARK_PREFAB := preload("res://scenes/spark/spark.tscn")
 
@@ -13,6 +15,7 @@ const LOD_CORE_COUNT := 3     ## 核心层人数（最近的 2-3 人，每 50ms 
 const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms 决策）
 const SWITCH_LOCK_MS := 250
 const PLAYER_FOOTPRINT_RADIUS := 13.0
+const TACKLE_CONTACT_DISTANCE := 20.0
 ## 远端 = 其余球员（每 1000ms 决策）
 
 @export var ball : Ball
@@ -50,6 +53,7 @@ func _ready() -> void:
 
 func _physics_process(_delta: float) -> void:
 	_resolve_player_occupancy()
+	_resolve_active_tackle_contest()
 
 func _resolve_player_occupancy() -> void:
 	var active_players: Array[Player] = squad_home + squad_away
@@ -68,6 +72,54 @@ func _resolve_player_occupancy() -> void:
 		var stable_id := player.jersey_number + (0 if player.country == GameManager.current_match.country_home else 100)
 		if positions_by_id.has(stable_id):
 			player.position = positions_by_id[stable_id]
+
+func _resolve_active_tackle_contest() -> void:
+	if ball == null or ball.carrier == null or not is_instance_valid(ball.carrier):
+		return
+	if not (ball.current_state is BallStateDribbling):
+		return
+	var carrier: Player = ball.carrier
+	var intents: Array[Dictionary] = []
+	for contender in squad_home + squad_away:
+		if contender.country == carrier.country or not (contender.current_state is PlayerStateTackling):
+			continue
+		var tackle_state := contender.current_state as PlayerStateTackling
+		var to_ball := contender.position.direction_to(ball.position)
+		var approach := contender.velocity.normalized()
+		var result := TackleEligibilityPolicyScript.resolve({
+			"distance": contender.position.distance_to(ball.position),
+			"ball_first": contender.position.distance_to(ball.position) <= TACKLE_CONTACT_DISTANCE,
+			"direction_dot": approach.dot(to_ball),
+			"approach_speed": contender.velocity.length(),
+			"defense": contender.defense,
+			"technique": carrier.technique,
+			"sliding": true,
+		})
+		if int(result.outcome) == TackleEligibilityPolicyScript.Outcome.TACKLE_WIN:
+			intents.append(BallInteractionResolverScript.create_intent(
+				BallInteractionResolverScript.Kind.TACKLE,
+				_stable_player_id(contender),
+				{"distance": contender.position.distance_to(ball.position),
+				"active_window": tackle_state.is_contact_active()}))
+	var resolved := BallInteractionResolverScript.resolve(intents)
+	if resolved.is_empty():
+		return
+	var winner := _find_player_by_stable_id(int(resolved.player_id))
+	if winner == null:
+		return
+	ball.velocity = winner.position.direction_to(ball.position) * maxf(ball.velocity.length() * 0.35, 24.0)
+	ball.carrier = winner
+	winner.control_ball()
+	ball.switch_state(Ball.State.DRIBBLING)
+
+func _stable_player_id(player: Player) -> int:
+	return player.jersey_number + (0 if player.country == GameManager.current_match.country_home else 100)
+
+func _find_player_by_stable_id(id: int) -> Player:
+	for player in squad_home + squad_away:
+		if _stable_player_id(player) == id:
+			return player
+	return null
 
 func _process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:

@@ -19,10 +19,10 @@ const MAX_BOUNCES_BEFORE_FREEFORM := PitchConstants.BALL.KICKED_MAX_BOUNCES
 
 var kicker : Player = null
 var bounce_count := 0
-var time_since_kick := Time.get_ticks_msec()
+var time_since_kick := 0
 
 func _enter_tree() -> void:
-	time_since_kick = Time.get_ticks_msec()
+	time_since_kick = GameManager.get_match_time_ms()
 	kicker = state_data.kicker
 	bounce_count = 0
 	player_detection_area.body_entered.connect(on_player_enter.bind())
@@ -30,7 +30,7 @@ func _enter_tree() -> void:
 	set_ball_animation_from_velocity()
 
 func _physics_process(delta: float) -> void:
-	var elapsed := Time.get_ticks_msec() - time_since_kick
+	var elapsed := GameManager.get_match_time_ms() - time_since_kick
 	player_detection_area.monitoring = elapsed > state_data.lock_duration
 
 	set_ball_animation_from_velocity()
