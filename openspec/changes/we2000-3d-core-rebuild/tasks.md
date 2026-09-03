@@ -8,7 +8,7 @@
 - [x] 2.1 Correct both offside-line implementations and add directional regression cases for left- and right-attacking teams
 - [x] 2.2 Gate non-carrier aerial actions by ball distance, height, and detection-area eligibility; verify distant shoot input never enters an aerial state
 - [x] 2.3 Make pass execution cancel when the passer no longer owns the ball and use sampled directional input for assisted targeting
-- [ ] 2.4 Add deterministic kickoff timeout progression and verify an idle kickoff enters active play within the configured tick bound
+- [x] 2.4 Add deterministic kickoff timeout progression and verify an idle kickoff enters active play within the configured tick bound
 
 ## 3. Deterministic Contact Core
 
