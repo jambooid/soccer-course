@@ -12,17 +12,11 @@ var shadow: MeshInstance3D
 var model_root: Node3D
 
 func _ready() -> void:
-	model_root = LowPolyBallScene.instantiate() as Node3D
-	if model_root != null:
-		add_child(model_root)
-	else:
-		model = MeshInstance3D.new()
-		var ball_mesh := SphereMesh.new()
-		ball_mesh.radius = radius
-		ball_mesh.height = radius * 2.0
-		model.mesh = ball_mesh
-		model.material_override = _make_material(Color(0.96, 0.96, 0.88))
-		add_child(model)
+	model = MeshInstance3D.new()
+	model.mesh = LowPolyBallScene
+	model.scale = Vector3.ONE * 1.45
+	model.material_override = _make_material(Color(0.96, 0.96, 0.88))
+	add_child(model)
 
 	shadow = MeshInstance3D.new()
 	var shadow_mesh := CylinderMesh.new()

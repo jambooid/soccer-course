@@ -1,0 +1,16 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scenes/world3d/match3d_game.gd" id="1_game"]
+[ext_resource type="Script" path="res://scenes/world3d/pitch_3d.gd" id="2_pitch"]
+
+[node name="Match3DGame" type="Node3D"]
+script = ExtResource("1_game")
+
+[node name="Pitch" type="Node3D" parent="."]
+script = ExtResource("2_pitch")
+
+[node name="Camera" type="Camera3D" parent="."]
+position = Vector3(42.5, 42, 50)
+rotation_degrees = Vector3(-37, 0, 0)
+current = true
+fov = 50

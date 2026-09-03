@@ -1,0 +1,14 @@
+# Core match rules and runtime scene
+utils/match3d_rules.gd
+scenes/world3d/match3d_game.gd
+scenes/world3d/match3d_game.tscn
+
+# 3D presentation improvements used by the match
+scenes/world3d/pitch_3d.gd
+scenes/world3d/player_3d_view.gd
+project.godot
+
+# Focused validation
+features/match3d/tests/test_physics.gd
+features/match3d/tests/test_runtime.gd
+features/match3d/tests/test_scene.tscn

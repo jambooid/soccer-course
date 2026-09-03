@@ -1,0 +1,26 @@
+2026-09-03
+
+Focused automated test: features/match3d/tests/test_physics.gd
+Result: 15 passed, 0 failed (Godot 4.4.1, headless), including bounded camera
+target checks.
+
+Runtime input smoke test: features/match3d/tests/test_runtime.gd
+Result: 15 passed, 0 failed (Godot 4.4.1, headless). Movement, kickoff
+carrier selection, pass release, persistent player switching, independent
+ball motion, CPU shooting, active CPU tackling with facing validation, goal scoring, kickoff reset,
+immediate kickoff input, and charged shooting with visible HUD progress all verified.
+Manual and CPU tackles share the same audio, action flash, and camera-shake feedback.
+Goal event text remains visible during the post-goal kickoff window.
+
+Default scene smoke test:
+Result: loaded and ran for 120 frames with no script errors.
+
+Visual check:
+One OpenGL movie-maker frame rendered successfully. It shows the low-poly
+pitch, blue/red teams, HUD, goals/stands, and KICK OFF state. Manual input
+feel and sustained performance remain pending a human play session. The frame
+also shows the thicker center line and carrier marker. Player and ball visual
+scales are tuned independently of gameplay collision radii for readability.
+
+Project regression:
+`tools/headless_runner.gd` completed with 136 passed, 0 failed.
