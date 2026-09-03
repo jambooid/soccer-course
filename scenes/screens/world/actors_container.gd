@@ -4,6 +4,7 @@ extends Node2D
 const DURATION_WEIGHT_CACHE := 200
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
 const PlayerSwitchSelectorScript := preload("res://utils/player_switch_selector.gd")
+const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
 const PLAYER_PREFAB := preload("res://scenes/characters/player.tscn")
 const SPARK_PREFAB := preload("res://scenes/spark/spark.tscn")
 
@@ -11,6 +12,7 @@ const SPARK_PREFAB := preload("res://scenes/spark/spark.tscn")
 const LOD_CORE_COUNT := 3     ## 核心层人数（最近的 2-3 人，每 50ms 决策）
 const LOD_MID_COUNT := 7      ## 中间层人数（中间的 6-8 人，每 200ms 决策）
 const SWITCH_LOCK_MS := 250
+const PLAYER_FOOTPRINT_RADIUS := 13.0
 ## 远端 = 其余球员（每 1000ms 决策）
 
 @export var ball : Ball
@@ -33,6 +35,9 @@ func _init() -> void:
 	GameEvents.ball_possession_stable.connect(_on_ball_possession_stable.bind())
 
 func _ready() -> void:
+	# Run after child players' physics movement so the occupancy pass resolves
+	# the completed simulation step in a stable, centralized order.
+	process_priority = 100
 	add_to_group("actors_container")
 	squad_home = spawn_players(GameManager.current_match.country_home, goal_home)
 	goal_home.initialize(GameManager.current_match.country_home)
@@ -42,6 +47,27 @@ func _ready() -> void:
 	goal_away.initialize(GameManager.current_match.country_away)
 	setup_control_schemes()
 	set_on_duty_weights()
+
+func _physics_process(_delta: float) -> void:
+	_resolve_player_occupancy()
+
+func _resolve_player_occupancy() -> void:
+	var active_players: Array[Player] = squad_home + squad_away
+	var entries: Array[Dictionary] = []
+	for player in active_players:
+		entries.append({
+			"id": player.jersey_number + (0 if player.country == GameManager.current_match.country_home else 100),
+			"position": player.position,
+			"radius": PLAYER_FOOTPRINT_RADIUS,
+		})
+	var resolved := PlayerFootprintResolverScript.separate(entries, PLAYER_FOOTPRINT_RADIUS, 2)
+	var positions_by_id := {}
+	for entry: Dictionary in resolved:
+		positions_by_id[int(entry.id)] = entry.position
+	for player in active_players:
+		var stable_id := player.jersey_number + (0 if player.country == GameManager.current_match.country_home else 100)
+		if positions_by_id.has(stable_id):
+			player.position = positions_by_id[stable_id]
 
 func _process(_delta: float) -> void:
 	if Time.get_ticks_msec() - time_since_last_cache_refresh > DURATION_WEIGHT_CACHE:
