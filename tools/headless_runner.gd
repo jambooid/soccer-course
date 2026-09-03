@@ -23,6 +23,9 @@ const MatchFlowAdapterScript := preload("res://utils/match_flow_adapter.gd")
 const CpuMatchDiagnosticScript := preload("res://utils/cpu_match_diagnostic.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
+const Presentation3DScript := preload("res://utils/presentation_3d.gd")
+const World3DPreviewScene := preload("res://scenes/world3d/world3d_preview.tscn")
+const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
 
 var _passed := 0
 var _failed := 0
@@ -53,6 +56,8 @@ func _run() -> void:
 	_run_suite("cpu_match_diagnostic", _test_cpu_match_diagnostic)
 	_run_suite("dribble_touch_controller", _test_dribble_touch_controller)
 	_run_suite("cpu_action_selector", _test_cpu_action_selector)
+	_run_suite("presentation_3d", _test_presentation_3d)
+	_run_suite("player_footprint", _test_player_footprint)
 	_run_suite("legacy_dribble_suite", _run_legacy_dribble_suite)
 	_run_suite("legacy_shooting_suite", _run_legacy_shooting_suite)
 	if "--headless-runner-fail" in OS.get_cmdline_user_args():
@@ -339,6 +344,13 @@ func _test_offside_judge() -> void:
 	_expect(not OffsideJudgeScript.is_target_offside(
 		Vector2(-10.0, 0.0), defenders, Vector2(40.0, 0.0), 1
 	), "attacker in own half is never offside")
+	var left_defenders := [
+		{"global_position": Vector2(392.0, 0.0), "role": 1},
+		{"global_position": Vector2(386.0, 0.0), "role": 1},
+	]
+	_expect(OffsideJudgeScript.is_target_offside(
+		Vector2(370.0, 0.0), left_defenders, Vector2(400.0, 0.0), -1, 425.0
+	), "left-attacking offside uses second-smallest defender")
 
 func _test_goalkeeper_interaction_policy() -> void:
 	var catch_data := {
@@ -536,6 +548,27 @@ func _test_cpu_action_selector() -> void:
 	_expect(selected.kind == "PASS" and selected.rule_legal, "safe reachable pass beats retain and illegal lane")
 	_expect(selected == CpuActionSelectorScript.select([retain, safe_pass, blocked_pass]),
 		"same action snapshot selects deterministically")
+
+func _test_presentation_3d() -> void:
+	var ground := Vector2(12.0, -7.0)
+	var world := Presentation3DScript.to_world(ground, 5.0, 0.1)
+	_expect(world == Vector3(1.2, 0.5, -0.7), "simulation coordinates map to XZ and height")
+	_expect(Presentation3DScript.from_world(world, 0.1) == ground,
+		"3D presentation mapping round trips")
+	_expect(World3DPreviewScene != null, "primitive 3D presentation scene loads")
+
+func _test_player_footprint() -> void:
+	var players: Array[Dictionary] = [
+		{"id": 2, "position": Vector2.ZERO, "radius": 14.0},
+		{"id": 1, "position": Vector2.ZERO, "radius": 14.0},
+	]
+	var resolved := PlayerFootprintResolverScript.separate(players, 14.0, 3)
+	var first: Vector2 = resolved[0].position
+	var second: Vector2 = resolved[1].position
+	_expect(first.distance_to(second) >= 28.0 - 0.01,
+		"overlapping player footprints separate")
+	_expect(resolved == PlayerFootprintResolverScript.separate(players, 14.0, 3),
+		"footprint separation is stable")
 
 func _run_legacy_dribble_suite() -> void:
 	var suite := DribbleSuiteScript.new()

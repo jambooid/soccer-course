@@ -117,7 +117,7 @@ func _process_actions() -> void:
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHOOT):
 		if player.has_ball():
 			transition_state(Player.State.PREPPING_SHOT)
-		elif ball.can_air_interact():
+		elif _can_attempt_aerial_action():
 			if player.velocity == Vector2.ZERO:
 				if player.is_facing_target_goal():
 					transition_state(Player.State.VOLLEY_KICK)
@@ -135,7 +135,8 @@ func _process_actions() -> void:
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.SHORT_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
-				.set_pass_type(PlayerStateData.PassType.SHORT))
+				.set_pass_type(PlayerStateData.PassType.SHORT)
+				.set_pass_direction(_get_action_direction()))
 		elif can_teammate_pass_ball():
 			ball.carrier.get_pass_request(player)
 		else:
@@ -146,7 +147,8 @@ func _process_actions() -> void:
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.LONG_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
-				.set_pass_type(PlayerStateData.PassType.LONG))
+				.set_pass_type(PlayerStateData.PassType.LONG)
+				.set_pass_direction(_get_action_direction()))
 		elif can_teammate_pass_ball():
 			ball.carrier.get_pass_request(player)
 		else:
@@ -157,7 +159,8 @@ func _process_actions() -> void:
 	if KeyUtils.consume_action_buffer(player.control_scheme, KeyUtils.Action.THROUGH_PASS):
 		if player.has_ball():
 			transition_state(Player.State.PASSING, PlayerStateData.build()
-				.set_pass_type(PlayerStateData.PassType.THROUGH))
+				.set_pass_type(PlayerStateData.PassType.THROUGH)
+				.set_pass_direction(_get_action_direction()))
 		elif can_teammate_pass_ball():
 			ball.carrier.get_pass_request(player)
 		return
@@ -282,3 +285,17 @@ func can_teammate_pass_ball() -> bool:
 
 func can_pass() -> bool:
 	return true
+
+func _get_action_direction() -> Vector2:
+	var input_direction := KeyUtils.get_input_vector(player.control_scheme)
+	return input_direction.normalized() if input_direction.length_squared() > 0.01 else player.heading
+
+func _can_attempt_aerial_action() -> bool:
+	if ball == null or not ball.can_air_interact():
+		return false
+	if ball.height < PitchConstants.HEIGHT_HEADER_MIN \
+		or ball.height > PitchConstants.HEIGHT_HEADER_MAX:
+		return false
+	if player.position.distance_to(ball.position) > 30.0:
+		return false
+	return ball_detection_area != null and ball_detection_area.get_overlapping_bodies().has(ball)

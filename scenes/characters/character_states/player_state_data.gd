@@ -5,6 +5,7 @@ enum PassType {SHORT, LONG, THROUGH}
 var hurt_direction : Vector2
 var pass_target : Player
 var pass_type : int = PassType.SHORT
+var pass_direction := Vector2.ZERO
 var reset_position : Vector2
 var shot_direction : Vector2
 var shot_power : float
@@ -30,6 +31,10 @@ func set_pass_target(player: Player) -> PlayerStateData:
 
 func set_pass_type(type: int) -> PlayerStateData:
 	pass_type = type
+	return self
+
+func set_pass_direction(direction: Vector2) -> PlayerStateData:
+	pass_direction = direction
 	return self
 
 func set_reset_position(position: Vector2) -> PlayerStateData:

@@ -17,6 +17,9 @@ func _enter_tree() -> void:
 	SoundPlayer.play(SoundPlayer.Sound.PASS)
 
 func on_animation_complete() -> void:
+	if not player.has_ball():
+		transition_state(Player.State.MOVING)
+		return
 	var pass_type := state_data.pass_type
 	var pass_target := state_data.pass_target
 
@@ -74,7 +77,8 @@ func _find_assisted_target(p_type: int) -> Player:
 			magnet_angle = ASSIST_MAGNET_ANGLE_THROUGH
 			magnet_range = ASSIST_MAGNET_RANGE_THROUGH
 
-	var heading_dir := player.heading.normalized()
+	var heading_dir := state_data.pass_direction.normalized() \
+		if state_data.pass_direction.length_squared() > 0.01 else player.heading.normalized()
 	var best_target: Player = null
 	var best_score := -1.0  # 分数越高越好（角度越正前方 + 距离越近）
 

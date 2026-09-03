@@ -107,15 +107,13 @@ static func _get_second_last_defender_x(defenders: Array, attacking_dir_x: int) 
 
 	# 排序（按进攻方向判断"最靠后"）
 	if attacking_dir_x == 1:
-		# 向右攻 → 防守者越靠左（x 越小）越靠后
-		# 倒数第二 = 第二小的 x
-		x_positions.sort()
-		return x_positions[0] if x_positions.size() < 2 else x_positions[1]
-	else:
-		# 向左攻 → 防守者越靠右（x 越大）越靠后
-		# 倒数第二 = 第二大的 x
+		# 向右攻：靠近对方球门的是较大的 x，取第二大的 x。
 		x_positions.sort()
 		return x_positions[x_positions.size() - 1] if x_positions.size() < 2 else x_positions[x_positions.size() - 2]
+	else:
+		# 向左攻：靠近对方球门的是较小的 x，取第二小的 x。
+		x_positions.sort()
+		return x_positions[0] if x_positions.size() < 2 else x_positions[1]
 
 ## 判断是否在本方半场
 static func _is_in_own_half(player_x: float, attacking_dir_x: int, pitch_center_x: float) -> bool:

@@ -1,0 +1,19 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scenes/world3d/pitch_3d.gd" id="1_pitch"]
+[ext_resource type="Script" path="res://scenes/world3d/player_3d_view.gd" id="2_player"]
+[ext_resource type="Script" path="res://scenes/world3d/ball_3d_view.gd" id="3_ball"]
+
+[node name="World3DPreview" type="Node3D"]
+
+[node name="Pitch" type="Node3D" parent="."]
+script = ExtResource("1_pitch")
+
+[node name="PlayerA" type="Node3D" parent="."]
+script = ExtResource("2_player")
+
+[node name="PlayerB" type="Node3D" parent="."]
+script = ExtResource("2_player")
+
+[node name="Ball" type="Node3D" parent="."]
+script = ExtResource("3_ball")

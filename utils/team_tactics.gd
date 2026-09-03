@@ -159,7 +159,7 @@ static func compute_offside_line(defenders: Array[Dictionary], ball_position: Ve
 	x_positions.sort()
 	var second_last := x_positions[0]
 	if x_positions.size() >= 2:
-		second_last = x_positions[1] if attacking_dir_x > 0 else x_positions[x_positions.size() - 2]
+		second_last = x_positions[x_positions.size() - 2] if attacking_dir_x > 0 else x_positions[1]
 	return minf(second_last, ball_position.x) if attacking_dir_x > 0 else maxf(second_last, ball_position.x)
 
 static func clamp_support_target(target: Vector2, offside_line_x: float, attacking_dir_x: int, pitch_center_x: float) -> Vector2:
