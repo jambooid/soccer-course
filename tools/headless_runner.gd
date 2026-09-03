@@ -556,6 +556,10 @@ func _test_presentation_3d() -> void:
 	_expect(Presentation3DScript.from_world(world, 0.1) == ground,
 		"3D presentation mapping round trips")
 	_expect(World3DPreviewScene != null, "primitive 3D presentation scene loads")
+	var preview := World3DPreviewScene.instantiate()
+	_expect(preview.get_node("Camera").get_script() != null,
+		"3D preview has bounded camera controller")
+	preview.free()
 
 func _test_player_footprint() -> void:
 	var players: Array[Dictionary] = [

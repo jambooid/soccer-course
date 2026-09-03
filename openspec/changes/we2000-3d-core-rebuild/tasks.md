@@ -19,7 +19,7 @@
 ## 4. 3D Presentation Bridge
 
 - [x] 4.1 Add primitive `Player3DView`, `Ball3DView`, and `Pitch3D` scenes driven by snapshots and verify a headless scene load
-- [ ] 4.2 Add bounded elevated camera and render interpolation; verify camera remains inside pitch limits during a fast shot
+- [x] 4.2 Add bounded elevated camera and render interpolation; verify camera remains inside pitch limits during a fast shot
 - [ ] 4.3 Add low-poly materials, nearest filtering, shadows, and placeholder animation hooks; verify the 3D match scene visually loads
 
 ## 5. Regression And Handoff
