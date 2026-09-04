@@ -64,6 +64,7 @@ var dribble_touch_count := 0
 var dribble_queued_direction := Vector3.ZERO
 var dribble_turn_anchor_timer := 0.0
 var dribble_turn_anchor_direction := Vector3.ZERO
+var dribble_turn_anchor_start := Vector2.ZERO
 var dribble_turn_release_velocity := Vector3.ZERO
 var dribble_last_turn_type := DribblePhysics3D.TurnType.NONE
 var dribble_phase := DribblePhase.FREE_ROLL
@@ -379,7 +380,10 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var external_force := false
 	if turn_anchor_active:
 		dribble_turn_anchor_timer = maxf(dribble_turn_anchor_timer - delta, 0.0)
-		ball_plane = carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * 0.24
+		var anchor_target := carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * 0.24
+		var anchor_duration := DribblePhysics3D.turn_anchor_duration(DribblePhysics3D.TurnType.DEGREE_180)
+		var anchor_progress := 1.0 - dribble_turn_anchor_timer / maxf(anchor_duration, 0.001)
+		ball_plane = dribble_turn_anchor_start.lerp(anchor_target, smoothstep(0.0, 1.0, anchor_progress))
 		ball_velocity_plane = Vector2.ZERO
 		if dribble_turn_anchor_timer <= 0.0:
 			ball_velocity_plane = DribblePhysics3D.to_pitch_plane(dribble_turn_release_velocity)
@@ -420,12 +424,12 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 			if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180:
 				dribble_turn_anchor_timer = DribblePhysics3D.turn_anchor_duration(dribble_last_turn_type)
 				dribble_turn_anchor_direction = DribblePhysics3D.from_pitch_plane(-carry_direction_plane)
+				dribble_turn_anchor_start = ball_plane
 				dribble_turn_lock_timer = DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
 				dribble_turn_locked_direction = contact_direction
 				dribble_turn_release_velocity = DribblePhysics3D.turn_touch_velocity(
 					Vector3.ZERO, carrier.velocity, carrier.facing, technique, mode,
 					contact_direction, dribble_last_turn_type)
-				ball_plane = carrier_plane + (-carry_direction_plane) * 0.24
 				ball_velocity_plane = Vector2.ZERO
 				dribble_phase = DribblePhase.TURNAROUND_ANCHOR
 				turn_anchor_active = true
@@ -485,6 +489,7 @@ func _reset_dribble_turn_state() -> void:
 	dribble_queued_direction = Vector3.ZERO
 	dribble_turn_anchor_timer = 0.0
 	dribble_turn_anchor_direction = Vector3.ZERO
+	dribble_turn_anchor_start = Vector2.ZERO
 	dribble_turn_release_velocity = Vector3.ZERO
 	dribble_last_turn_type = DribblePhysics3D.TurnType.NONE
 	dribble_phase = DribblePhase.FREE_ROLL

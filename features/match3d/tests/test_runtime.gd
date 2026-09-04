@@ -156,11 +156,17 @@ func _run() -> void:
 	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
 	_expect(regression_game.ball_velocity.x > 0.1,
 		"turn input is queued until the next foot contact instead of steering each frame")
+	var pre_anchor_ball_x: float = regression_game.ball_position.x
 	regression_game.dribble_touch_timer = 0.0
 	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
 	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180 and
 		regression_game.dribble_turn_anchor_timer > 0.0 and regression_game.ball_velocity.length() < 0.01,
 		"180 degree cut anchors the ball before releasing a reverse touch")
+	_expect(is_equal_approx(regression_game.ball_position.x, pre_anchor_ball_x),
+		"180 degree cut keeps the ball at its contact position on the anchor's first frame")
+	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_position.x < pre_anchor_ball_x and regression_game.ball_position.x > turn_carrier.position.x - 0.24,
+		"180 degree cut eases the ball toward the support foot instead of snapping it there")
 	var planted_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
 	var planted_position: Vector3 = planted_carrier.position
 	regression_game.controlled_id = -1

@@ -43,7 +43,7 @@
 | --- | --- | --- |
 | 常速/冲刺 | `DribblePhysics3D.Mode.JOG/SPRINT` | 不同推球、触球间隔与控制距离 |
 | 自由滚动 | `DribblePhase.FREE_ROLL` | 球独立积分，不按转向意图逐帧插值 |
-| 180 度锚定 | `DribblePhase.TURNAROUND_ANCHOR` | 支撑脚侧锁定 `0.10s`，随后才释放反向触球 |
+| 180 度锚定 | `DribblePhase.TURNAROUND_ANCHOR` | 支撑脚侧在 `0.10s` 内平滑约束，随后才释放反向触球 |
 | 丢球/争抢 | `carrier_id == -1` 或抢断方接管 | 取消所有锚定和排队触球状态 |
 
 所有传球、射门、抢断、接自由球和开球路径都会调用
