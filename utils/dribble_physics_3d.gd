@@ -58,6 +58,12 @@ static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 	# the ball. Blend it with the body's inertial heading to create the readable
 	# WE2000 turn arc and let technique determine how quickly it straightens.
 	var steering := lerpf(0.32, 0.72, quality)
+	var heading_alignment := carry_direction.dot(intent)
+	if heading_alignment < 0.35:
+		# A cut to the opposite side is a deliberate sole/inside-foot touch;
+		# allowing the old heading to dominate here leaves the ball hanging at
+		# the outside hip instead of crossing to the new leading foot.
+		steering = maxf(steering, lerpf(0.72, 0.88, quality))
 	var push_direction := carry_direction.lerp(intent, steering).normalized()
 	var target := push_direction * target_speed
 	var blend := lerpf(0.58, 0.86, quality)

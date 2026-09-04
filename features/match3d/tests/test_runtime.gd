@@ -71,10 +71,19 @@ func _run() -> void:
 	for _i in range(18):
 		regression_game._process(1.0 / 60.0)
 	Input.action_release("p1_right")
-	Input.action_press("p1_up")
-	for _i in range(36):
+	Input.action_press("p1_left")
+	for _i in range(12):
 		regression_game._process(1.0 / 60.0)
-	Input.action_release("p1_up")
+	var turn_velocity: Vector3 = regression_game.ball_velocity
+	_expect(turn_velocity.x < -0.5,
+		"turning carrier redirects the ball velocity toward the new input quickly")
+	for _i in range(24):
+		regression_game._process(1.0 / 60.0)
+	Input.action_release("p1_left")
+	var turned_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	var ball_relative_to_carrier: Vector3 = regression_game.ball_position - turned_carrier.position
+	_expect(ball_relative_to_carrier.x < 0.9,
+		"after a right-to-left cut the ball crosses to the new leading side")
 	_expect(regression_game.carrier_id == regression_game.controlled_id,
 		"turning with the ball keeps possession without opponent interference")
 	regression_game.free()
