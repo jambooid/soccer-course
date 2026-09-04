@@ -19,34 +19,34 @@ When planning changes or understanding *why* something is built a certain way, c
 
 ## Project
 
-**Soccer Course** — a 2D arcade soccer game built in **Godot 4.4** (GDScript, GL Compatibility renderer). This repo doubles as a *course* for building a 2D soccer game, so code is written to be readable and instructive rather than maximally terse.
+**Soccer Course** — a 2D arcade soccer game built in **Godot 4.7.2 stable** (GDScript, GL Compatibility renderer). This repo doubles as a *course* for building a 2D soccer game, so code is written to be readable and instructive rather than maximally terse.
 
 Low-res pixel art: internal viewport is **560×360**, integer-scaled up to 2240×1440 (`window/stretch/mode="viewport"`, `scale_mode="integer"`). `default_texture_filter=0` (nearest) keeps pixels crisp — never apply smoothing/filtering to art assets.
 
 ## Running
 
-Open in the Godot 4.4 editor and press Play, or from CLI:
+Open in the Godot 4.7.2 stable editor and press Play, or from CLI:
 
 ```sh
-# macOS: Godot 4.4.1 位于 ~/Downloads/Godot.app 或项目上级目录的 Godot.app
-export GODOT_BIN="$HOME/project/Godot.app/Contents/MacOS/Godot"
+# macOS 默认使用 Godot 4.7.2 stable
+export GODOT_BIN="/Users/xuchen/Downloads/Godot.app/Contents/MacOS/Godot"
 $GODOT_BIN --version
 $GODOT_BIN --path .          # open editor
 $GODOT_BIN --path . -e       # open editor
 $GODOT_BIN --path . --main   # run the game
 ```
 
-Headless validation uses the Godot 4.4.1 binary installed at
-`~/project/Godot.app` (the copy in `~/Downloads/Godot.app` is identical).
+Headless validation uses the Godot 4.7.2 stable binary installed at
+`/Users/xuchen/Downloads/Godot.app`.
 Run the command from the repository root:
 
 ```sh
-export GODOT_BIN="$HOME/project/Godot.app/Contents/MacOS/Godot"
+export GODOT_BIN="/Users/xuchen/Downloads/Godot.app/Contents/MacOS/Godot"
 $GODOT_BIN --headless --audio-driver Dummy --path . -s res://tools/headless_runner.gd
 ```
 
 This is the authoritative deterministic validation command. On the verified
-environment (Godot `4.4.1.stable`, macOS Apple Silicon), it reports
+environment (Godot `4.7.2.stable`, macOS Apple Silicon), it reports
 `HEADLESS_SUMMARY passed=115 failed=0`. If the binary exits with status 134
 before printing the Godot version, run the same command in the host environment
 instead of the managed shell sandbox; that failure occurs in macOS
@@ -140,7 +140,7 @@ Built into `GameManager` — tracks `possession_home` / `possession_away` (cumul
 
 ## Testing
 
-The only authoritative command for local automation and CI is the Godot 4.4.x
+The only authoritative command for local automation and CI is the Godot 4.7.2
 `headless_runner.gd` command in **Running**. It reports assertions and exits
 non-zero on every failure. The older scripts below are diagnostic-only: they
 exercise scenes or print runtime observations, but are not a merge gate.
