@@ -20,6 +20,11 @@ const MATCH_SECONDS := 180.0
 const KICKOFF_DELAY := 1.4
 const SHOOT_CHARGE_SECONDS := 0.75
 const FIXED_TICK := 1.0 / 60.0
+const CAMERA_BASE_POSITION := Vector3(42.5, 42.0, 50.0)
+const CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
+const CAMERA_LATERAL_FOLLOW := 0.30
+const CAMERA_LATERAL_LIMIT := 14.0
+const CAMERA_LATERAL_DEADZONE := 2.5
 
 var players: Array[Dictionary] = []
 var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
@@ -44,9 +49,13 @@ var cpu_action_cooldown := 0.65
 var cpu_tackle_cooldown := 0.0
 var frame_count := 0
 var camera_shake := 0.0
+var camera_lateral_offset := 0.0
+var camera_fixed_rotation := Vector3.ZERO
+var camera_rotation_initialized := false
 var shot_charge := 0.0
 var shot_charging := false
 var dribble_touch_timer := 0.0
+var dribble_loss_timer := 0.0
 var dribble_mode := DribblePhysics3D.Mode.JOG
 var dribble_touch_count := 0
 var _views: Dictionary = {}
@@ -67,19 +76,31 @@ func _ready() -> void:
 func _frame_camera() -> void:
 	var camera := get_node_or_null("Camera") as Camera3D
 	if camera != null:
-		camera.position = Vector3(Rules.PITCH_SIZE.x * 0.5, 42.0, Rules.PITCH_SIZE.z * 0.5 + 32.0)
-		camera.look_at(Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5))
+		camera.position = CAMERA_BASE_POSITION
+		camera.look_at(CAMERA_BASE_FOCUS)
+		camera_fixed_rotation = camera.rotation
+		camera_rotation_initialized = true
 
 func _update_camera(delta: float) -> void:
 	var camera := get_node_or_null("Camera") as Camera3D
 	if camera == null:
 		return
-	var target := Rules.camera_target(ball_position)
-	var shake := Vector3(sin(float(frame_count) * 1.7), cos(float(frame_count) * 2.1), 0.0) * camera_shake
-	var desired := target + Vector3(0.0, 42.0, 32.0) + shake
-	camera_shake = maxf(camera_shake - delta * 1.8, 0.0)
-	camera.position = camera.position.lerp(desired, 1.0 - exp(-3.6 * delta))
-	camera.look_at(target)
+	if not camera_rotation_initialized:
+		camera.position = CAMERA_BASE_POSITION
+		camera.look_at(CAMERA_BASE_FOCUS)
+		camera_fixed_rotation = camera.rotation
+		camera_rotation_initialized = true
+	# In this broadcast orientation, screen-left/right maps to world X. Pan only
+	# along that axis; the rotation is restored every frame, so there is no yaw.
+	var ball_x := clampf(ball_position.x, 0.0, Rules.PITCH_SIZE.x)
+	var center_x := Rules.PITCH_SIZE.x * 0.5
+	var lateral_delta := ball_x - center_x
+	var target_offset := clampf(sign(lateral_delta) * maxf(absf(lateral_delta) - CAMERA_LATERAL_DEADZONE, 0.0) * CAMERA_LATERAL_FOLLOW,
+		-CAMERA_LATERAL_LIMIT, CAMERA_LATERAL_LIMIT)
+	camera_lateral_offset = lerpf(camera_lateral_offset, target_offset,
+		1.0 - exp(-2.4 * delta))
+	camera.position = CAMERA_BASE_POSITION + Vector3(camera_lateral_offset, 0.0, 0.0)
+	camera.rotation = camera_fixed_rotation
 
 func _process(delta: float) -> void:
 	# Input is sampled once per render frame, while gameplay advances in a
@@ -168,6 +189,7 @@ func _create_match() -> void:
 				technique = 42.0
 			var entry := {"id": id, "home": home, "position": spawn, "spawn": spawn,
 				"velocity": Vector3.ZERO, "facing": Vector3.RIGHT if home else Vector3.LEFT,
+				"input_direction": Vector3.RIGHT if home else Vector3.LEFT,
 				"goalkeeper": index == 0, "technique": technique, "dribble_mode": DribblePhysics3D.Mode.JOG,
 				"cutback_cooldown": 0.0}
 			players.append(entry)
@@ -208,11 +230,17 @@ func _step_players(delta: float) -> void:
 			player.cutback_cooldown = 0.24
 			if player_id == carrier_id:
 				dribble_touch_timer = maxf(dribble_touch_timer, 0.10)
-		var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed, acceleration)
-		player.position = motion.position
-		player.velocity = motion.velocity
+		if player_id == controlled_id and desired.is_zero_approx():
+			# Manual control has an explicit neutral state. Stop immediately on
+			# release so residual AI/momentum cannot carry the player away.
+			player.velocity = Vector3.ZERO
+		else:
+			var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed, acceleration)
+			player.position = motion.position
+			player.velocity = motion.velocity
 		player.dribble_mode = DribblePhysics3D.Mode.SPRINT if sprinting else DribblePhysics3D.Mode.JOG
 		if not desired.is_zero_approx():
+			player.input_direction = Coordinate3D.ground(desired).normalized()
 			# Facing follows the actual velocity, with input only as a fallback.
 			var actual_direction := Coordinate3D.ground(player.velocity).normalized()
 			player.facing = actual_direction if not actual_direction.is_zero_approx() else desired.normalized()
@@ -225,6 +253,9 @@ func _player_intent(player: Dictionary) -> Vector3:
 		var input := _input_direction()
 		if not input.is_zero_approx():
 			return input
+		# A controlled player is fully manual. Do not fall through to the
+		# carrier/formation AI when the stick is released.
+		return Vector3.ZERO
 	if id == carrier_id:
 		var facing: Vector3 = player.facing
 		if home:
@@ -260,6 +291,7 @@ func _step_ball(delta: float) -> void:
 		if carrier.is_empty():
 			carrier_id = -1
 			dribble_touch_timer = 0.0
+			dribble_loss_timer = 0.0
 			_clear_shot_charge()
 			return
 		if bool(carrier.home):
@@ -307,8 +339,12 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	ball_flight_time = 0.0
 	dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
 	var distance := horizontal_ball.distance_to(horizontal_carrier)
+	var carrier_speed := Coordinate3D.ground(carrier.velocity).length()
 	var away_from_carrier := Coordinate3D.ground(ball_velocity).dot(horizontal_ball - horizontal_carrier) > 0.0
 	var carrier_pulling_away := Coordinate3D.ground(carrier.velocity).dot(horizontal_carrier - horizontal_ball) > 0.0
+	var opponent_interference := _opponent_interfering(carrier, horizontal_ball)
+	var external_force := Coordinate3D.ground(ball_velocity - carrier.velocity).length() > 14.0
+	var requested_direction: Vector3 = carrier.get("input_direction", carrier.facing)
 
 	# A contact is a short foot impulse, not a position correction. Allow a
 	# slightly generous first contact after receiving a pass.
@@ -316,19 +352,60 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var in_contact_range := distance <= control_distance and distance <= contact_zone + 0.72
 	if dribble_touch_timer <= 0.0 and in_contact_range:
 		ball_velocity = DribblePhysics3D.touch_velocity(ball_velocity,
-			carrier.velocity, carrier.facing, technique, mode)
+			carrier.velocity, carrier.facing, technique, mode, requested_direction)
 		dribble_touch_timer = DribblePhysics3D.touch_interval(technique, mode)
 		dribble_touch_count += 1
+		dribble_loss_timer = 0.0
 
-	# A sprint touch can run ahead, but a ball that is both outside the control
-	# radius and moving away is no longer possessed.
-	if distance > control_distance and (away_from_carrier or carrier_pulling_away):
+	# At walking/idle speed WE keeps the ball in a small foot-sized pocket.
+	# This is still force-based: the correction is a capped velocity toward the
+	# foot target, never a positional snap or parented ball.
+	if carrier_speed < 0.12 and not opponent_interference:
+		var foot_direction := Coordinate3D.ground(carrier.facing).normalized()
+		if foot_direction.is_zero_approx():
+			foot_direction = Vector3.RIGHT
+		var foot_target := horizontal_carrier + foot_direction * DribblePhysics3D.touch_offset(technique, mode)
+		var foot_error := Coordinate3D.ground(foot_target - horizontal_ball)
+		if foot_error.length() > 0.10:
+			ball_velocity = Coordinate3D.ground(ball_velocity).lerp(
+				foot_error.normalized() * minf(foot_error.length() * 7.0, 1.8),
+				clampf(delta * 10.0, 0.0, 0.25))
+
+	# Turning changes the carrier velocity before the next foot contact. Give
+	# the ball a short, non-teleporting recovery window so that a normal turn
+	# cannot be mistaken for a loose touch. Interference is handled separately
+	# by the tackle code and is the only immediate cause of possession loss.
+	if distance > control_distance and not opponent_interference:
+		var recovery_direction := Coordinate3D.ground(horizontal_carrier - horizontal_ball).normalized()
+		if not recovery_direction.is_zero_approx():
+			ball_velocity = Coordinate3D.ground(ball_velocity).lerp(
+				recovery_direction * maxf(carrier.velocity.length() * 0.85, 2.0),
+				clampf(delta * 7.0, 0.0, 0.35))
+			dribble_loss_timer = maxf(dribble_loss_timer - delta * 3.0, 0.0)
+
+	# A touch is only considered lost after it is clearly outside the control
+	# radius, moving away, and has either external momentum or nearby opposition.
+	if distance > control_distance + 0.65 and (opponent_interference or external_force) and (away_from_carrier or carrier_pulling_away):
+		dribble_loss_timer += delta
+	else:
+		dribble_loss_timer = maxf(dribble_loss_timer - delta * 2.0, 0.0)
+	if dribble_loss_timer >= 0.16:
 		carrier_id = -1
 		last_touch_home = bool(carrier.home)
 		dribble_touch_timer = 0.0
 		_event_label.text = "LOOSE TOUCH"
 		_event_timer = 0.28
 		_clear_shot_charge()
+
+func _opponent_interfering(carrier: Dictionary, ball: Vector3) -> bool:
+	var carrier_home := bool(carrier.home)
+	for player: Dictionary in players:
+		if bool(player.home) == carrier_home:
+			continue
+		var distance := Coordinate3D.ground((player.position as Vector3) - ball).length()
+		if distance <= 1.65:
+			return true
+	return false
 
 func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 	if cpu_tackle_cooldown > 0.0:
@@ -350,13 +427,13 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 		return
 	carrier_id = int(best.id)
 	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
 	last_touch_home = false
 	_clear_shot_charge()
 	cpu_tackle_cooldown = 0.5
 	_event_label.text = "TACKLE"
 	_event_timer = 0.32
 	_play_sfx("tackle")
-	camera_shake = maxf(camera_shake, 0.12)
 	var defender_view := _views.get(int(best.id)) as Player3DView
 	if defender_view != null:
 		defender_view.play_action("tackle")
@@ -405,6 +482,7 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void
 	ball_flight_time = 0.0
 	carrier_id = -1
 	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
 	action_cooldown = 0.22
@@ -428,6 +506,7 @@ func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) 
 	ball_flight_time = 0.0
 	carrier_id = -1
 	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
 	action_cooldown = 0.28
@@ -446,12 +525,12 @@ func _attempt_tackle(defender: Dictionary) -> void:
 	if bool(defender.home) and not bool(carrier.home) and defender.position.distance_to(Coordinate3D.ground(ball_position)) < 1.55:
 		carrier_id = int(defender.id)
 		dribble_touch_timer = 0.0
+		dribble_loss_timer = 0.0
 		_clear_shot_charge()
 		last_touch_home = true
 		_event_label.text = "TACKLE"
 		_event_timer = 0.32
 		_play_sfx("tackle")
-		camera_shake = maxf(camera_shake, 0.12)
 		var tackler_view := _views.get(int(defender.id)) as Player3DView
 		if tackler_view != null:
 			tackler_view.play_action("tackle")
@@ -467,6 +546,7 @@ func _capture_free_ball() -> void:
 		return
 	carrier_id = candidate_id
 	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
 	last_touch_home = bool(candidate.home)
 
 func _resolve_player_separation() -> void:
@@ -514,6 +594,7 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 	ball_flight_time = 0.0
 	carrier_id = 9 if home_kicks_off else 20
 	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
 	dribble_touch_count = 0
 	# Put the kickoff taker on the spot. The old carried-ball code hid this
 	# formation mismatch by teleporting the ball to the player every frame.

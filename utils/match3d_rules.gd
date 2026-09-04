@@ -15,6 +15,8 @@ const PLAYER_CONTROL_HEIGHT_MAX := 1.25
 const PASS_SPEED := 27.0
 const LONG_PASS_SPEED := 35.0
 const SHOT_SPEED := 48.0
+const TURN_RATE_LOW_SPEED := 12.0
+const TURN_RATE_HIGH_SPEED := 4.0
 const CAMERA_TARGET_X_MIN := 10.0
 const CAMERA_TARGET_X_MAX := 75.0
 const CAMERA_TARGET_Z_MIN := 7.0
@@ -23,8 +25,26 @@ const CAMERA_TARGET_Z_MAX := 29.0
 static func advance_player(position: Vector3, velocity: Vector3, desired_direction: Vector3,
 		delta: float, top_speed: float, acceleration: float = 24.0) -> Dictionary:
 	var direction := Coordinate3D.ground(desired_direction).normalized()
-	var desired_velocity := direction * top_speed
-	var next_velocity := velocity.move_toward(desired_velocity, acceleration * maxf(delta, 0.0))
+	var current_velocity := Coordinate3D.ground(velocity)
+	var current_speed := current_velocity.length()
+	var desired_speed := top_speed if not direction.is_zero_approx() else 0.0
+	var next_speed := move_toward(current_speed, desired_speed, acceleration * maxf(delta, 0.0))
+	var current_direction := current_velocity.normalized()
+	if current_direction.is_zero_approx():
+		current_direction = direction
+	var next_direction := current_direction
+	if not direction.is_zero_approx() and not current_direction.is_zero_approx():
+		# WE-style steering: low-speed players can turn sharply, while a sprint
+		# bends through an arc instead of instantly swapping velocity vectors.
+		var speed_ratio := clampf(current_speed / maxf(top_speed, 0.001), 0.0, 1.0)
+		var turn_rate := lerpf(TURN_RATE_LOW_SPEED, TURN_RATE_HIGH_SPEED, speed_ratio)
+		var signed_angle := atan2(current_direction.cross(direction).y,
+			current_direction.dot(direction))
+		var turn_step := clampf(signed_angle, -turn_rate * delta, turn_rate * delta)
+		next_direction = current_direction.rotated(Vector3.UP, turn_step).normalized()
+	if current_speed < 0.08 and not direction.is_zero_approx():
+		next_direction = direction
+	var next_velocity := next_direction * next_speed
 	next_velocity.y = 0.0
 	var next_position := Coordinate3D.clamp_pitch(position + next_velocity * maxf(delta, 0.0), PLAYER_RADIUS)
 	next_position.y = 0.0

@@ -8,14 +8,16 @@ const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 ## the next foot contact.
 enum Mode { JOG, SPRINT }
 
-const TOUCH_INTERVAL_JOG := 0.30
-const TOUCH_INTERVAL_SPRINT := 0.58
+const TOUCH_INTERVAL_JOG := 0.22
+const TOUCH_INTERVAL_SPRINT := 0.42
 const CONTROL_DISTANCE_JOG := 1.35
 const CONTROL_DISTANCE_SPRINT := 2.30
 const TOUCH_OFFSET_JOG := 0.62
 const TOUCH_OFFSET_SPRINT := 0.82
-const JOG_PUSH_MULTIPLIER := 1.08
-const SPRINT_PUSH_MULTIPLIER := 1.30
+const JOG_PUSH_MULTIPLIER := 1.45
+const SPRINT_PUSH_MULTIPLIER := 1.25
+const IDLE_PUSH_SPEED_JOG := 0.9
+const IDLE_PUSH_SPEED_SPRINT := 1.2
 const GROUND_FRICTION_PER_SECOND := 0.28
 
 static func technique_normalized(technique: float) -> float:
@@ -38,21 +40,30 @@ static func touch_offset(technique: float, mode: int) -> float:
 	return lerpf(base * 0.94, base, quality)
 
 static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
-		facing: Vector3, technique: float, mode: int) -> Vector3:
+		facing: Vector3, technique: float, mode: int,
+		requested_direction: Vector3 = Vector3.ZERO) -> Vector3:
 	var movement := Coordinate3D.ground(player_velocity)
 	var speed := movement.length()
-	var direction := movement.normalized() if speed > 0.08 else Coordinate3D.ground(facing).normalized()
-	if direction.is_zero_approx():
-		direction = Vector3.RIGHT
+	var carry_direction := movement.normalized() if speed > 0.08 else Coordinate3D.ground(facing).normalized()
+	if carry_direction.is_zero_approx():
+		carry_direction = Vector3.RIGHT
+	var intent := Coordinate3D.ground(requested_direction).normalized()
+	if intent.is_zero_approx():
+		intent = carry_direction
 	var quality := technique_normalized(technique)
 	var multiplier := SPRINT_PUSH_MULTIPLIER if mode == Mode.SPRINT else JOG_PUSH_MULTIPLIER
-	# Sprinting exposes a little more of the ball. High technique smooths the
-	# correction while low technique retains more of the incoming momentum.
-	var target := direction * speed * multiplier
-	var blend := lerpf(0.60, 0.90, quality)
+	var idle_speed := IDLE_PUSH_SPEED_SPRINT if mode == Mode.SPRINT else IDLE_PUSH_SPEED_JOG
+	var target_speed := maxf(speed * multiplier, idle_speed)
+	# The stick direction is applied at the next foot contact, not by teleporting
+	# the ball. Blend it with the body's inertial heading to create the readable
+	# WE2000 turn arc and let technique determine how quickly it straightens.
+	var steering := lerpf(0.32, 0.72, quality)
+	var push_direction := carry_direction.lerp(intent, steering).normalized()
+	var target := push_direction * target_speed
+	var blend := lerpf(0.58, 0.86, quality)
 	if mode == Mode.SPRINT:
-		blend -= 0.10
-	return Coordinate3D.ground(current_velocity).lerp(target, clampf(blend, 0.35, 0.9))
+		blend -= 0.06
+	return Coordinate3D.ground(current_velocity).lerp(target, clampf(blend, 0.42, 0.88))
 
 static func apply_ground_friction(velocity: Vector3, delta: float) -> Vector3:
 	return Coordinate3D.ground(velocity) * pow(GROUND_FRICTION_PER_SECOND, maxf(delta, 0.0))

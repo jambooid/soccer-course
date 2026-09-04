@@ -21,6 +21,63 @@ func _run() -> void:
 	game._sync_views()
 	var carrier_view := game._views[game.carrier_id] as Player3DView
 	_expect(carrier_view.carrier_marker.visible, "carrier has a readable on-pitch marker")
+	var regression_game := MatchScene.instantiate()
+	root.add_child(regression_game)
+	await process_frame
+	regression_game.kickoff_timer = 0.0
+	regression_game.cpu_tackle_cooldown = 999.0
+	var regression_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	for i in regression_game.players.size():
+		if i == regression_game.carrier_id:
+			continue
+		var isolated_player: Dictionary = regression_game.players[i]
+		isolated_player.position = Vector3(4.0 + float(i % 2), 2.0, 2.0)
+		regression_game.players[i] = isolated_player
+	var idle_position: Vector3 = regression_carrier.position
+	for _i in range(45):
+		regression_game._process(1.0 / 60.0)
+	var idle_after: Vector3 = regression_game._player_by_id(regression_game.controlled_id).position
+	_expect(idle_after.distance_to(idle_position) < 0.05,
+		"controlled player stays still when movement input is released")
+	var camera := regression_game.get_node("Camera") as Camera3D
+	var settled_camera_position := camera.position
+	var settled_camera_rotation := camera.rotation
+	for _i in range(20):
+		regression_game._process(1.0 / 60.0)
+	_expect(camera.position.distance_to(settled_camera_position) < 0.03,
+		"camera remains stable while the ball and player are idle")
+	regression_game.ball_position = Vector3(5.0, 0.08, 18.0)
+	for _i in range(20):
+		regression_game._process(1.0 / 60.0)
+	var left_camera_position := camera.position
+	_expect(left_camera_position.x < settled_camera_position.x - 0.5 and
+		is_equal_approx(left_camera_position.y, settled_camera_position.y) and
+		is_equal_approx(left_camera_position.z, settled_camera_position.z) and
+		camera.rotation.is_equal_approx(settled_camera_rotation),
+		"camera pans laterally while keeping depth, height, and rotation")
+	regression_game.ball_position = Vector3(80.0, 0.08, 18.0)
+	for _i in range(40):
+		regression_game._process(1.0 / 60.0)
+	_expect(camera.position.x > settled_camera_position.x + 0.5,
+		"camera pans laterally when the ball changes sides")
+	var force_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	regression_game.ball_position = force_carrier.position
+	regression_game.ball_velocity = Vector3.ZERO
+	regression_game.dribble_touch_timer = 0.0
+	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_velocity.length() > 0.1,
+		"a dribble contact applies a measurable foot force to a stationary ball")
+	Input.action_press("p1_right")
+	for _i in range(18):
+		regression_game._process(1.0 / 60.0)
+	Input.action_release("p1_right")
+	Input.action_press("p1_up")
+	for _i in range(36):
+		regression_game._process(1.0 / 60.0)
+	Input.action_release("p1_up")
+	_expect(regression_game.carrier_id == regression_game.controlled_id,
+		"turning with the ball keeps possession without opponent interference")
+	regression_game.free()
 	var controlled_before: Vector3 = game._player_by_id(game.controlled_id).position
 	Input.action_press("p1_right")
 	for _i in range(12):

@@ -16,6 +16,7 @@ func run_suite() -> Dictionary:
 	failed = 0
 	print("=== 3D Match Rules Tests ===")
 	_test_player_motion_is_bounded()
+	_test_player_turn_is_arc_based()
 	_test_directional_pass_prefers_forward_teammate()
 	_test_pass_speed_and_shot_speed_are_distinct()
 	_test_goal_detection()
@@ -47,6 +48,13 @@ func _test_player_motion_is_bounded() -> void:
 		"player motion stays inside the playable pitch")
 	_expect(velocity.length() <= 12.0,
 		"player acceleration respects top speed")
+
+func _test_player_turn_is_arc_based() -> void:
+	var first := Rules.advance_player(Vector3.ZERO, Vector3(8.8, 0.0, 0.0), Vector3(0.0, 0.0, 1.0),
+		1.0 / 60.0, 8.8)
+	var turned: Vector3 = first.velocity
+	_expect(turned.x > 0.0 and turned.z > 0.0,
+		"high-speed direction changes bend through an arc instead of snapping")
 
 func _test_directional_pass_prefers_forward_teammate() -> void:
 	var players := [
