@@ -324,97 +324,110 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	dribble_mode = mode
 	var technique := float(carrier.get("technique", 64.0))
 	var carrier_position: Vector3 = carrier.position
-	var horizontal_ball := Coordinate3D.ground(ball_position)
-	var horizontal_carrier := Coordinate3D.ground(carrier_position)
+	var ball_plane := DribblePhysics3D.to_pitch_plane(ball_position)
+	var carrier_plane := DribblePhysics3D.to_pitch_plane(carrier_position)
+	var carrier_velocity_plane := DribblePhysics3D.to_pitch_plane(carrier.velocity)
+	var ball_velocity_plane := DribblePhysics3D.to_pitch_plane(ball_velocity)
 	var control_distance := DribblePhysics3D.control_distance(technique, mode)
 
-	# The ball is free between contacts. This is the key WE2000 distinction from
-	# a parented/lerped ball and gives sprinting its readable heavy touch.
-	ball_velocity = DribblePhysics3D.apply_ground_friction(ball_velocity, delta)
-	horizontal_ball += ball_velocity * delta
-	horizontal_ball = Coordinate3D.clamp_pitch(horizontal_ball, 0.12)
-	ball_position = horizontal_ball
-	ball_position.y = 0.08 + sin(float(frame_count) * 0.42) * 0.012
-	ball_grounded = true
-	ball_flight_time = 0.0
+	# The ball is free between contacts, but all control calculations happen in
+	# the pitch plane (x/z). Y is restored once at the end for visual height.
+	ball_velocity_plane = DribblePhysics3D.apply_ground_friction_2d(ball_velocity_plane, delta)
 	dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
-	var distance := horizontal_ball.distance_to(horizontal_carrier)
-	var carrier_speed := Coordinate3D.ground(carrier.velocity).length()
-	var away_from_carrier := Coordinate3D.ground(ball_velocity).dot(horizontal_ball - horizontal_carrier) > 0.0
-	var carrier_pulling_away := Coordinate3D.ground(carrier.velocity).dot(horizontal_carrier - horizontal_ball) > 0.0
-	var opponent_interference := _opponent_interfering(carrier, horizontal_ball)
-	var external_force := Coordinate3D.ground(ball_velocity - carrier.velocity).length() > 14.0
+	var distance := ball_plane.distance_to(carrier_plane)
+	var carrier_speed := carrier_velocity_plane.length()
+	var opponent_interference := _opponent_interfering(carrier, DribblePhysics3D.from_pitch_plane(ball_plane))
+	var touched_this_tick := false
 	var requested_direction: Vector3 = carrier.get("input_direction", carrier.facing)
-	var intent_direction := Coordinate3D.ground(requested_direction).normalized()
-	if intent_direction.is_zero_approx():
-		intent_direction = Coordinate3D.ground(carrier.facing).normalized()
-	if intent_direction.is_zero_approx():
-		intent_direction = Vector3.RIGHT
-	var carry_direction := Coordinate3D.ground(carrier.velocity).normalized()
-	if carry_direction.is_zero_approx():
-		carry_direction = Coordinate3D.ground(carrier.facing).normalized()
+	var intent_plane := DribblePhysics3D.to_pitch_plane(requested_direction).normalized()
+	if intent_plane.is_zero_approx():
+		intent_plane = DribblePhysics3D.to_pitch_plane(carrier.facing).normalized()
+	if intent_plane.is_zero_approx():
+		intent_plane = Vector2.RIGHT
+	var carry_direction_plane := carrier_velocity_plane.normalized()
+	if carry_direction_plane.is_zero_approx():
+		carry_direction_plane = DribblePhysics3D.to_pitch_plane(carrier.facing).normalized()
 	var turn_amount := 0.0
-	if not carry_direction.is_zero_approx():
-		turn_amount = 1.0 - clampf(carry_direction.dot(intent_direction), -1.0, 1.0)
+	if not carry_direction_plane.is_zero_approx():
+		turn_amount = 1.0 - clampf(carry_direction_plane.dot(intent_plane), -1.0, 1.0)
 
 	# A contact is a short foot impulse, not a position correction. Allow a
 	# slightly generous first contact after receiving a pass.
 	var contact_zone := DribblePhysics3D.touch_offset(technique, mode) + 0.82
 	var in_contact_range := distance <= control_distance and distance <= contact_zone + 0.72
 	if dribble_touch_timer <= 0.0 and in_contact_range:
-		ball_velocity = DribblePhysics3D.touch_velocity(ball_velocity,
-			carrier.velocity, carrier.facing, technique, mode, requested_direction)
+		ball_velocity_plane = DribblePhysics3D.to_pitch_plane(DribblePhysics3D.touch_velocity(
+			DribblePhysics3D.from_pitch_plane(ball_velocity_plane), carrier.velocity,
+			carrier.facing, technique, mode, requested_direction))
+		touched_this_tick = true
 		dribble_touch_timer = DribblePhysics3D.touch_interval(technique, mode)
 		dribble_touch_count += 1
 		dribble_loss_timer = 0.0
 
-	# During a direction change, the next touch is not enough on its own: the
-	# ball still has old-direction momentum between contacts. Apply a bounded
-	# steering force toward the new foot target. This is velocity integration,
-	# never a positional snap, and only activates while turning or recovering.
-	var foot_target := horizontal_carrier + intent_direction * DribblePhysics3D.touch_offset(technique, mode)
-	var foot_error := Coordinate3D.ground(foot_target - horizontal_ball)
-	if turn_amount > 0.12 and foot_error.length() < control_distance + 2.0:
-		var correction_direction := foot_error.normalized()
+	# A hard cut must move the ball to the new leading side immediately. The
+	# assist is still velocity-based, but its acceleration is deliberately high
+	# enough that one or two fixed ticks cannot leave the ball at the old hip.
+	var foot_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
+	var foot_error_plane := foot_target_plane - ball_plane
+	var foot_error_distance := foot_error_plane.length()
+	var turn_assist_active := carrier_speed > 0.25 and turn_amount > 0.08
+	if turn_assist_active:
+		# If the ball is already behind the new foot target, follow the stick
+		# direction directly. Otherwise the error vector can point back toward the
+		# old side and make a right-to-left cut look like the ball is being dragged.
+		var correction_direction := intent_plane if foot_error_plane.dot(intent_plane) < 0.0 else foot_error_plane.normalized()
 		if not correction_direction.is_zero_approx():
-			var correction_speed := minf(maxf(carrier_speed * 0.92, 2.5) + foot_error.length() * 3.5, 13.0)
+			var correction_speed := clampf(carrier_speed * 1.45 + foot_error_distance * 7.0, 8.0, 20.0)
 			var correction_target := correction_direction * correction_speed
-			var correction_acceleration := lerpf(18.0, 30.0, DribblePhysics3D.technique_normalized(technique))
-			correction_acceleration += turn_amount * 30.0
-			if carry_direction.dot(intent_direction) < -0.2:
-				correction_acceleration += 24.0
-			ball_velocity = ball_velocity.move_toward(correction_target, correction_acceleration * delta)
+			var correction_acceleration := 92.0 + turn_amount * 72.0
+			correction_acceleration += DribblePhysics3D.technique_normalized(technique) * 24.0
+			ball_velocity_plane = ball_velocity_plane.move_toward(correction_target, correction_acceleration * delta)
 
-	# At walking/idle speed WE keeps the ball in a small foot-sized pocket.
-	# This is still force-based: the correction is a capped velocity toward the
-	# foot target, never a positional snap or parented ball.
-	if carrier_speed < 0.12 and not opponent_interference:
-		var foot_direction := Coordinate3D.ground(carrier.facing).normalized()
-		if foot_direction.is_zero_approx():
-			foot_direction = Vector3.RIGHT
-		var idle_target := horizontal_carrier + foot_direction * DribblePhysics3D.touch_offset(technique, mode)
-		var idle_error := Coordinate3D.ground(idle_target - horizontal_ball)
-		if idle_error.length() > 0.10:
-			ball_velocity = Coordinate3D.ground(ball_velocity).move_toward(
-				idle_error.normalized() * minf(idle_error.length() * 7.0, 1.8),
-				clampf(delta * 10.0, 0.0, 0.25))
+	# When the player stops, kill residual rolling almost immediately. Only use
+	# a tiny settling vector when the ball is clearly outside the foot pocket;
+	# once it is close, velocity is clamped to zero instead of endlessly nudging.
+	if carrier_speed < 0.12 and not opponent_interference and not touched_this_tick:
+		var settle_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
+		var settle_error_plane := settle_target_plane - ball_plane
+		if distance <= control_distance + 0.45:
+			ball_velocity_plane = ball_velocity_plane.move_toward(Vector2.ZERO, 80.0 * delta)
+			if ball_velocity_plane.length() < 0.08:
+				ball_velocity_plane = Vector2.ZERO
+		elif not settle_error_plane.is_zero_approx():
+			ball_velocity_plane = ball_velocity_plane.move_toward(
+				settle_error_plane.normalized() * minf(settle_error_plane.length() * 5.0, 3.0),
+				80.0 * delta)
 
 	# Turning changes the carrier velocity before the next foot contact. Give
 	# the ball a short, non-teleporting recovery window so that a normal turn
 	# cannot be mistaken for a loose touch. Interference is handled separately
 	# by the tackle code and is the only immediate cause of possession loss.
-	if distance > control_distance and not opponent_interference:
-		var recovery_direction := Coordinate3D.ground(horizontal_carrier - horizontal_ball).normalized()
+	if distance > control_distance and not opponent_interference and turn_amount <= 0.25:
+		var recovery_direction := (carrier_plane - ball_plane).normalized()
 		if not recovery_direction.is_zero_approx():
-			var recovery_speed := maxf(carrier_speed * 1.05, 3.0)
-			var recovery_acceleration := 28.0 + turn_amount * 16.0
-			ball_velocity = Coordinate3D.ground(ball_velocity).move_toward(
+			var recovery_speed := maxf(carrier_speed * 1.25, 4.5)
+			var recovery_acceleration := 52.0 + turn_amount * 38.0
+			ball_velocity_plane = ball_velocity_plane.move_toward(
 				recovery_direction * recovery_speed, recovery_acceleration * delta)
 			dribble_loss_timer = maxf(dribble_loss_timer - delta * 3.0, 0.0)
 
+	# Integrate the 2D ball state only after touch/turn/settle forces are applied,
+	# so a direction change affects this same fixed tick instead of one frame late.
+	ball_plane += ball_velocity_plane * delta
+	ball_plane.x = clampf(ball_plane.x, 0.12, Rules.PITCH_SIZE.x - 0.12)
+	ball_plane.y = clampf(ball_plane.y, 0.12, Rules.PITCH_SIZE.z - 0.12)
+	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane,
+		0.08 + sin(float(frame_count) * 0.42) * 0.012)
+	ball_velocity = DribblePhysics3D.from_pitch_plane(ball_velocity_plane)
+	ball_grounded = true
+	ball_flight_time = 0.0
+	var post_distance := ball_plane.distance_to(carrier_plane)
+	var away_from_carrier := ball_velocity_plane.dot(ball_plane - carrier_plane) > 0.0
+	var carrier_pulling_away := carrier_velocity_plane.dot(carrier_plane - ball_plane) > 0.0
+	var external_force := (ball_velocity_plane - carrier_velocity_plane).length() > 14.0
 	# A touch is only considered lost after it is clearly outside the control
 	# radius, moving away, and has either external momentum or nearby opposition.
-	if distance > control_distance + 0.65 and (opponent_interference or external_force) and (away_from_carrier or carrier_pulling_away):
+	if not turn_assist_active and post_distance > control_distance + 0.65 and (opponent_interference or external_force) and (away_from_carrier or carrier_pulling_away):
 		dribble_loss_timer += delta
 	else:
 		dribble_loss_timer = maxf(dribble_loss_timer - delta * 2.0, 0.0)

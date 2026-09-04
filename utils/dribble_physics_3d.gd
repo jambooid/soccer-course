@@ -20,6 +20,14 @@ const IDLE_PUSH_SPEED_JOG := 0.9
 const IDLE_PUSH_SPEED_SPRINT := 1.2
 const GROUND_FRICTION_PER_SECOND := 0.28
 
+## Dribbling lives on the pitch plane. Keep the simulation in Vector2 (x/z)
+## and only convert back to Vector3 when publishing the ball's world position.
+static func to_pitch_plane(value: Vector3) -> Vector2:
+	return Vector2(value.x, value.z)
+
+static func from_pitch_plane(value: Vector2, height: float = 0.0) -> Vector3:
+	return Vector3(value.x, height, value.y)
+
 static func technique_normalized(technique: float) -> float:
 	return clampf((technique - 30.0) / 68.0, 0.0, 1.0)
 
@@ -73,3 +81,6 @@ static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 
 static func apply_ground_friction(velocity: Vector3, delta: float) -> Vector3:
 	return Coordinate3D.ground(velocity) * pow(GROUND_FRICTION_PER_SECOND, maxf(delta, 0.0))
+
+static func apply_ground_friction_2d(velocity: Vector2, delta: float) -> Vector2:
+	return velocity * pow(GROUND_FRICTION_PER_SECOND, maxf(delta, 0.0))

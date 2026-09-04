@@ -28,12 +28,25 @@ func _run() -> void:
 	_expect((carrier.position as Vector3).x > start.x + 0.2, "dribble lab carrier responds to movement input")
 	_expect(demo.ball_velocity.length() > 0.1, "dribble lab ball receives a foot impulse")
 	Input.action_press("p1_left")
-	for _i in range(24):
+	for _i in range(8):
+		demo._process(1.0 / 60.0)
+	_expect(demo.ball_velocity.x < -0.8,
+		"dribble lab redirects ball velocity within the first turn ticks")
+	for _i in range(16):
 		demo._process(1.0 / 60.0)
 	Input.action_release("p1_left")
 	carrier = demo._player_by_id(demo.DEMO_PLAYER_ID)
 	var relative: Vector3 = demo.ball_position - (carrier.position as Vector3)
 	_expect(relative.x < 1.0, "dribble lab reverse turn brings ball back to the leading side")
+	carrier.velocity = Vector3.ZERO
+	demo.players[demo.DEMO_PLAYER_ID] = carrier
+	demo.ball_position = carrier.position + Vector3(0.3, 0.08, 0.0)
+	demo.ball_velocity = Vector3(7.0, 0.0, 0.0)
+	demo.dribble_touch_timer = 0.2
+	for _i in range(8):
+		demo._step_dribbling_ball(carrier, 1.0 / 60.0)
+	_expect(demo.ball_velocity.length() < 0.1,
+		"dribble lab stops residual ball rolling almost immediately when idle")
 	var keeper: Dictionary = demo._player_by_id(demo.DEMO_KEEPER_ID)
 	var keeper_start_z := (keeper.position as Vector3).z
 	demo.ball_position = Vector3(18.0, 0.08, 27.0)
