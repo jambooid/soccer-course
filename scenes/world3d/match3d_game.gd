@@ -26,6 +26,8 @@ const CAMERA_LATERAL_FOLLOW := 0.30
 const CAMERA_LATERAL_LIMIT := 14.0
 const CAMERA_LATERAL_DEADZONE := 2.5
 
+enum DribblePhase { FREE_ROLL, TURNAROUND_ANCHOR }
+
 var players: Array[Dictionary] = []
 var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
 var ball_velocity := Vector3.ZERO
@@ -58,6 +60,14 @@ var dribble_touch_timer := 0.0
 var dribble_loss_timer := 0.0
 var dribble_mode := DribblePhysics3D.Mode.JOG
 var dribble_touch_count := 0
+var dribble_queued_direction := Vector3.ZERO
+var dribble_turn_anchor_timer := 0.0
+var dribble_turn_anchor_direction := Vector3.ZERO
+var dribble_turn_release_velocity := Vector3.ZERO
+var dribble_last_turn_type := DribblePhysics3D.TurnType.NONE
+var dribble_phase := DribblePhase.FREE_ROLL
+var dribble_turn_lock_timer := 0.0
+var dribble_turn_locked_direction := Vector3.ZERO
 var _views: Dictionary = {}
 var _ball_view: Ball3DView
 var _score_label: Label
@@ -204,40 +214,47 @@ func _create_match() -> void:
 	_reset_kickoff(true)
 
 func _step_players(delta: float) -> void:
+	dribble_turn_lock_timer = maxf(dribble_turn_lock_timer - delta, 0.0)
 	for index in players.size():
 		var player := players[index]
 		var player_id := int(player.id)
+		var turnaround_locked := player_id == carrier_id and dribble_turn_lock_timer > 0.0
+		if turnaround_locked:
+			# The turnaround clip plants the supporting foot before launch. Freeze
+			# translation and face the committed lane, rather than accepting a new
+			# stick direction while the cut is still being performed.
+			player.velocity = Vector3.ZERO
+			player.movement_intent = false
+			if not dribble_turn_locked_direction.is_zero_approx():
+				player.facing = player.facing.lerp(dribble_turn_locked_direction, 0.62).normalized()
+			players[index] = player
+			continue
 		var desired := _player_intent(player)
+		var has_input_intent := not desired.is_zero_approx()
+		player.movement_intent = has_input_intent
+		# Releasing the stick never pulls the ball back. Instead, the controlled
+		# carrier coasts with the loose ball's remaining ground velocity, so both
+		# settle together while possession remains intact.
+		var follow_released_ball := player_id == controlled_id and player_id == carrier_id and not has_input_intent
+		var released_ball_velocity := Coordinate3D.ground(ball_velocity)
+		if follow_released_ball and released_ball_velocity.length() > 0.12:
+			desired = released_ball_velocity.normalized()
 		var speed := 7.5 if bool(player.goalkeeper) else 8.8
+		if follow_released_ball:
+			speed = minf(speed, released_ball_velocity.length())
 		var sprint_input := player_id == controlled_id and Input.is_action_pressed("p1_sprint")
 		var sprinting := player_id == carrier_id and sprint_input
 		if sprint_input:
 			speed = 11.0
-		var previous_velocity: Vector3 = player.velocity
-		var previous_direction := Coordinate3D.ground(previous_velocity).normalized()
-		if previous_direction.is_zero_approx():
-			previous_direction = player.facing
-		var input_direction := Coordinate3D.ground(desired).normalized()
-		var turn_angle := absf(previous_direction.angle_to(input_direction)) if not input_direction.is_zero_approx() else 0.0
 		var acceleration := 24.0
 		if sprinting:
 			acceleration = 17.0
-		# A hard cut in WE costs momentum. The cooldown prevents the same input
-		# from multiplying the penalty on every fixed tick.
 		player.cutback_cooldown = maxf(float(player.get("cutback_cooldown", 0.0)) - delta, 0.0)
-		if turn_angle > PI * 0.5 and previous_velocity.length() > speed * 0.55 and player.cutback_cooldown <= 0.0:
-			player.velocity = previous_velocity * (0.52 if sprinting else 0.68)
-			player.cutback_cooldown = 0.24
-			if player_id == carrier_id:
-				dribble_touch_timer = maxf(dribble_touch_timer, 0.10)
-		if player_id == controlled_id and desired.is_zero_approx():
-			# Manual control has an explicit neutral state. Stop immediately on
-			# release so residual AI/momentum cannot carry the player away.
-			player.velocity = Vector3.ZERO
-		else:
-			var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed, acceleration)
-			player.position = motion.position
-			player.velocity = motion.velocity
+		# Releasing input stops adding drive, but does not erase the player's
+		# current momentum. Player and ball therefore come to rest independently.
+		var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed, acceleration)
+		player.position = motion.position
+		player.velocity = motion.velocity
 		player.dribble_mode = DribblePhysics3D.Mode.SPRINT if sprinting else DribblePhysics3D.Mode.JOG
 		if not desired.is_zero_approx():
 			player.input_direction = Coordinate3D.ground(desired).normalized()
@@ -292,6 +309,7 @@ func _step_ball(delta: float) -> void:
 			carrier_id = -1
 			dribble_touch_timer = 0.0
 			dribble_loss_timer = 0.0
+			_reset_dribble_turn_state()
 			_clear_shot_charge()
 			return
 		if bool(carrier.home):
@@ -330,113 +348,104 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var ball_velocity_plane := DribblePhysics3D.to_pitch_plane(ball_velocity)
 	var control_distance := DribblePhysics3D.control_distance(technique, mode)
 
-	# The ball is free between contacts, but all control calculations happen in
-	# the pitch plane (x/z). Y is restored once at the end for visual height.
-	ball_velocity_plane = DribblePhysics3D.apply_ground_friction_2d(ball_velocity_plane, delta)
-	dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
 	var distance := ball_plane.distance_to(carrier_plane)
 	var carrier_speed := carrier_velocity_plane.length()
+	var has_movement_intent := bool(carrier.get("movement_intent", carrier_speed > 0.12))
 	var opponent_interference := _opponent_interfering(carrier, DribblePhysics3D.from_pitch_plane(ball_plane))
 	var touched_this_tick := false
 	var requested_direction: Vector3 = carrier.get("input_direction", carrier.facing)
-	var intent_plane := DribblePhysics3D.to_pitch_plane(requested_direction).normalized()
-	if intent_plane.is_zero_approx():
-		intent_plane = DribblePhysics3D.to_pitch_plane(carrier.facing).normalized()
-	if intent_plane.is_zero_approx():
-		intent_plane = Vector2.RIGHT
+	var quantized_request := DribblePhysics3D.quantize_direction(requested_direction)
+	if quantized_request.is_zero_approx():
+		quantized_request = DribblePhysics3D.quantize_direction(carrier.facing)
+	if quantized_request.is_zero_approx():
+		quantized_request = Vector3.RIGHT
+	# Input may change between contacts, but the queued lane is consumed only by
+	# the next foot-contact event. This is the gameplay-side equivalent of an
+	# animation event and keeps large cuts from steering the ball every frame.
+	dribble_queued_direction = quantized_request
+	var contact_direction := dribble_queued_direction
+	var intent_plane := DribblePhysics3D.to_pitch_plane(contact_direction)
 	var carry_direction_plane := carrier_velocity_plane.normalized()
 	if carry_direction_plane.is_zero_approx():
 		carry_direction_plane = DribblePhysics3D.to_pitch_plane(carrier.facing).normalized()
-	var turn_amount := 0.0
-	if not carry_direction_plane.is_zero_approx():
-		turn_amount = 1.0 - clampf(carry_direction_plane.dot(intent_plane), -1.0, 1.0)
+	if carry_direction_plane.is_zero_approx():
+		carry_direction_plane = intent_plane
 
-	# A contact is a short foot impulse, not a position correction. Allow a
-	# slightly generous first contact after receiving a pass.
-	var contact_zone := DribblePhysics3D.touch_offset(technique, mode) + 0.82
-	var in_contact_range := distance <= control_distance and distance <= contact_zone + 0.72
-	if dribble_touch_timer <= 0.0 and in_contact_range:
-		ball_velocity_plane = DribblePhysics3D.to_pitch_plane(DribblePhysics3D.touch_velocity(
-			DribblePhysics3D.from_pitch_plane(ball_velocity_plane), carrier.velocity,
-			carrier.facing, technique, mode, requested_direction))
-		touched_this_tick = true
-		dribble_touch_timer = DribblePhysics3D.touch_interval(technique, mode)
-		dribble_touch_count += 1
-		dribble_loss_timer = 0.0
-
-	# A hard cut must move the ball to the new leading side immediately. The
-	# 2D dribbling implementation uses the same idea: during the short turn
-	# window, collect the ball toward the new foot target and suppress its old
-	# rolling velocity. This avoids the characteristic "ball dragged behind"
-	# frame that a pure inertial correction produces.
-	var foot_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
-	var foot_error_plane := foot_target_plane - ball_plane
-	var turn_assist_active := carrier_speed > 0.25 and turn_amount > 0.08
-	if turn_assist_active:
-		# If the old touch is already behind the new target, extend the target
-		# just past the ball. This is the same "collect to the new foot" behavior
-		# used by the 2D dribble state and prevents a brief backwards tug.
-		if foot_error_plane.dot(intent_plane) <= 0.0:
-			var extra_turn_offset := minf(foot_error_plane.length() + 0.25, 1.6)
-			foot_target_plane = carrier_plane + intent_plane * (
-				DribblePhysics3D.touch_offset(technique, mode) + extra_turn_offset)
-		var angle_factor := clampf((turn_amount - 0.5) / 1.5, 0.0, 1.0)
-		var turn_duration := lerpf(0.14, 0.30, angle_factor)
-		var follow_factor := clampf(1.0 - pow(0.03, delta / turn_duration), 0.24, 0.60)
-		ball_plane = ball_plane.lerp(foot_target_plane, follow_factor)
-		# The turn is a controlled sole/inside-foot action, not a free roll.
-		# The target itself moves with the player, so the ball remains readable
-		# without carrying stale velocity from the previous heading.
+	# The 180-degree turnaround has a short support-foot lock before the rear
+	# touch is released. Every other period is independent rolling plus ordinary
+	# control assistance; there is no continuous turn lerp.
+	var turn_anchor_active := dribble_phase == DribblePhase.TURNAROUND_ANCHOR
+	if turn_anchor_active:
+		dribble_turn_anchor_timer = maxf(dribble_turn_anchor_timer - delta, 0.0)
+		ball_plane = carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * 0.24
 		ball_velocity_plane = Vector2.ZERO
+		if dribble_turn_anchor_timer <= 0.0:
+			ball_velocity_plane = DribblePhysics3D.to_pitch_plane(dribble_turn_release_velocity)
+			dribble_turn_release_velocity = Vector3.ZERO
+			dribble_phase = DribblePhase.FREE_ROLL
 	else:
-		# When the player stops, kill residual rolling almost immediately. Only
-		# use a tiny settling vector when the ball is clearly outside the foot
-		# pocket; once it is close, velocity is clamped to zero.
-		if carrier_speed < 0.12 and not opponent_interference and not touched_this_tick:
-			var settle_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
-			var settle_error_plane := settle_target_plane - ball_plane
-			if distance <= control_distance + 0.45:
-				ball_velocity_plane = ball_velocity_plane.move_toward(Vector2.ZERO, 80.0 * delta)
-				if ball_velocity_plane.length() < 0.08:
-					ball_velocity_plane = Vector2.ZERO
-			elif not settle_error_plane.is_zero_approx():
-				ball_velocity_plane = ball_velocity_plane.move_toward(
-					settle_error_plane.normalized() * minf(settle_error_plane.length() * 5.0, 3.0),
-					80.0 * delta)
+		# The ball is free between contacts. A contact is the sole point where a
+		# new lane, a velocity reset, or a turn penalty is allowed to take effect.
+		ball_velocity_plane = DribblePhysics3D.apply_ground_friction_2d(ball_velocity_plane, delta)
+		dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
+		var contact_zone := DribblePhysics3D.touch_offset(technique, mode) + 0.82
+		var in_contact_range := distance <= control_distance and distance <= contact_zone + 0.72
+		# A parked carrier owns a fully static ball. The old idle push was applied
+		# every touch interval, so it continuously defeated ground friction and
+		# made the ball creep away before the player had moved.
+		var can_make_touch := has_movement_intent and carrier_speed > 0.12
+		if dribble_touch_timer <= 0.0 and in_contact_range and can_make_touch:
+			contact_direction = _safe_dribble_contact_direction(carrier, contact_direction)
+			intent_plane = DribblePhysics3D.to_pitch_plane(contact_direction)
+			dribble_last_turn_type = DribblePhysics3D.classify_turn(
+				DribblePhysics3D.from_pitch_plane(carry_direction_plane), contact_direction)
+			_apply_dribble_turn_penalty(int(carrier.id), dribble_last_turn_type)
+			touched_this_tick = true
+			dribble_touch_timer = DribblePhysics3D.touch_interval(technique, mode)
+			dribble_touch_count += 1
+			dribble_loss_timer = 0.0
+			if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180:
+				dribble_turn_anchor_timer = DribblePhysics3D.turn_anchor_duration(dribble_last_turn_type)
+				dribble_turn_anchor_direction = DribblePhysics3D.from_pitch_plane(-carry_direction_plane)
+				dribble_turn_lock_timer = DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
+				dribble_turn_locked_direction = contact_direction
+				dribble_turn_release_velocity = DribblePhysics3D.turn_touch_velocity(
+					Vector3.ZERO, carrier.velocity, carrier.facing, technique, mode,
+					contact_direction, dribble_last_turn_type)
+				ball_plane = carrier_plane + (-carry_direction_plane) * 0.24
+				ball_velocity_plane = Vector2.ZERO
+				dribble_phase = DribblePhase.TURNAROUND_ANCHOR
+				turn_anchor_active = true
+			else:
+				ball_velocity_plane = DribblePhysics3D.to_pitch_plane(DribblePhysics3D.turn_touch_velocity(
+					DribblePhysics3D.from_pitch_plane(ball_velocity_plane), carrier.velocity,
+					carrier.facing, technique, mode, contact_direction, dribble_last_turn_type))
 
-		# Keep a small, readable lead during ordinary running. Touches remain
-		# independent impulses, but a slow ball must not collapse into the
-		# player's centre between two contacts (the 2D implementation uses the
-		# same moving-ideal-position constraint).
-		if carrier_speed > 0.25:
-			var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + 0.18
-			var current_lead := (ball_plane - carrier_plane).dot(intent_plane)
-			if current_lead < desired_lead:
-				var running_target := carrier_plane + intent_plane * desired_lead
-				var running_error := running_target - ball_plane
-				if not running_error.is_zero_approx():
-					var running_speed := maxf(carrier_speed * 1.35, 4.0)
-					ball_velocity_plane = ball_velocity_plane.move_toward(
-						running_error.normalized() * running_speed, 50.0 * delta)
+		if not turn_anchor_active:
+			# Keep a small, readable lead during ordinary running. Touches remain
+			# independent impulses, but a slow ball must not collapse into the
+			# player's centre between two contacts (the 2D implementation uses the
+			# same moving-ideal-position constraint).
+			if has_movement_intent and carrier_speed > 0.25:
+				var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + 0.18
+				var current_lead := (ball_plane - carrier_plane).dot(intent_plane)
+				if current_lead < desired_lead:
+					var running_target := carrier_plane + intent_plane * desired_lead
+					var running_error := running_target - ball_plane
+					if not running_error.is_zero_approx():
+						var running_speed := maxf(carrier_speed * 1.35, 4.0)
+						ball_velocity_plane = ball_velocity_plane.move_toward(
+							running_error.normalized() * running_speed, 50.0 * delta)
 
-		# If the ball is outside the pocket during a non-turning run, recover it
-		# toward the carrier. During a turn this force is intentionally disabled,
-		# otherwise it fights the new-foot target and recreates the trailing feel.
-		if distance > control_distance and not opponent_interference:
-			var recovery_direction := (carrier_plane - ball_plane).normalized()
-			if not recovery_direction.is_zero_approx():
-				var recovery_speed := maxf(carrier_speed * 1.25, 4.5)
-				ball_velocity_plane = ball_velocity_plane.move_toward(
-					recovery_direction * recovery_speed, 52.0 * delta)
-				dribble_loss_timer = maxf(dribble_loss_timer - delta * 3.0, 0.0)
-
-		# Integrate the 2D ball state only after touch/settle/recovery forces are
-		# applied, so normal running retains the independent ball physics.
-		ball_plane += ball_velocity_plane * delta
+			# Integrate only after touch and forward lead forces. There is deliberately
+			# no pull back toward the carrier: an overrun ball remains independent.
+			ball_plane += ball_velocity_plane * delta
 	ball_plane.x = clampf(ball_plane.x, 0.12, Rules.PITCH_SIZE.x - 0.12)
 	ball_plane.y = clampf(ball_plane.y, 0.12, Rules.PITCH_SIZE.z - 0.12)
-	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane,
-		0.08 + sin(float(frame_count) * 0.42) * 0.012)
+	var ball_height := 0.08
+	if carrier_speed > 0.12 or ball_velocity_plane.length() > 0.001:
+		ball_height += sin(float(frame_count) * 0.42) * 0.012
+	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane, ball_height)
 	ball_velocity = DribblePhysics3D.from_pitch_plane(ball_velocity_plane)
 	ball_grounded = true
 	ball_flight_time = 0.0
@@ -444,9 +453,10 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var away_from_carrier := ball_velocity_plane.dot(ball_plane - carrier_plane) > 0.0
 	var carrier_pulling_away := carrier_velocity_plane.dot(carrier_plane - ball_plane) > 0.0
 	var external_force := (ball_velocity_plane - carrier_velocity_plane).length() > 14.0
-	# A touch is only considered lost after it is clearly outside the control
-	# radius, moving away, and has either external momentum or nearby opposition.
-	if not turn_assist_active and post_distance > control_distance + 0.65 and (opponent_interference or external_force) and (away_from_carrier or carrier_pulling_away):
+	# A ball is never pulled back to the carrier and a player cannot lose
+	# possession merely by releasing input. Only interference or external force
+	# can turn an overlong touch into a loose ball.
+	if not turn_anchor_active and post_distance > control_distance + 0.65 and (opponent_interference or external_force) and (away_from_carrier or carrier_pulling_away):
 		dribble_loss_timer += delta
 	else:
 		dribble_loss_timer = maxf(dribble_loss_timer - delta * 2.0, 0.0)
@@ -457,6 +467,50 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 		_event_label.text = "LOOSE TOUCH"
 		_event_timer = 0.28
 		_clear_shot_charge()
+		_reset_dribble_turn_state()
+
+func _reset_dribble_turn_state() -> void:
+	dribble_queued_direction = Vector3.ZERO
+	dribble_turn_anchor_timer = 0.0
+	dribble_turn_anchor_direction = Vector3.ZERO
+	dribble_turn_release_velocity = Vector3.ZERO
+	dribble_last_turn_type = DribblePhysics3D.TurnType.NONE
+	dribble_phase = DribblePhase.FREE_ROLL
+	dribble_turn_lock_timer = 0.0
+	dribble_turn_locked_direction = Vector3.ZERO
+
+func _safe_dribble_contact_direction(carrier: Dictionary, requested_direction: Vector3) -> Vector3:
+	var requested := DribblePhysics3D.quantize_direction(requested_direction)
+	var carrier_position: Vector3 = carrier.position
+	var nearest: Dictionary = {}
+	var nearest_distance := INF
+	for opponent: Dictionary in players:
+		if bool(opponent.home) == bool(carrier.home):
+			continue
+		var offset := Coordinate3D.ground(opponent.position - carrier_position)
+		var distance := offset.length()
+		if distance < 0.45 or distance > 4.2 or requested.dot(offset.normalized()) < 0.2:
+			continue
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest = opponent
+	if nearest.is_empty():
+		return requested
+	return DribblePhysics3D.steer_away_from_defender(requested, carrier_position,
+		nearest.position, nearest.velocity)
+
+func _apply_dribble_turn_penalty(player_id: int, turn_type: int) -> void:
+	var multiplier := DribblePhysics3D.turn_speed_multiplier(turn_type)
+	if multiplier >= 1.0:
+		return
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) != player_id:
+			continue
+		player.velocity = Coordinate3D.ground(player.velocity) * multiplier
+		player.cutback_cooldown = 0.24
+		players[index] = player
+		return
 
 func _opponent_interfering(carrier: Dictionary, ball: Vector3) -> bool:
 	var carrier_home := bool(carrier.home)
@@ -489,6 +543,7 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 	carrier_id = int(best.id)
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
 	last_touch_home = false
 	_clear_shot_charge()
 	cpu_tackle_cooldown = 0.5
@@ -544,6 +599,7 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void
 	carrier_id = -1
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
 	action_cooldown = 0.22
@@ -568,6 +624,7 @@ func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) 
 	carrier_id = -1
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
 	action_cooldown = 0.28
@@ -587,6 +644,7 @@ func _attempt_tackle(defender: Dictionary) -> void:
 		carrier_id = int(defender.id)
 		dribble_touch_timer = 0.0
 		dribble_loss_timer = 0.0
+		_reset_dribble_turn_state()
 		_clear_shot_charge()
 		last_touch_home = true
 		_event_label.text = "TACKLE"
@@ -608,6 +666,7 @@ func _capture_free_ball() -> void:
 	carrier_id = candidate_id
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
 	last_touch_home = bool(candidate.home)
 
 func _resolve_player_separation() -> void:
@@ -657,6 +716,7 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	dribble_touch_count = 0
+	_reset_dribble_turn_state()
 	# Put the kickoff taker on the spot. The old carried-ball code hid this
 	# formation mismatch by teleporting the ball to the player every frame.
 	for index in players.size():

@@ -89,6 +89,7 @@ func _reset_kickoff(_home_kicks_off: bool) -> void:
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	dribble_touch_count = 0
+	_reset_dribble_turn_state()
 	kickoff_timer = 0.0
 	_clear_shot_charge()
 	last_touch_home = true
@@ -121,6 +122,7 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 	ball_velocity = Coordinate3D.ground(carrier.position - keeper.position).normalized() * 6.0
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
 	last_touch_home = true
 	_event_label.text = "KEEPER CONTACT"
 	_event_timer = 0.45

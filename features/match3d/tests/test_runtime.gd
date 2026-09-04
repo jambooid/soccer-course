@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MatchScene := preload("res://scenes/world3d/match3d_game.tscn")
+const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
 
 var passed := 0
 var failed := 0
@@ -61,23 +62,64 @@ func _run() -> void:
 	_expect(camera.position.x > settled_camera_position.x + 0.5,
 		"camera pans laterally when the ball changes sides")
 	var force_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
-	regression_game.ball_position = force_carrier.position
+	force_carrier.velocity = Vector3.ZERO
+	force_carrier.movement_intent = false
+	regression_game.players[regression_game.carrier_id] = force_carrier
+	regression_game.ball_position = force_carrier.position + Vector3(0.0, 0.08, 0.0)
 	regression_game.ball_velocity = Vector3.ZERO
+	regression_game.dribble_touch_timer = 0.0
+	var parked_position: Vector3 = regression_game.ball_position
+	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_velocity.length() < 0.001 and
+		regression_game.ball_position.is_equal_approx(parked_position),
+		"an idle carrier leaves a stationary ball completely at rest")
+	force_carrier.velocity = Vector3.RIGHT * 4.0
+	force_carrier.movement_intent = false
+	regression_game.players[regression_game.carrier_id] = force_carrier
+	var coast_start: Vector3 = force_carrier.position
+	regression_game._step_players(1.0 / 60.0)
+	force_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect((force_carrier.position as Vector3).x > coast_start.x and force_carrier.velocity.x > 0.0 and
+		force_carrier.velocity.length() < 4.0,
+		"released player input decelerates momentum instead of stopping instantly")
+	force_carrier.velocity = Vector3.RIGHT * 4.0
+	force_carrier.facing = Vector3.RIGHT
+	force_carrier.input_direction = Vector3.RIGHT
+	force_carrier.movement_intent = true
+	regression_game.players[regression_game.carrier_id] = force_carrier
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
 	regression_game.dribble_touch_timer = 0.0
 	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
 	_expect(regression_game.ball_velocity.length() > 0.1,
-		"a dribble contact applies a measurable foot force to a stationary ball")
+		"a moving carrier applies a measurable foot impulse")
+	force_carrier.velocity = Vector3.ZERO
+	force_carrier.movement_intent = false
+	regression_game.players[regression_game.carrier_id] = force_carrier
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_velocity = Vector3.RIGHT * 6.0
+	regression_game.dribble_touch_timer = 1.0
+	var rolling_start: Vector3 = regression_game.ball_position
+	var follower_start: Vector3 = force_carrier.position
+	for _i in range(12):
+		regression_game._step_players(1.0 / 60.0)
+		force_carrier = regression_game._player_by_id(regression_game.carrier_id)
+		regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_position.x > rolling_start.x and regression_game.ball_velocity.x > 0.0 and
+		regression_game.ball_velocity.length() < 6.0 and (force_carrier.position as Vector3).x > follower_start.x and
+		regression_game.carrier_id == int(force_carrier.id),
+		"released input lets carrier and ball coast forward together without pullback or lost possession")
+	regression_game.carrier_id = int(force_carrier.id)
+	regression_game.controlled_id = int(force_carrier.id)
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_velocity = Vector3.ZERO
+	regression_game.dribble_touch_timer = 0.0
 	Input.action_press("p1_right")
 	for _i in range(18):
 		regression_game._process(1.0 / 60.0)
 	Input.action_release("p1_right")
-	var turn_ball_start: Vector3 = regression_game.ball_position
 	Input.action_press("p1_left")
 	for _i in range(12):
 		regression_game._process(1.0 / 60.0)
-	var turn_velocity: Vector3 = regression_game.ball_velocity
-	_expect(regression_game.ball_position.x < turn_ball_start.x - 0.05 or turn_velocity.x < -0.5,
-		"turning carrier redirects the ball toward the new input quickly")
 	for _i in range(24):
 		regression_game._process(1.0 / 60.0)
 	Input.action_release("p1_left")
@@ -87,6 +129,67 @@ func _run() -> void:
 		"after a right-to-left cut the ball crosses to the new leading side")
 	_expect(regression_game.carrier_id == regression_game.controlled_id,
 		"turning with the ball keeps possession without opponent interference")
+	var turn_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	turn_carrier.position = Vector3(42.0, 0.0, 18.0)
+	turn_carrier.velocity = Vector3.RIGHT * 8.0
+	turn_carrier.facing = Vector3.RIGHT
+	turn_carrier.input_direction = Vector3.LEFT
+	turn_carrier.movement_intent = true
+	regression_game.players[regression_game.carrier_id] = turn_carrier
+	regression_game.ball_position = turn_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_velocity = Vector3.RIGHT * 9.0
+	regression_game.dribble_touch_timer = 0.18
+	regression_game.dribble_turn_anchor_timer = 0.0
+	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_velocity.x > 0.1,
+		"turn input is queued until the next foot contact instead of steering each frame")
+	regression_game.dribble_touch_timer = 0.0
+	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180 and
+		regression_game.dribble_turn_anchor_timer > 0.0 and regression_game.ball_velocity.length() < 0.01,
+		"180 degree cut anchors the ball before releasing a reverse touch")
+	var planted_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	var planted_position: Vector3 = planted_carrier.position
+	regression_game.controlled_id = -1
+	for _i in range(3):
+		regression_game._step_players(1.0 / 60.0)
+	planted_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect(planted_carrier.position.is_equal_approx(planted_position) and planted_carrier.velocity.length() < 0.01 and
+		regression_game.dribble_turn_lock_timer > 0.0,
+		"180 degree cut plants the carrier and ignores new movement during the lock")
+	var released_reverse := false
+	for _i in range(12):
+		regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+		released_reverse = released_reverse or regression_game.ball_velocity.x < -0.1
+	_expect(released_reverse,
+		"180 degree cut releases the ball in the new reverse lane after the anchor")
+	_expect(is_equal_approx(DribblePhysics3D.turn_speed_multiplier(DribblePhysics3D.TurnType.DEGREE_180), 0.15) and
+		is_equal_approx(DribblePhysics3D.turn_anchor_duration(DribblePhysics3D.TurnType.DEGREE_180), 0.10),
+		"180 degree cut uses the WE-style heavy penalty and short ball anchor")
+	regression_game._reset_dribble_turn_state()
+	regression_game.controlled_id = regression_game.carrier_id
+	turn_carrier.input_direction = Vector3.FORWARD
+	turn_carrier.velocity = Vector3.RIGHT * 8.0
+	turn_carrier.facing = Vector3.RIGHT
+	turn_carrier.movement_intent = true
+	regression_game.players[regression_game.carrier_id] = turn_carrier
+	regression_game.ball_position = turn_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_velocity = Vector3.RIGHT * 11.0
+	regression_game.dribble_touch_timer = 0.0
+	regression_game.dribble_turn_anchor_timer = 0.0
+	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_90 and
+		regression_game.ball_velocity.x < 0.1 and regression_game.ball_velocity.z < -0.1,
+		"90 degree cut clears old ball velocity and applies a lateral touch")
+	_expect(DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3(1.0, 0.0, 1.0)) ==
+		DribblePhysics3D.TurnType.DEGREE_45 and DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3(-1.0, 0.0, 1.0)) ==
+		DribblePhysics3D.TurnType.DEGREE_180 and DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3.LEFT) ==
+		DribblePhysics3D.TurnType.DEGREE_180,
+		"dribble contacts classify quantized 45 and 135-plus degree lanes")
+	var safe_lane := DribblePhysics3D.steer_away_from_defender(Vector3.RIGHT, Vector3.ZERO,
+		Vector3(1.4, 0.0, 0.0), Vector3.ZERO)
+	_expect(safe_lane.z != 0.0 and safe_lane.dot(Vector3.RIGHT) > 0.0,
+		"front defender selects a forward diagonal safety lane")
 	regression_game.free()
 	var controlled_before: Vector3 = game._player_by_id(game.controlled_id).position
 	Input.action_press("p1_right")

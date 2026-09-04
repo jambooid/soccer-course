@@ -7,6 +7,7 @@ const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 ## The ball remains independent between touches; these functions only describe
 ## the next foot contact.
 enum Mode { JOG, SPRINT }
+enum TurnType { NONE, DEGREE_45, DEGREE_90, DEGREE_180 }
 
 const TOUCH_INTERVAL_JOG := 0.22
 const TOUCH_INTERVAL_SPRINT := 0.42
@@ -19,6 +20,11 @@ const SPRINT_PUSH_MULTIPLIER := 1.25
 const IDLE_PUSH_SPEED_JOG := 0.9
 const IDLE_PUSH_SPEED_SPRINT := 1.2
 const GROUND_FRICTION_PER_SECOND := 0.28
+const TURN_45_MIN_DEGREES := 25.0
+const TURN_90_MIN_DEGREES := 65.0
+const TURN_180_MIN_DEGREES := 135.0
+const TURNAROUND_BALL_ANCHOR_SECONDS := 0.10
+const TURNAROUND_INPUT_LOCK_SECONDS := 0.20
 
 ## Dribbling lives on the pitch plane. Keep the simulation in Vector2 (x/z)
 ## and only convert back to Vector3 when publishing the ball's world position.
@@ -46,6 +52,81 @@ static func touch_offset(technique: float, mode: int) -> float:
 	var quality := technique_normalized(technique)
 	var base := TOUCH_OFFSET_SPRINT if mode == Mode.SPRINT else TOUCH_OFFSET_JOG
 	return lerpf(base * 0.94, base, quality)
+
+## WE2000's directional input is read as one of eight lanes at a foot contact.
+## Keeping this conversion here makes keyboard, stick, and future animation
+## event callers agree on the exact direction of a cut.
+static func quantize_direction(direction: Vector3) -> Vector3:
+	var ground_direction := Coordinate3D.ground(direction)
+	if ground_direction.length_squared() < 0.0001:
+		return Vector3.ZERO
+	var angle := atan2(ground_direction.z, ground_direction.x)
+	var lane_angle := roundf(angle / (PI * 0.25)) * (PI * 0.25)
+	return Vector3(cos(lane_angle), 0.0, sin(lane_angle))
+
+static func classify_turn(current_direction: Vector3, requested_direction: Vector3) -> int:
+	var current := quantize_direction(current_direction)
+	var requested := quantize_direction(requested_direction)
+	if current.is_zero_approx() or requested.is_zero_approx():
+		return TurnType.NONE
+	var angle_degrees := rad_to_deg(acos(clampf(current.dot(requested), -1.0, 1.0)))
+	# Quantized diagonal lanes can evaluate as 134.999... after acos(), so keep
+	# the authored 135 degree threshold while accepting normal float error.
+	if angle_degrees >= TURN_180_MIN_DEGREES - 0.01:
+		return TurnType.DEGREE_180
+	if angle_degrees >= TURN_90_MIN_DEGREES:
+		return TurnType.DEGREE_90
+	if angle_degrees >= TURN_45_MIN_DEGREES:
+		return TurnType.DEGREE_45
+	return TurnType.NONE
+
+static func turn_speed_multiplier(turn_type: int) -> float:
+	match turn_type:
+		TurnType.DEGREE_45:
+			return 0.95
+		TurnType.DEGREE_90:
+			return 0.60
+		TurnType.DEGREE_180:
+			return 0.15
+	return 1.0
+
+static func turn_touch_multiplier(turn_type: int) -> float:
+	match turn_type:
+		TurnType.DEGREE_90:
+			return 0.80
+		TurnType.DEGREE_180:
+			return 0.62
+	return 1.0
+
+static func turn_anchor_duration(turn_type: int) -> float:
+	return TURNAROUND_BALL_ANCHOR_SECONDS if turn_type == TurnType.DEGREE_180 else 0.0
+
+## The front defender is projected forward briefly, then the three nearby
+## eight-way lanes are scored. This is intentionally a small correction: it
+## protects a slight evasive input without selecting an unrelated direction.
+static func steer_away_from_defender(intent: Vector3, carrier_position: Vector3,
+		defender_position: Vector3, defender_velocity: Vector3) -> Vector3:
+	var requested := quantize_direction(intent)
+	var to_defender := Coordinate3D.ground(defender_position - carrier_position)
+	if requested.is_zero_approx() or to_defender.length_squared() < 0.0001:
+		return requested
+	var defender_direction := to_defender.normalized()
+	if requested.dot(defender_direction) < 0.2:
+		return requested
+	var future_defender := Coordinate3D.ground(defender_position + defender_velocity * 0.22)
+	var best_direction := requested
+	var best_score := -INF
+	for lane_offset in [-1, 0, 1]:
+		var candidate := requested.rotated(Vector3.UP, float(lane_offset) * PI * 0.25)
+		var future_clearance := Coordinate3D.ground(
+			carrier_position + candidate * 1.25 - future_defender).length()
+		var progress := candidate.dot(requested)
+		var away_from_defender := -candidate.dot(defender_direction)
+		var score := progress * 2.0 + away_from_defender * 1.40 + future_clearance * 0.32
+		if score > best_score:
+			best_score = score
+			best_direction = candidate
+	return best_direction
 
 static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 		facing: Vector3, technique: float, mode: int,
@@ -78,6 +159,21 @@ static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 	if mode == Mode.SPRINT:
 		blend -= 0.06
 	return Coordinate3D.ground(current_velocity).lerp(target, clampf(blend, 0.42, 0.88))
+
+## 90 and 180 degree cuts deliberately discard the old ball heading. Smaller
+## turns keep the ordinary touch blend, preserving a smooth 45 degree arc.
+static func turn_touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
+		facing: Vector3, technique: float, mode: int, requested_direction: Vector3,
+		turn_type: int) -> Vector3:
+	if turn_type == TurnType.DEGREE_90 or turn_type == TurnType.DEGREE_180:
+		var requested := quantize_direction(requested_direction)
+		if requested.is_zero_approx():
+			requested = quantize_direction(facing)
+		var ordinary := touch_velocity(Vector3.ZERO, player_velocity, facing,
+			technique, mode, requested)
+		return requested * ordinary.length() * turn_touch_multiplier(turn_type)
+	return touch_velocity(current_velocity, player_velocity, facing, technique, mode,
+		requested_direction)
 
 static func apply_ground_friction(velocity: Vector3, delta: float) -> Vector3:
 	return Coordinate3D.ground(velocity) * pow(GROUND_FRICTION_PER_SECOND, maxf(delta, 0.0))

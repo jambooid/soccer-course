@@ -19,6 +19,11 @@ func _run() -> void:
 	_expect(demo.players.size() == 2, "dribble lab creates one carrier and one goalkeeper")
 	_expect(demo.carrier_id == demo.DEMO_PLAYER_ID and demo.controlled_id == demo.DEMO_PLAYER_ID,
 		"dribble lab starts with the carrier under manual control")
+	var parked_ball: Vector3 = demo.ball_position
+	for _i in range(24):
+		demo._process(1.0 / 60.0)
+	_expect(demo.ball_position.is_equal_approx(parked_ball) and demo.ball_velocity.length() < 0.001,
+		"dribble lab starts with an unforced stationary ball")
 	var start: Vector3 = demo._player_by_id(demo.DEMO_PLAYER_ID).position
 	Input.action_press("p1_right")
 	for _i in range(18):
@@ -42,14 +47,18 @@ func _run() -> void:
 	var relative: Vector3 = demo.ball_position - (carrier.position as Vector3)
 	_expect(relative.x < 1.0, "dribble lab reverse turn brings ball back to the leading side")
 	carrier.velocity = Vector3.ZERO
+	carrier.movement_intent = false
 	demo.players[demo.DEMO_PLAYER_ID] = carrier
 	demo.ball_position = carrier.position + Vector3(0.3, 0.08, 0.0)
 	demo.ball_velocity = Vector3(7.0, 0.0, 0.0)
 	demo.dribble_touch_timer = 0.2
+	var released_speed: float = demo.ball_velocity.length()
+	var released_x: float = demo.ball_position.x
 	for _i in range(8):
 		demo._step_dribbling_ball(carrier, 1.0 / 60.0)
-	_expect(demo.ball_velocity.length() < 0.1,
-		"dribble lab stops residual ball rolling almost immediately when idle")
+	_expect(demo.ball_position.x > released_x and demo.ball_velocity.x > 0.0 and
+		demo.ball_velocity.length() < released_speed,
+		"idle dribble lab ball rolls forward and slows without being pulled back")
 	var keeper: Dictionary = demo._player_by_id(demo.DEMO_KEEPER_ID)
 	var keeper_start_z := (keeper.position as Vector3).z
 	demo.ball_position = Vector3(18.0, 0.08, 27.0)
