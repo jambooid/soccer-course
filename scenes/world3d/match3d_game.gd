@@ -21,12 +21,8 @@ const SHOOT_CHARGE_SECONDS := 0.75
 const FIXED_TICK := 1.0 / 60.0
 
 var players: Array[Dictionary] = []
-var ball_position := Rules.PITCH_SIZE * 0.5
-var ball_velocity := Vector2.ZERO
-var ball_height := 0.0
-var ball_height_velocity := 0.0
-var ball_world_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.y * 0.5)
-var ball_world_velocity := Vector3.ZERO
+var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
+var ball_velocity := Vector3.ZERO
 var ball_bounce_count := 0
 var ball_grounded := true
 var ball_flight_time := 0.0
@@ -49,13 +45,7 @@ var frame_count := 0
 var camera_shake := 0.0
 var shot_charge := 0.0
 var shot_charging := false
-var _last_synced_ball_position := Vector2.ZERO
-var _last_synced_ball_velocity := Vector2.ZERO
-var _last_synced_ball_height := 0.0
-var _last_synced_ball_height_velocity := 0.0
-
 var _views: Dictionary = {}
-var _player_projection_cache: Dictionary = {}
 var _ball_view: Ball3DView
 var _score_label: Label
 var _clock_label: Label
@@ -73,15 +63,14 @@ func _ready() -> void:
 func _frame_camera() -> void:
 	var camera := get_node_or_null("Camera") as Camera3D
 	if camera != null:
-		camera.position = Vector3(Rules.PITCH_SIZE.x * 0.5, 42.0, Rules.PITCH_SIZE.y * 0.5 + 32.0)
-		camera.look_at(Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.y * 0.5))
+		camera.position = Vector3(Rules.PITCH_SIZE.x * 0.5, 42.0, Rules.PITCH_SIZE.z * 0.5 + 32.0)
+		camera.look_at(Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5))
 
 func _update_camera(delta: float) -> void:
 	var camera := get_node_or_null("Camera") as Camera3D
 	if camera == null:
 		return
-	var camera_target := Rules.camera_target(ball_position)
-	var target := Vector3(camera_target.x, 0.0, camera_target.y)
+	var target := Rules.camera_target(ball_position)
 	var shake := Vector3(sin(float(frame_count) * 1.7), cos(float(frame_count) * 2.1), 0.0) * camera_shake
 	var desired := target + Vector3(0.0, 42.0, 32.0) + shake
 	camera_shake = maxf(camera_shake - delta * 1.8, 0.0)
@@ -143,7 +132,7 @@ func _handle_kickoff_input() -> void:
 	if carrier.is_empty() or not bool(carrier.home):
 		return
 	controlled_id = carrier_id
-	var aim := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
+	var aim := _input_direction()
 	if aim.is_zero_approx():
 		aim = carrier.facing
 	if _action_just_pressed("p1_pass"):
@@ -154,25 +143,23 @@ func _handle_kickoff_input() -> void:
 		_kick_to_target(carrier, true, aim)
 	elif _action_just_pressed("p1_shoot"):
 		kickoff_timer = 0.0
-		_shoot(carrier, aim.y)
+		_shoot(carrier, aim.z)
 
 func _create_match() -> void:
 	var formation := [
-		Vector2(4.0, 18.0), Vector2(15.0, 7.0), Vector2(15.0, 14.0), Vector2(15.0, 22.0), Vector2(15.0, 29.0),
-		Vector2(29.0, 9.0), Vector2(30.0, 18.0), Vector2(29.0, 27.0), Vector2(43.0, 8.0), Vector2(46.0, 18.0), Vector2(43.0, 28.0),
+		Vector3(4.0, 0.0, 18.0), Vector3(15.0, 0.0, 7.0), Vector3(15.0, 0.0, 14.0), Vector3(15.0, 0.0, 22.0), Vector3(15.0, 0.0, 29.0),
+		Vector3(29.0, 0.0, 9.0), Vector3(30.0, 0.0, 18.0), Vector3(29.0, 0.0, 27.0), Vector3(43.0, 0.0, 8.0), Vector3(46.0, 0.0, 18.0), Vector3(43.0, 0.0, 28.0),
 	]
 	for home in [true, false]:
 		for index in formation.size():
-			var spawn: Vector2 = formation[index]
+			var spawn: Vector3 = formation[index]
 			if not home:
 				spawn.x = Rules.PITCH_SIZE.x - spawn.x
 			var id := index if home else index + formation.size()
 			var entry := {"id": id, "home": home, "position": spawn, "spawn": spawn,
-				"world_position": Coordinate3D.to_world(spawn),
-				"velocity": Vector2.ZERO, "world_velocity": Vector3.ZERO,
-				"facing": Vector2.RIGHT if home else Vector2.LEFT, "goalkeeper": index == 0}
+				"velocity": Vector3.ZERO, "facing": Vector3.RIGHT if home else Vector3.LEFT,
+				"goalkeeper": index == 0}
 			players.append(entry)
-			_player_projection_cache[id] = spawn
 			var view := PlayerView.new() as Player3DView
 			view.name = "Home_%02d" % index if home else "Away_%02d" % index
 			view.set_team_color(KEEPERS_COLOR if index == 0 else (HOME_COLOR if home else AWAY_COLOR))
@@ -187,61 +174,46 @@ func _step_players(delta: float) -> void:
 	for index in players.size():
 		var player := players[index]
 		var player_id := int(player.id)
-		var projected_position: Vector2 = player.position
-		var world_position: Vector3 = player.get("world_position", Coordinate3D.to_world(projected_position))
-		var world_velocity: Vector3 = player.get("world_velocity", Vector3(player.velocity.x, 0.0, player.velocity.y))
-		var last_projection: Vector2 = _player_projection_cache.get(player_id, projected_position)
-		var expected_world := Coordinate3D.to_world(last_projection)
-		if not projected_position.is_equal_approx(last_projection) and world_position.is_equal_approx(expected_world):
-			world_position = Coordinate3D.to_world(projected_position)
-			world_velocity = Vector3(player.velocity.x, 0.0, player.velocity.y)
-		var ground_position := Coordinate3D.from_world(world_position)
-		var ground_velocity := Vector2(world_velocity.x, world_velocity.z)
 		var desired := _player_intent(player)
 		var speed := 7.5 if bool(player.goalkeeper) else 8.8
 		if player_id == controlled_id and Input.is_action_pressed("p1_sprint"):
 			speed = 11.0
-		var motion := Rules.advance_player(ground_position, ground_velocity, desired, delta, speed)
-		world_position = Coordinate3D.to_world(motion.position)
-		world_velocity = Vector3(motion.velocity.x, 0.0, motion.velocity.y)
-		player.world_position = world_position
-		player.world_velocity = world_velocity
+		var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed)
 		player.position = motion.position
 		player.velocity = motion.velocity
-		_player_projection_cache[player_id] = motion.position
 		if not desired.is_zero_approx():
 			player.facing = desired.normalized()
 		players[index] = player
 
-func _player_intent(player: Dictionary) -> Vector2:
+func _player_intent(player: Dictionary) -> Vector3:
 	var id := int(player.id)
 	var home := bool(player.home)
 	if id == controlled_id:
-		var input := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
+		var input := _input_direction()
 		if not input.is_zero_approx():
 			return input
 	if id == carrier_id:
-		var facing: Vector2 = player.facing
+		var facing: Vector3 = player.facing
 		if home:
-			return facing.lerp(Vector2.RIGHT, 0.25).normalized()
-		return facing.lerp(Vector2.LEFT, 0.25).normalized()
-	var target: Vector2 = player.spawn
+			return facing.lerp(Vector3.RIGHT, 0.25).normalized()
+		return facing.lerp(Vector3.LEFT, 0.25).normalized()
+	var target: Vector3 = player.spawn
 	var carrier := _player_by_id(carrier_id)
 	if not carrier.is_empty():
-		var carrier_position: Vector2 = carrier.position
+		var carrier_position: Vector3 = carrier.position
 		if bool(carrier.home) == home:
-			target += Vector2(2.2 if home else -2.2, (carrier_position.y - target.y) * 0.15)
+			target += Vector3(2.2 if home else -2.2, 0.0, (carrier_position.z - target.z) * 0.15)
 		else:
 			var pressure := clampf(1.0 - player.position.distance_to(carrier_position) / 20.0, 0.0, 1.0)
 			target = target.lerp(carrier_position, pressure * (0.75 if not bool(player.goalkeeper) else 0.2))
-	elif player.position.distance_to(ball_position) < 12.0:
-		target = ball_position
-	return player.position.direction_to(target)
+	elif player.position.distance_to(Coordinate3D.ground(ball_position)) < 12.0:
+		target = Coordinate3D.ground(ball_position)
+	return Coordinate3D.ground(target - player.position).normalized()
 
 func _handle_player_switch() -> void:
 	if not _action_just_pressed("p1_through_pass"):
 		return
-	var direction := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
+	var direction := _input_direction()
 	var next_id := Rules.select_switch_target(players, controlled_id, direction, ball_position)
 	if next_id < 0:
 		return
@@ -263,28 +235,25 @@ func _step_ball(delta: float) -> void:
 			return
 		_handle_carrier_actions(carrier, delta)
 		if carrier_id >= 0:
-			var facing: Vector2 = carrier.facing
-			var carry_position: Vector2 = carrier.position + facing * 0.66
+			var facing: Vector3 = carrier.facing
+			var carry_position: Vector3 = carrier.position + facing * 0.66
 			var carry_height: float = 0.08 + sin(float(frame_count) * 0.3) * 0.025
-			_set_ball_world_state(Coordinate3D.to_world(carry_position, carry_height),
-				Vector3(carrier.velocity.x, 0.0, carrier.velocity.y), true)
+			carry_position.y = carry_height
+			_set_ball_state(carry_position, carrier.velocity, true)
 			ball_bounce_count = 0
 			ball_flight_time = 0.0
 		return
-	_reconcile_legacy_ball_projection()
-	var trajectory := BallTrajectory3DScript.step_on_pitch(ball_world_position, ball_world_velocity,
+	var trajectory := BallTrajectory3DScript.step_on_pitch(ball_position, ball_velocity,
 		delta, BallPhysics3D.GRAVITY, BallPhysics3D.GROUND_FRICTION,
 		BallPhysics3D.AIR_FRICTION, BallPhysics3D.BOUNCINESS, Rules.PITCH_SIZE,
 		Rules.GOAL_HALF_WIDTH, Rules.GOAL_HEIGHT, BallPhysics3D.BOUNDARY_RESTITUTION)
-	ball_world_position = trajectory.position
-	ball_world_velocity = trajectory.velocity
-	_sync_ball_projection()
+	ball_position = trajectory.position
+	ball_velocity = trajectory.velocity
 	ball_flight_time += delta
 	ball_grounded = bool(trajectory.get("grounded", false))
 	if bool(trajectory.get("bounced", false)):
 		ball_bounce_count += 1
-	_sync_ball_projection()
-	var scorer := Rules.goal_scoring_team_3d(ball_world_position)
+	var scorer := Rules.goal_scoring_team(ball_position)
 	if scorer != 0:
 		_score_goal(scorer > 0)
 		return
@@ -298,14 +267,14 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 	for player: Dictionary in players:
 		if bool(player.home) or bool(player.goalkeeper):
 			continue
-		var distance := (player.position as Vector2).distance_to(ball_position)
+		var distance := (player.position as Vector3).distance_to(Coordinate3D.ground(ball_position))
 		if distance < best_distance:
 			best_distance = distance
 			best = player
 	if best.is_empty() or best_distance > 1.45:
 		return
-	var approach: Vector2 = (best.position as Vector2).direction_to(carrier.position)
-	var facing: Vector2 = best.facing
+	var approach: Vector3 = Coordinate3D.ground(carrier.position - best.position).normalized()
+	var facing: Vector3 = best.facing
 	if facing.dot(approach) < -0.35:
 		return
 	carrier_id = int(best.id)
@@ -323,7 +292,7 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 	var carrier_home := bool(carrier.home)
 	if int(carrier.id) == controlled_id:
-		var aim := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
+		var aim := _input_direction()
 		if aim.is_zero_approx():
 			aim = carrier.facing
 		if action_cooldown <= 0.0 and _action_just_pressed("p1_pass"):
@@ -343,21 +312,22 @@ func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 	if not carrier_home and cpu_action_cooldown <= 0.0:
 		var goal_distance := absf(carrier.position.x - (0.0 if not carrier_home else Rules.PITCH_SIZE.x))
 		if goal_distance < 21.0:
-			_shoot(carrier, (Rules.PITCH_SIZE.y * 0.5 - carrier.position.y) * 0.35)
+			_shoot(carrier, (Rules.PITCH_SIZE.z * 0.5 - carrier.position.z) * 0.35)
 		elif frame_count % 3 == 0:
-			_kick_to_target(carrier, false, Vector2.LEFT)
+			_kick_to_target(carrier, false, Vector3.LEFT)
 		cpu_action_cooldown = 0.85
 
-func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector2) -> void:
+func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void:
 	var target := Rules.select_pass_target(players, int(carrier.id), bool(carrier.home), aim, ball_position)
 	if target.is_empty():
 		return
-	var target_velocity: Vector2 = target.velocity
+	var target_velocity: Vector3 = target.velocity
 	var lead := target_velocity * (0.28 if long_pass else 0.16)
-	var launch_velocity: Vector2 = Rules.pass_velocity(ball_position, target.position + lead, long_pass)
-	var launch_height: float = 0.12
-	_set_ball_world_state(Coordinate3D.to_world(ball_position, launch_height),
-		Vector3(launch_velocity.x, 7.8 if long_pass else 1.4, launch_velocity.y), false)
+	var launch_velocity: Vector3 = Rules.pass_velocity(ball_position, target.position + lead, long_pass)
+	launch_velocity.y = 7.8 if long_pass else 1.4
+	var launch_position := ball_position
+	launch_position.y = 0.12
+	_set_ball_state(launch_position, launch_velocity, false)
 	ball_bounce_count = 0
 	ball_grounded = false
 	ball_flight_time = 0.0
@@ -375,9 +345,11 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector2) -> void
 func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) -> void:
 	var launch := Rules.shot_velocity(ball_position, bool(carrier.home), vertical_aim)
 	var power := lerpf(0.72, 1.0, clampf(power_ratio, 0.0, 1.0))
-	var launch_velocity: Vector2 = launch * power
-	_set_ball_world_state(Coordinate3D.to_world(ball_position, 0.14),
-		Vector3(launch_velocity.x, 5.0, launch_velocity.y), false)
+	var launch_velocity: Vector3 = launch * power
+	launch_velocity.y = 5.0
+	var launch_position := ball_position
+	launch_position.y = 0.14
+	_set_ball_state(launch_position, launch_velocity, false)
 	ball_bounce_count = 0
 	ball_grounded = false
 	ball_flight_time = 0.0
@@ -397,7 +369,7 @@ func _attempt_tackle(defender: Dictionary) -> void:
 	var carrier := _player_by_id(carrier_id)
 	if defender.is_empty() or carrier.is_empty():
 		return
-	if bool(defender.home) and not bool(carrier.home) and defender.position.distance_to(ball_position) < 1.55:
+	if bool(defender.home) and not bool(carrier.home) and defender.position.distance_to(Coordinate3D.ground(ball_position)) < 1.55:
 		carrier_id = int(defender.id)
 		_clear_shot_charge()
 		last_touch_home = true
@@ -414,9 +386,9 @@ func _capture_free_ball() -> void:
 	var candidate_id := Rules.nearest_player_id(players, ball_position)
 	var candidate := _player_by_id(candidate_id)
 	if candidate.is_empty() or not Rules.can_ground_player_control_ball(
-		candidate.position, ball_world_position):
+		candidate.position, ball_position):
 		return
-	if bool(candidate.home) == last_touch_home and ball_velocity.length() > 21.0:
+	if bool(candidate.home) == last_touch_home and Coordinate3D.ground(ball_velocity).length() > 21.0:
 		return
 	carrier_id = candidate_id
 	last_touch_home = bool(candidate.home)
@@ -429,10 +401,6 @@ func _resolve_player_separation() -> void:
 			var resolved := Rules.resolve_pair_separation(first.position, second.position)
 			first.position = resolved.first
 			second.position = resolved.second
-			first.world_position = Coordinate3D.to_world(first.position)
-			second.world_position = Coordinate3D.to_world(second.position)
-			_player_projection_cache[int(first.id)] = first.position
-			_player_projection_cache[int(second.id)] = second.position
 			players[first_index] = first
 			players[second_index] = second
 
@@ -461,13 +429,10 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 	for index in players.size():
 		var player := players[index]
 		player.position = player.spawn
-		player.velocity = Vector2.ZERO
-		player.world_position = Coordinate3D.to_world(player.spawn)
-		player.world_velocity = Vector3.ZERO
-		_player_projection_cache[int(player.id)] = player.spawn
+		player.velocity = Vector3.ZERO
 		players[index] = player
-	var kickoff_position: Vector2 = Rules.PITCH_SIZE * 0.5
-	_set_ball_world_state(Coordinate3D.to_world(kickoff_position, 0.08), Vector3.ZERO, true)
+	var kickoff_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
+	_set_ball_state(kickoff_position, Vector3.ZERO, true)
 	ball_bounce_count = 0
 	ball_grounded = true
 	ball_flight_time = 0.0
@@ -487,48 +452,22 @@ func _clear_shot_charge() -> void:
 	shot_charge = 0.0
 	shot_charging = false
 
-func _set_ball_world_state(position: Vector3, velocity: Vector3, grounded: bool = false) -> void:
-	ball_world_position = position
-	ball_world_velocity = velocity
+func _set_ball_state(position: Vector3, velocity: Vector3, grounded: bool = false) -> void:
+	ball_position = position
+	ball_velocity = velocity
 	ball_grounded = grounded
-	_sync_ball_projection()
-
-func _sync_ball_projection() -> void:
-	ball_position = Coordinate3D.from_world(ball_world_position)
-	ball_velocity = Vector2(ball_world_velocity.x, ball_world_velocity.z)
-	ball_height = ball_world_position.y
-	ball_height_velocity = ball_world_velocity.y
-	_last_synced_ball_position = ball_position
-	_last_synced_ball_velocity = ball_velocity
-	_last_synced_ball_height = ball_height
-	_last_synced_ball_height_velocity = ball_height_velocity
-
-func _reconcile_legacy_ball_projection() -> void:
-	## Import direct writes from older callers only when the 2D projection changed
-	## on its own. A direct 3D write remains authoritative.
-	var projection_changed := not ball_position.is_equal_approx(_last_synced_ball_position) \
-		or not ball_velocity.is_equal_approx(_last_synced_ball_velocity) \
-		or not is_equal_approx(ball_height, _last_synced_ball_height) \
-		or not is_equal_approx(ball_height_velocity, _last_synced_ball_height_velocity)
-	var world_changed := not ball_world_position.is_equal_approx(Coordinate3D.to_world(
-		_last_synced_ball_position, _last_synced_ball_height)) \
-		or not ball_world_velocity.is_equal_approx(Vector3(_last_synced_ball_velocity.x,
-		_last_synced_ball_height_velocity, _last_synced_ball_velocity.y))
-	if projection_changed and not world_changed:
-		ball_world_position = Coordinate3D.to_world(ball_position, ball_height)
-		ball_world_velocity = Vector3(ball_velocity.x, ball_height_velocity, ball_velocity.y)
 
 func _sync_views() -> void:
 	for player: Dictionary in players:
 		var view := _views.get(int(player.id)) as Player3DView
 		if view == null:
 			continue
-		view.sync_world_position(player.get("world_position", Coordinate3D.to_world(player.position)))
+		view.sync_world_position(player.position)
 		view.set_facing(player.facing)
 		view.set_selected(int(player.id) == controlled_id)
 		view.set_ball_carrier(int(player.id) == carrier_id)
 	if _ball_view != null:
-		_ball_view.sync_from_simulation(ball_position, ball_height, ball_velocity)
+		_ball_view.sync_world_position(ball_position, ball_velocity)
 
 func _create_hud() -> void:
 	var layer := CanvasLayer.new()
@@ -600,15 +539,17 @@ func _update_hud() -> void:
 	elif _event_timer <= 0.0 and match_time > 0.0:
 		_event_label.text = ""
 
+func _input_direction() -> Vector3:
+	var input := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
+	return Vector3(input.x, 0.0, input.y)
+
 func build_presentation_snapshot() -> Dictionary:
 	## Copy-only boundary for interpolation/debug renderers.
 	var player_snapshot: Array[Dictionary] = []
 	for player: Dictionary in players:
 		player_snapshot.append({"id": int(player.id), "home": bool(player.home),
-			"position": player.position, "world_position": player.get("world_position", Coordinate3D.to_world(player.position)),
-			"height": 0.0, "facing": player.facing})
+			"position": player.position, "facing": player.facing})
 	return {"tick": _simulation_tick, "players": player_snapshot,
-		"ball": {"position": Coordinate3D.from_world(ball_world_position),
-			"height": ball_world_position.y, "velocity": ball_world_velocity,
-			"world_position": ball_world_position, "bounce_count": ball_bounce_count,
+		"ball": {"position": ball_position, "velocity": ball_velocity,
+			"bounce_count": ball_bounce_count,
 			"grounded": ball_grounded, "flight_time": ball_flight_time}}

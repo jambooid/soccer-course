@@ -59,22 +59,18 @@ func _sync_players(weight: float) -> void:
 		var view := _player_views.get(player_id) as Player3DView
 		if view == null:
 			continue
-		var current_position := player_data.get("position", Vector2.ZERO) as Vector2
-		var current_world := player_data.get("world_position", Vector3(current_position.x, 0.0, current_position.y)) as Vector3
+		var current_position := player_data.get("position", Vector3.ZERO) as Vector3
 		var previous: Dictionary = previous_by_id.get(player_id, player_data)
-		var previous_position := previous.get("position", current_position) as Vector2
-		var previous_world := previous.get("world_position", Vector3(previous_position.x, 0.0, previous_position.y)) as Vector3
-		view.sync_world_position(previous_world.lerp(current_world, weight))
+		var previous_position := previous.get("position", current_position) as Vector3
+		view.sync_world_position(previous_position.lerp(current_position, weight))
 
 func _sync_ball(weight: float) -> void:
 	var current_ball: Dictionary = _current_snapshot.get("ball", {})
 	var previous_ball: Dictionary = _previous_snapshot.get("ball", current_ball)
-	var current_ground := current_ball.get("position", Vector2.ZERO) as Vector2
-	var current_world := current_ball.get("world_position",
-		Vector3(current_ground.x, float(current_ball.get("height", 0.0)), current_ground.y)) as Vector3
-	var previous_world := previous_ball.get("world_position", current_world) as Vector3
+	var current_position := current_ball.get("position", Vector3.ZERO) as Vector3
+	var previous_position := previous_ball.get("position", current_position) as Vector3
 	var current_velocity := current_ball.get("velocity", Vector3.ZERO) as Vector3
-	_ball_view.sync_world_position(previous_world.lerp(current_world, weight), current_velocity)
+	_ball_view.sync_world_position(previous_position.lerp(current_position, weight), current_velocity)
 
 func _players_by_id(snapshot: Dictionary) -> Dictionary:
 	var by_id := {}

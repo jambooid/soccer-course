@@ -40,43 +40,43 @@ func _expect(condition: bool, label: String) -> void:
 		print("  [FAIL] %s" % label)
 
 func _test_player_motion_is_bounded() -> void:
-	var moved := Rules.advance_player(Vector2(84.4, 0.5), Vector2.ZERO, Vector2(1.0, -1.0), 1.0, 12.0)
-	var position: Vector2 = moved.position
-	var velocity: Vector2 = moved.velocity
-	_expect(position.x <= Rules.PITCH_SIZE.x - Rules.PLAYER_RADIUS + 0.001 and position.y >= Rules.PLAYER_RADIUS - 0.001,
+	var moved := Rules.advance_player(Vector3(84.4, 0.0, 0.5), Vector3.ZERO, Vector3(1.0, 0.0, -1.0), 1.0, 12.0)
+	var position: Vector3 = moved.position
+	var velocity: Vector3 = moved.velocity
+	_expect(position.x <= Rules.PITCH_SIZE.x - Rules.PLAYER_RADIUS + 0.001 and position.z >= Rules.PLAYER_RADIUS - 0.001,
 		"player motion stays inside the playable pitch")
 	_expect(velocity.length() <= 12.0,
 		"player acceleration respects top speed")
 
 func _test_directional_pass_prefers_forward_teammate() -> void:
 	var players := [
-		{"id": 1, "home": true, "position": Vector2(30.0, 18.0)},
-		{"id": 2, "home": true, "position": Vector2(47.0, 18.0)},
-		{"id": 3, "home": true, "position": Vector2(28.0, 7.0)},
-		{"id": 4, "home": false, "position": Vector2(44.0, 18.0)},
+		{"id": 1, "home": true, "position": Vector3(30.0, 0.0, 18.0)},
+		{"id": 2, "home": true, "position": Vector3(47.0, 0.0, 18.0)},
+		{"id": 3, "home": true, "position": Vector3(28.0, 0.0, 7.0)},
+		{"id": 4, "home": false, "position": Vector3(44.0, 0.0, 18.0)},
 	]
-	var target := Rules.select_pass_target(players, 1, true, Vector2.RIGHT, Vector2(30.0, 18.0))
+	var target := Rules.select_pass_target(players, 1, true, Vector3.RIGHT, Vector3(30.0, 0.0, 18.0))
 	_expect(int(target.id) == 2, "rightward pass selects the forward teammate")
-	var reverse := Rules.select_pass_target(players, 1, true, Vector2.UP, Vector2(30.0, 18.0))
+	var reverse := Rules.select_pass_target(players, 1, true, Vector3.FORWARD, Vector3(30.0, 0.0, 18.0))
 	_expect(int(reverse.id) == 3, "vertical input selects the vertical outlet")
 
 func _test_pass_speed_and_shot_speed_are_distinct() -> void:
-	var short_kick := Rules.pass_velocity(Vector2.ZERO, Vector2(10.0, 0.0))
-	var long_pass := Rules.pass_velocity(Vector2.ZERO, Vector2(10.0, 0.0), true)
-	var shot := Rules.shot_velocity(Vector2(35.0, 18.0), true)
+	var short_kick := Rules.pass_velocity(Vector3.ZERO, Vector3(10.0, 0.0, 0.0))
+	var long_pass := Rules.pass_velocity(Vector3.ZERO, Vector3(10.0, 0.0, 0.0), true)
+	var shot := Rules.shot_velocity(Vector3(35.0, 0.0, 18.0), true)
 	_expect(is_equal_approx(short_kick.length(), Rules.PASS_SPEED), "short pass has a stable launch speed")
 	_expect(long_pass.length() > short_kick.length() and shot.length() > long_pass.length(),
 		"long pass and shot have readable speed tiers")
 
 func _test_goal_detection() -> void:
-	_expect(Rules.goal_scoring_team(Vector2(-0.1, 18.0)) == -1, "left goal awards the away team")
-	_expect(Rules.goal_scoring_team(Vector2(85.1, 18.0)) == 1, "right goal awards the home team")
-	_expect(Rules.goal_scoring_team(Vector2(-0.1, 1.0)) == 0, "ball outside goal mouth is not a goal")
+	_expect(Rules.goal_scoring_team(Vector3(-0.1, 0.2, 18.0)) == -1, "left goal awards the away team")
+	_expect(Rules.goal_scoring_team(Vector3(85.1, 0.2, 18.0)) == 1, "right goal awards the home team")
+	_expect(Rules.goal_scoring_team(Vector3(-0.1, 0.2, 1.0)) == 0, "ball outside goal mouth is not a goal")
 
 func _test_3d_goal_height() -> void:
-	_expect(Rules.goal_scoring_team_3d(Vector3(-0.1, 1.2, 18.0)) == -1,
+	_expect(Rules.goal_scoring_team(Vector3(-0.1, 1.2, 18.0)) == -1,
 		"low ball crossing the goal line scores in 3D")
-	_expect(Rules.goal_scoring_team_3d(Vector3(-0.1, Rules.GOAL_HEIGHT + 0.1, 18.0)) == 0,
+	_expect(Rules.goal_scoring_team(Vector3(-0.1, Rules.GOAL_HEIGHT + 0.1, 18.0)) == 0,
 		"ball above the crossbar does not score")
 
 func _test_trajectory_events_and_pitch_bounds() -> void:
@@ -97,36 +97,36 @@ func _test_trajectory_events_and_pitch_bounds() -> void:
 
 func _test_nearest_player_filtering() -> void:
 	var players := [
-		{"id": 1, "home": true, "position": Vector2(10.0, 10.0)},
-		{"id": 2, "home": false, "position": Vector2(11.0, 10.0)},
-		{"id": 3, "home": true, "position": Vector2(14.0, 10.0)},
+		{"id": 1, "home": true, "position": Vector3(10.0, 0.0, 10.0)},
+		{"id": 2, "home": false, "position": Vector3(11.0, 0.0, 10.0)},
+		{"id": 3, "home": true, "position": Vector3(14.0, 0.0, 10.0)},
 	]
-	_expect(Rules.nearest_player_id(players, Vector2(11.1, 10.0)) == 2, "nearest player wins free-ball selection")
-	_expect(Rules.nearest_player_id(players, Vector2(11.1, 10.0), 1) == 1, "home filter selects nearest home player")
+	_expect(Rules.nearest_player_id(players, Vector3(11.1, 0.0, 10.0)) == 2, "nearest player wins free-ball selection")
+	_expect(Rules.nearest_player_id(players, Vector3(11.1, 0.0, 10.0), 1) == 1, "home filter selects nearest home player")
 
 func _test_camera_target() -> void:
-	var left := Rules.camera_target(Vector2(-20.0, -4.0))
-	var right := Rules.camera_target(Vector2(100.0, 45.0))
-	_expect(left == Vector2(Rules.CAMERA_TARGET_X_MIN, Rules.CAMERA_TARGET_Y_MIN),
+	var left := Rules.camera_target(Vector3(-20.0, 5.0, -4.0))
+	var right := Rules.camera_target(Vector3(100.0, 5.0, 45.0))
+	_expect(left == Vector3(Rules.CAMERA_TARGET_X_MIN, 0.0, Rules.CAMERA_TARGET_Z_MIN),
 		"camera clamps safely at the left/top pitch bounds")
-	_expect(right == Vector2(Rules.CAMERA_TARGET_X_MAX, Rules.CAMERA_TARGET_Y_MAX),
+	_expect(right == Vector3(Rules.CAMERA_TARGET_X_MAX, 0.0, Rules.CAMERA_TARGET_Z_MAX),
 		"camera clamps safely at the right/bottom pitch bounds")
 
 func _test_player_separation() -> void:
-	var resolved := Rules.resolve_pair_separation(Vector2.ZERO, Vector2.ZERO)
-	var first: Vector2 = resolved.first
-	var second: Vector2 = resolved.second
+	var resolved := Rules.resolve_pair_separation(Vector3.ZERO, Vector3.ZERO)
+	var first: Vector3 = resolved.first
+	var second: Vector3 = resolved.second
 	_expect(first.distance_to(second) >= Rules.PLAYER_RADIUS * 2.0 - 0.001,
 		"overlapping players separate to their footprint distance")
 
 func _test_switch_target() -> void:
 	var players := [
-		{"id": 1, "home": true, "position": Vector2(10.0, 18.0)},
-		{"id": 2, "home": true, "position": Vector2(18.0, 18.0)},
-		{"id": 3, "home": true, "position": Vector2(10.0, 8.0)},
-		{"id": 4, "home": false, "position": Vector2(12.0, 18.0)},
+		{"id": 1, "home": true, "position": Vector3(10.0, 0.0, 18.0)},
+		{"id": 2, "home": true, "position": Vector3(18.0, 0.0, 18.0)},
+		{"id": 3, "home": true, "position": Vector3(10.0, 0.0, 8.0)},
+		{"id": 4, "home": false, "position": Vector3(12.0, 0.0, 18.0)},
 	]
-	_expect(Rules.select_switch_target(players, 1, Vector2.RIGHT, Vector2(12.0, 18.0)) == 2,
+	_expect(Rules.select_switch_target(players, 1, Vector3.RIGHT, Vector3(12.0, 0.0, 18.0)) == 2,
 		"directional switch selects a teammate in the requested lane")
 
 func _test_visible_goal_matches_scoring_mouth() -> void:

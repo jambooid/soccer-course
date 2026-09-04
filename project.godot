@@ -17,12 +17,6 @@ config/icon="res://icon.svg"
 
 [autoload]
 
-DataLoader="*res://utils/data_loader.gd"
-GameEvents="*res://scenes/screens/world/game_events.gd"
-GameManager="*res://scenes/game_manager/game_manager.gd"
-InputBuffer="*res://utils/input_buffer.gd"
-SoundPlayer="*res://scenes/audio/sound_player.gd"
-MusicPlayer="*res://scenes/audio/music_player.gd"
 PitchConstants="*res://utils/pitch_constants.gd"
 
 [debug]
@@ -146,15 +140,6 @@ p2_special={
 "events": [Object(InputEventKey,"resource_local_to_scene":false,"resource_name":"","device":-1,"window_id":0,"alt_pressed":false,"shift_pressed":false,"ctrl_pressed":false,"meta_pressed":false,"pressed":false,"keycode":0,"physical_keycode":61,"key_label":0,"unicode":61,"location":0,"echo":false,"script":null)
 ]
 }
-
-[layer_names]
-
-2d_physics/layer_1="PitchWalls"
-2d_physics/layer_2="Player"
-2d_physics/layer_3="Ball"
-2d_physics/layer_4="InvisibleWalls"
-2d_physics/layer_5="ScoringArea"
-2d_physics/layer_6="GoalKeeperHands"
 
 [rendering]
 

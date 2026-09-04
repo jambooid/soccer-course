@@ -10,11 +10,11 @@ static func step(position: Vector3, velocity: Vector3, delta: float,
 		bounciness: float = 0.0) -> Dictionary:
 	var dt := maxf(delta, 0.0)
 	var next_velocity := velocity
-	var horizontal := Vector2(next_velocity.x, next_velocity.z)
+	var horizontal := Vector3(next_velocity.x, 0.0, next_velocity.z)
 	var friction := air_friction if position.y > EPSILON or next_velocity.y > 0.0 else ground_friction
-	horizontal = horizontal.move_toward(Vector2.ZERO, maxf(friction, 0.0) * dt)
+	horizontal = horizontal.move_toward(Vector3.ZERO, maxf(friction, 0.0) * dt)
 	next_velocity.x = horizontal.x
-	next_velocity.z = horizontal.y
+	next_velocity.z = horizontal.z
 	next_velocity.y -= maxf(gravity, 0.0) * dt
 	var next_position := position + next_velocity * dt
 	var bounced := false
@@ -37,7 +37,7 @@ static func step(position: Vector3, velocity: Vector3, delta: float,
 
 static func step_on_pitch(position: Vector3, velocity: Vector3, delta: float,
 		gravity: float, ground_friction: float, air_friction: float,
-		bounciness: float, pitch_size: Vector2, goal_half_width: float,
+		bounciness: float, pitch_size: Vector3, goal_half_width: float,
 		goal_height: float, boundary_restitution: float) -> Dictionary:
 	## Advances the ball and resolves touchline/goal-line boundaries. The goal
 	## opening is only traversable inside the horizontal mouth and below the
@@ -47,12 +47,12 @@ static func step_on_pitch(position: Vector3, velocity: Vector3, delta: float,
 	var next_position: Vector3 = result.position
 	var next_velocity: Vector3 = result.velocity
 	var goal_open := (next_position.x < 0.0 or next_position.x > pitch_size.x) \
-		and absf(next_position.z - pitch_size.y * 0.5) <= goal_half_width \
+		and absf(next_position.z - pitch_size.z * 0.5) <= goal_half_width \
 		and next_position.y <= goal_height
 	var boundary_hit := false
 	var boundary_axis := ""
-	if next_position.z < 0.0 or next_position.z > pitch_size.y:
-		next_position.z = clampf(next_position.z, 0.0, pitch_size.y)
+	if next_position.z < 0.0 or next_position.z > pitch_size.z:
+		next_position.z = clampf(next_position.z, 0.0, pitch_size.z)
 		next_velocity.z = -next_velocity.z * clampf(boundary_restitution, 0.0, 1.0)
 		boundary_hit = true
 		boundary_axis = "z"
@@ -106,7 +106,7 @@ static func sample_path(origin: Vector3, velocity: Vector3, duration: float,
 
 static func sample_pitch_path(origin: Vector3, velocity: Vector3, duration: float,
 		sample_interval: float, gravity: float, ground_friction: float,
-		air_friction: float, bounciness: float, pitch_size: Vector2,
+		air_friction: float, bounciness: float, pitch_size: Vector3,
 		goal_half_width: float, goal_height: float, boundary_restitution: float,
 		max_samples: int = 256) -> PackedVector3Array:
 	var points := PackedVector3Array()

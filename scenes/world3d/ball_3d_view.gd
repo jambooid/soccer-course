@@ -1,8 +1,6 @@
 class_name Ball3DView
 extends Node3D
 
-const Presentation3DScript := preload("res://utils/presentation_3d.gd")
-const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 const LowPolyBallScene := preload("res://assets/3d/generated/ball.obj")
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
@@ -30,20 +28,15 @@ func _ready() -> void:
 	shadow.position.y = -radius + 0.006
 	add_child(shadow)
 
-func sync_from_simulation(position: Vector2, height: float = 0.0,
-		velocity: Vector2 = Vector2.ZERO) -> void:
-	sync_world_position(Coordinate3D.to_world(position, height),
-		Vector3(velocity.x, 0.0, velocity.y))
-
 func sync_world_position(position: Vector3, velocity: Vector3 = Vector3.ZERO) -> void:
-	global_position = Presentation3DScript.to_world_3d(position, simulation_scale)
+	global_position = position * maxf(simulation_scale, 0.0001)
 	if model != null and velocity.length_squared() > 0.0001:
 		# Roll around the ground-plane perpendicular to travel direction.
 		var distance := velocity.length() * simulation_scale
-		var travel := Vector2(velocity.x, velocity.z).normalized()
+		var travel := Vector3(velocity.x, 0.0, velocity.z).normalized()
 		if travel.is_zero_approx():
 			return
-		model.rotate(Vector3(-travel.y, 0.0, travel.x), distance / maxf(radius, 0.001))
+		model.rotate(Vector3(-travel.z, 0.0, travel.x), distance / maxf(radius, 0.001))
 
 func _make_material(color: Color, transparent := false) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()

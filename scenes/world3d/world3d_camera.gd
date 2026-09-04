@@ -3,7 +3,7 @@ extends Camera3D
 
 const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 
-@export var pitch_size := Vector2(Coordinate3D.PITCH_SIZE.x, Coordinate3D.PITCH_SIZE.z)
+@export var pitch_size := Coordinate3D.PITCH_SIZE
 @export var follow_height := 30.0
 @export var follow_distance := 34.0
 @export var follow_speed := 6.0
@@ -12,20 +12,20 @@ var target := Vector3.ZERO
 
 func _ready() -> void:
 	current = true
-	position = Vector3(pitch_size.x * 0.5, follow_height, pitch_size.y + follow_distance)
-	target = Vector3(pitch_size.x * 0.5, 0.0, pitch_size.y * 0.5)
+	position = Vector3(pitch_size.x * 0.5, follow_height, pitch_size.z + follow_distance)
+	target = Vector3(pitch_size.x * 0.5, 0.0, pitch_size.z * 0.5)
 	look_at(target)
 
 func set_target_world(world_position: Vector3) -> void:
 	target = Vector3(
 		clampf(world_position.x, 0.0, pitch_size.x),
 		0.0,
-		clampf(world_position.z, 0.0, pitch_size.y))
+		clampf(world_position.z, 0.0, pitch_size.z))
 
 func _process(delta: float) -> void:
 	var desired := Vector3(
 		clampf(target.x, 0.0, pitch_size.x),
 		follow_height,
-		clampf(target.z + follow_distance, follow_distance, pitch_size.y + follow_distance))
+		clampf(target.z + follow_distance, follow_distance, pitch_size.z + follow_distance))
 	position = position.lerp(desired, 1.0 - exp(-follow_speed * delta))
 	look_at(target)

@@ -1,12 +1,10 @@
 class_name Player3DView
 extends Node3D
 
-const Presentation3DScript := preload("res://utils/presentation_3d.gd")
-const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 const LowPolyPlayerScene := preload("res://assets/3d/generated/player.obj")
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
-## Keep this at one; legacy pixel scenes can still pass an explicit scale.
+## Keep this at one because the simulation already uses world metres.
 @export var simulation_scale := 1.0
 @export var body_radius := 0.32
 @export var body_height := 1.65
@@ -63,20 +61,17 @@ func _ready() -> void:
 	carrier_marker.visible = false
 	add_child(carrier_marker)
 
-func sync_from_simulation(position: Vector2, height: float = 0.0) -> void:
-	sync_world_position(Coordinate3D.to_world(position, height))
-
 func sync_world_position(position: Vector3) -> void:
-	global_position = Presentation3DScript.to_world_3d(position, simulation_scale)
+	global_position = position * maxf(simulation_scale, 0.0001)
 
 func set_team_color(color: Color) -> void:
 	team_color = color
 	_apply_team_color()
 
-func set_facing(direction: Vector2) -> void:
+func set_facing(direction: Vector3) -> void:
 	if direction.is_zero_approx():
 		return
-	rotation.y = atan2(direction.x, direction.y)
+	rotation.y = atan2(direction.x, direction.z)
 
 func set_selected(selected: bool) -> void:
 	if selection_ring != null:

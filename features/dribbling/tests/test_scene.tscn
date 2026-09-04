@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3 uid="uid://ck3on4b7iyc4b"]
-
-[ext_resource type="Script" uid="uid://c6noxp40xc1hu" path="res://tools/test_dribbling.gd" id="1"]
-
-[node name="TestDribbling" type="Node2D"]
-script = ExtResource("1")

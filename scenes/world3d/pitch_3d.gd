@@ -76,8 +76,7 @@ func _add_goals() -> void:
 		# plane; the rear frame and net extend outside the pitch from there.
 		_add_goal_frame(goal_x, center_z, goal_color)
 		var frame_x: float = goal_x + direction * GOAL_DEPTH
-		# Match3DRules uses metres; the pitch mesh is already 85x36 world units
-		# after converting the legacy 850x360 coordinates with simulation_scale.
+		# Match3DRules and the pitch mesh both use canonical metre units.
 		var goal_half_width := GOAL_HALF_WIDTH
 		var goal_width := GOAL_WIDTH
 		# The visible rear frame spans the complete scoring mouth, not a narrow placeholder.

@@ -2,10 +2,11 @@ class_name Match3DRules
 extends RefCounted
 
 const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
-## Pure gameplay helpers for the playable 3D match. Coordinates are meters on
-## the X/Z pitch plane; Vector2.y maps to world Z in the presentation layer.
 
-const PITCH_SIZE := Vector2(Coordinate3D.PITCH_SIZE.x, Coordinate3D.PITCH_SIZE.z)
+## All gameplay state is expressed in world-space Vector3 values. Players
+## move on X/Z while the ball alone uses Y for height.
+
+const PITCH_SIZE := Coordinate3D.PITCH_SIZE
 const GOAL_HALF_WIDTH := Coordinate3D.GOAL_HALF_WIDTH
 const GOAL_HEIGHT := 3.1
 const PLAYER_RADIUS := 0.48
@@ -16,30 +17,30 @@ const LONG_PASS_SPEED := 35.0
 const SHOT_SPEED := 48.0
 const CAMERA_TARGET_X_MIN := 10.0
 const CAMERA_TARGET_X_MAX := 75.0
-const CAMERA_TARGET_Y_MIN := 7.0
-const CAMERA_TARGET_Y_MAX := 29.0
+const CAMERA_TARGET_Z_MIN := 7.0
+const CAMERA_TARGET_Z_MAX := 29.0
 
-static func advance_player(position: Vector2, velocity: Vector2, desired_direction: Vector2,
+static func advance_player(position: Vector3, velocity: Vector3, desired_direction: Vector3,
 		delta: float, top_speed: float, acceleration: float = 24.0) -> Dictionary:
-	var direction := desired_direction.normalized()
+	var direction := Coordinate3D.ground(desired_direction).normalized()
 	var desired_velocity := direction * top_speed
 	var next_velocity := velocity.move_toward(desired_velocity, acceleration * maxf(delta, 0.0))
-	var next_position := position + next_velocity * maxf(delta, 0.0)
-	next_position.x = clampf(next_position.x, PLAYER_RADIUS, PITCH_SIZE.x - PLAYER_RADIUS)
-	next_position.y = clampf(next_position.y, PLAYER_RADIUS, PITCH_SIZE.y - PLAYER_RADIUS)
+	next_velocity.y = 0.0
+	var next_position := Coordinate3D.clamp_pitch(position + next_velocity * maxf(delta, 0.0), PLAYER_RADIUS)
+	next_position.y = 0.0
 	return {"position": next_position, "velocity": next_velocity}
 
 static func select_pass_target(players: Array, passer_id: int, home: bool,
-		direction: Vector2, ball_position: Vector2) -> Dictionary:
-	var aim := direction.normalized()
+		direction: Vector3, ball_position: Vector3) -> Dictionary:
+	var aim := Coordinate3D.ground(direction).normalized()
 	if aim.is_zero_approx():
-		aim = Vector2.RIGHT if home else Vector2.LEFT
+		aim = Vector3.RIGHT if home else Vector3.LEFT
 	var best: Dictionary = {}
 	var best_score := -INF
 	for candidate: Dictionary in players:
 		if bool(candidate.get("home", false)) != home or int(candidate.get("id", -1)) == passer_id:
 			continue
-		var offset: Vector2 = candidate.get("position", Vector2.ZERO) - ball_position
+		var offset: Vector3 = Coordinate3D.ground(candidate.get("position", Vector3.ZERO) - ball_position)
 		var distance := offset.length()
 		if distance < 1.0 or distance > 34.0:
 			continue
@@ -51,17 +52,17 @@ static func select_pass_target(players: Array, passer_id: int, home: bool,
 			best = candidate
 	return best.duplicate(true)
 
-static func pass_velocity(origin: Vector2, target: Vector2, long_pass := false) -> Vector2:
+static func pass_velocity(origin: Vector3, target: Vector3, long_pass := false) -> Vector3:
 	var speed := LONG_PASS_SPEED if long_pass else PASS_SPEED
-	return origin.direction_to(target) * speed
+	return Coordinate3D.ground(target - origin).normalized() * speed
 
-static func shot_velocity(origin: Vector2, home: bool, vertical_aim: float = 0.0) -> Vector2:
-	var goal := Vector2(PITCH_SIZE.x if home else 0.0,
-		PITCH_SIZE.y * 0.5 + clampf(vertical_aim, -GOAL_HALF_WIDTH * 0.72, GOAL_HALF_WIDTH * 0.72))
-	return origin.direction_to(goal) * SHOT_SPEED
+static func shot_velocity(origin: Vector3, home: bool, lateral_aim: float = 0.0) -> Vector3:
+	var goal := Vector3(PITCH_SIZE.x if home else 0.0, 0.0,
+		PITCH_SIZE.z * 0.5 + clampf(lateral_aim, -GOAL_HALF_WIDTH * 0.72, GOAL_HALF_WIDTH * 0.72))
+	return Coordinate3D.ground(goal - origin).normalized() * SHOT_SPEED
 
-static func goal_scoring_team(ball_position: Vector2) -> int:
-	if absf(ball_position.y - PITCH_SIZE.y * 0.5) > GOAL_HALF_WIDTH:
+static func goal_scoring_team(ball_position: Vector3) -> int:
+	if ball_position.y < -0.001 or ball_position.y > GOAL_HEIGHT or not Coordinate3D.in_goal_mouth(ball_position):
 		return 0
 	if ball_position.x < 0.0:
 		return -1
@@ -69,40 +70,32 @@ static func goal_scoring_team(ball_position: Vector2) -> int:
 		return 1
 	return 0
 
-static func goal_scoring_team_3d(ball_world_position: Vector3) -> int:
-	if ball_world_position.y < -0.001 or ball_world_position.y > GOAL_HEIGHT:
-		return 0
-	return goal_scoring_team(Coordinate3D.from_world(ball_world_position))
-
-static func can_ground_player_control_ball(player_position: Vector2,
-		ball_world_position: Vector3, radius: float = CONTROL_RADIUS,
+static func can_ground_player_control_ball(player_position: Vector3,
+		ball_position: Vector3, radius: float = CONTROL_RADIUS,
 		max_height: float = PLAYER_CONTROL_HEIGHT_MAX) -> bool:
-	## Ground players only control a ball inside their footprint and below the
-	## configured foot-control height. Aerial control can be added separately.
-	if ball_world_position.y < -0.001 or ball_world_position.y > max_height:
+	if ball_position.y < -0.001 or ball_position.y > max_height:
 		return false
-	return player_position.distance_to(Vector2(ball_world_position.x,
-		ball_world_position.z)) <= maxf(radius, 0.0)
+	return Coordinate3D.ground(player_position - ball_position).length() <= maxf(radius, 0.0)
 
-static func camera_target(ball_position: Vector2) -> Vector2:
+static func camera_target(ball_position: Vector3) -> Vector3:
 	return Coordinate3D.camera_target(ball_position,
-		Vector2(CAMERA_TARGET_X_MIN, CAMERA_TARGET_Y_MIN))
+		Vector3(CAMERA_TARGET_X_MIN, 0.0, CAMERA_TARGET_Z_MIN))
 
-static func nearest_player_id(players: Array, ball_position: Vector2, home_filter: int = 0) -> int:
+static func nearest_player_id(players: Array, ball_position: Vector3, home_filter: int = 0) -> int:
 	var closest_id := -1
 	var closest_distance := INF
 	for player: Dictionary in players:
 		var home := bool(player.get("home", false))
 		if home_filter != 0 and home != (home_filter > 0):
 			continue
-		var distance := (player.get("position", Vector2.ZERO) as Vector2).distance_squared_to(ball_position)
+		var distance := Coordinate3D.ground(player.get("position", Vector3.ZERO) - ball_position).length_squared()
 		if distance < closest_distance:
 			closest_distance = distance
 			closest_id = int(player.get("id", -1))
 	return closest_id
 
-static func select_switch_target(players: Array, current_id: int, direction: Vector2,
-		ball_position: Vector2) -> int:
+static func select_switch_target(players: Array, current_id: int, direction: Vector3,
+		ball_position: Vector3) -> int:
 	var current: Dictionary = {}
 	for player: Dictionary in players:
 		if int(player.get("id", -1)) == current_id:
@@ -110,13 +103,13 @@ static func select_switch_target(players: Array, current_id: int, direction: Vec
 			break
 	if current.is_empty():
 		return nearest_player_id(players, ball_position, 1)
-	var aim := direction.normalized()
+	var aim := Coordinate3D.ground(direction).normalized()
 	var best_id := -1
 	var best_score := -INF
 	for player: Dictionary in players:
 		if int(player.get("id", -1)) == current_id or bool(player.get("home", false)) != bool(current.get("home", true)):
 			continue
-		var offset: Vector2 = player.get("position", Vector2.ZERO) - ball_position
+		var offset: Vector3 = Coordinate3D.ground(player.get("position", Vector3.ZERO) - ball_position)
 		var distance := offset.length()
 		if aim.is_zero_approx():
 			var neutral_score := -distance
@@ -131,14 +124,15 @@ static func select_switch_target(players: Array, current_id: int, direction: Vec
 			best_id = int(player.get("id", -1))
 	return best_id
 
-static func resolve_pair_separation(first: Vector2, second: Vector2,
+static func resolve_pair_separation(first: Vector3, second: Vector3,
 		radius: float = PLAYER_RADIUS) -> Dictionary:
-	var offset := second - first
+	var offset := Coordinate3D.ground(second - first)
 	var minimum := radius * 2.0
 	if offset.length_squared() >= minimum * minimum:
 		return {"first": first, "second": second}
 	var normal := offset.normalized()
 	if normal.is_zero_approx():
-		normal = Vector2.RIGHT
+		normal = Vector3.RIGHT
 	var correction := (minimum - offset.length()) * 0.5
-	return {"first": first - normal * correction, "second": second + normal * correction}
+	return {"first": Coordinate3D.ground(first - normal * correction),
+		"second": Coordinate3D.ground(second + normal * correction)}
