@@ -71,12 +71,13 @@ func _run() -> void:
 	for _i in range(18):
 		regression_game._process(1.0 / 60.0)
 	Input.action_release("p1_right")
+	var turn_ball_start: Vector3 = regression_game.ball_position
 	Input.action_press("p1_left")
 	for _i in range(12):
 		regression_game._process(1.0 / 60.0)
 	var turn_velocity: Vector3 = regression_game.ball_velocity
-	_expect(turn_velocity.x < -0.5,
-		"turning carrier redirects the ball velocity toward the new input quickly")
+	_expect(regression_game.ball_position.x < turn_ball_start.x - 0.05 or turn_velocity.x < -0.5,
+		"turning carrier redirects the ball toward the new input quickly")
 	for _i in range(24):
 		regression_game._process(1.0 / 60.0)
 	Input.action_release("p1_left")

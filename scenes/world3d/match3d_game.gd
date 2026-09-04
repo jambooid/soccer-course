@@ -365,55 +365,59 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 		dribble_loss_timer = 0.0
 
 	# A hard cut must move the ball to the new leading side immediately. The
-	# assist is still velocity-based, but its acceleration is deliberately high
-	# enough that one or two fixed ticks cannot leave the ball at the old hip.
+	# 2D dribbling implementation uses the same idea: during the short turn
+	# window, collect the ball toward the new foot target and suppress its old
+	# rolling velocity. This avoids the characteristic "ball dragged behind"
+	# frame that a pure inertial correction produces.
 	var foot_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
 	var foot_error_plane := foot_target_plane - ball_plane
-	var foot_error_distance := foot_error_plane.length()
 	var turn_assist_active := carrier_speed > 0.25 and turn_amount > 0.08
 	if turn_assist_active:
-		# If the ball is already behind the new foot target, follow the stick
-		# direction directly. Otherwise the error vector can point back toward the
-		# old side and make a right-to-left cut look like the ball is being dragged.
-		var correction_direction := intent_plane if foot_error_plane.dot(intent_plane) < 0.0 else foot_error_plane.normalized()
-		if not correction_direction.is_zero_approx():
-			var correction_speed := clampf(carrier_speed * 1.45 + foot_error_distance * 7.0, 8.0, 20.0)
-			var correction_target := correction_direction * correction_speed
-			var correction_acceleration := 92.0 + turn_amount * 72.0
-			correction_acceleration += DribblePhysics3D.technique_normalized(technique) * 24.0
-			ball_velocity_plane = ball_velocity_plane.move_toward(correction_target, correction_acceleration * delta)
+		# If the old touch is already behind the new target, extend the target
+		# just past the ball. This is the same "collect to the new foot" behavior
+		# used by the 2D dribble state and prevents a brief backwards tug.
+		if foot_error_plane.dot(intent_plane) <= 0.0:
+			var extra_turn_offset := minf(foot_error_plane.length() + 0.25, 1.6)
+			foot_target_plane = carrier_plane + intent_plane * (
+				DribblePhysics3D.touch_offset(technique, mode) + extra_turn_offset)
+		var angle_factor := clampf((turn_amount - 0.5) / 1.5, 0.0, 1.0)
+		var turn_duration := lerpf(0.14, 0.30, angle_factor)
+		var follow_factor := clampf(1.0 - pow(0.03, delta / turn_duration), 0.24, 0.60)
+		ball_plane = ball_plane.lerp(foot_target_plane, follow_factor)
+		# The turn is a controlled sole/inside-foot action, not a free roll.
+		# The target itself moves with the player, so the ball remains readable
+		# without carrying stale velocity from the previous heading.
+		ball_velocity_plane = Vector2.ZERO
+	else:
+		# When the player stops, kill residual rolling almost immediately. Only
+		# use a tiny settling vector when the ball is clearly outside the foot
+		# pocket; once it is close, velocity is clamped to zero.
+		if carrier_speed < 0.12 and not opponent_interference and not touched_this_tick:
+			var settle_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
+			var settle_error_plane := settle_target_plane - ball_plane
+			if distance <= control_distance + 0.45:
+				ball_velocity_plane = ball_velocity_plane.move_toward(Vector2.ZERO, 80.0 * delta)
+				if ball_velocity_plane.length() < 0.08:
+					ball_velocity_plane = Vector2.ZERO
+			elif not settle_error_plane.is_zero_approx():
+				ball_velocity_plane = ball_velocity_plane.move_toward(
+					settle_error_plane.normalized() * minf(settle_error_plane.length() * 5.0, 3.0),
+					80.0 * delta)
 
-	# When the player stops, kill residual rolling almost immediately. Only use
-	# a tiny settling vector when the ball is clearly outside the foot pocket;
-	# once it is close, velocity is clamped to zero instead of endlessly nudging.
-	if carrier_speed < 0.12 and not opponent_interference and not touched_this_tick:
-		var settle_target_plane := carrier_plane + intent_plane * DribblePhysics3D.touch_offset(technique, mode)
-		var settle_error_plane := settle_target_plane - ball_plane
-		if distance <= control_distance + 0.45:
-			ball_velocity_plane = ball_velocity_plane.move_toward(Vector2.ZERO, 80.0 * delta)
-			if ball_velocity_plane.length() < 0.08:
-				ball_velocity_plane = Vector2.ZERO
-		elif not settle_error_plane.is_zero_approx():
-			ball_velocity_plane = ball_velocity_plane.move_toward(
-				settle_error_plane.normalized() * minf(settle_error_plane.length() * 5.0, 3.0),
-				80.0 * delta)
+		# If the ball is outside the pocket during a non-turning run, recover it
+		# toward the carrier. During a turn this force is intentionally disabled,
+		# otherwise it fights the new-foot target and recreates the trailing feel.
+		if distance > control_distance and not opponent_interference:
+			var recovery_direction := (carrier_plane - ball_plane).normalized()
+			if not recovery_direction.is_zero_approx():
+				var recovery_speed := maxf(carrier_speed * 1.25, 4.5)
+				ball_velocity_plane = ball_velocity_plane.move_toward(
+					recovery_direction * recovery_speed, 52.0 * delta)
+				dribble_loss_timer = maxf(dribble_loss_timer - delta * 3.0, 0.0)
 
-	# Turning changes the carrier velocity before the next foot contact. Give
-	# the ball a short, non-teleporting recovery window so that a normal turn
-	# cannot be mistaken for a loose touch. Interference is handled separately
-	# by the tackle code and is the only immediate cause of possession loss.
-	if distance > control_distance and not opponent_interference and turn_amount <= 0.25:
-		var recovery_direction := (carrier_plane - ball_plane).normalized()
-		if not recovery_direction.is_zero_approx():
-			var recovery_speed := maxf(carrier_speed * 1.25, 4.5)
-			var recovery_acceleration := 52.0 + turn_amount * 38.0
-			ball_velocity_plane = ball_velocity_plane.move_toward(
-				recovery_direction * recovery_speed, recovery_acceleration * delta)
-			dribble_loss_timer = maxf(dribble_loss_timer - delta * 3.0, 0.0)
-
-	# Integrate the 2D ball state only after touch/turn/settle forces are applied,
-	# so a direction change affects this same fixed tick instead of one frame late.
-	ball_plane += ball_velocity_plane * delta
+		# Integrate the 2D ball state only after touch/settle/recovery forces are
+		# applied, so normal running retains the independent ball physics.
+		ball_plane += ball_velocity_plane * delta
 	ball_plane.x = clampf(ball_plane.x, 0.12, Rules.PITCH_SIZE.x - 0.12)
 	ball_plane.y = clampf(ball_plane.y, 0.12, Rules.PITCH_SIZE.z - 0.12)
 	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane,

@@ -27,11 +27,12 @@ func _run() -> void:
 	var carrier: Dictionary = demo._player_by_id(demo.DEMO_PLAYER_ID)
 	_expect((carrier.position as Vector3).x > start.x + 0.2, "dribble lab carrier responds to movement input")
 	_expect(demo.ball_velocity.length() > 0.1, "dribble lab ball receives a foot impulse")
+	var turn_ball_start: Vector3 = demo.ball_position
 	Input.action_press("p1_left")
 	for _i in range(8):
 		demo._process(1.0 / 60.0)
-	_expect(demo.ball_velocity.x < -0.8,
-		"dribble lab redirects ball velocity within the first turn ticks")
+	_expect(demo.ball_position.x < turn_ball_start.x - 0.05 or demo.ball_velocity.x < -0.8,
+		"dribble lab redirects the ball toward the new side within the first turn ticks")
 	for _i in range(16):
 		demo._process(1.0 / 60.0)
 	Input.action_release("p1_left")
