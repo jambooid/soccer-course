@@ -108,6 +108,19 @@ func _run() -> void:
 		regression_game.ball_velocity.length() < 6.0 and (force_carrier.position as Vector3).x > follower_start.x and
 		regression_game.carrier_id == int(force_carrier.id),
 		"released input lets carrier and ball coast forward together without pullback or lost possession")
+	force_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	force_carrier.velocity = Vector3.RIGHT * 0.70
+	force_carrier.movement_intent = false
+	regression_game.players[regression_game.carrier_id] = force_carrier
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62 + Vector3.UP * 0.08
+	regression_game.ball_velocity = Vector3.RIGHT * 0.74
+	var low_speed_position: Vector3 = regression_game.ball_position
+	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
+	force_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect(regression_game.ball_velocity.is_zero_approx() and force_carrier.velocity.is_zero_approx() and
+		regression_game.ball_position.is_equal_approx(low_speed_position) and
+		regression_game.carrier_id == int(force_carrier.id),
+		"a released controlled carrier and low-speed ball stop together without pullback")
 	regression_game.carrier_id = int(force_carrier.id)
 	regression_game.controlled_id = int(force_carrier.id)
 	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62

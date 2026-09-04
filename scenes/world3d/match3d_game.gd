@@ -25,6 +25,7 @@ const CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
 const CAMERA_LATERAL_FOLLOW := 0.30
 const CAMERA_LATERAL_LIMIT := 14.0
 const CAMERA_LATERAL_DEADZONE := 2.5
+const IDLE_CONTROLLED_STOP_SPEED := 0.75
 
 enum DribblePhase { FREE_ROLL, TURNAROUND_ANCHOR }
 
@@ -375,6 +376,7 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	# touch is released. Every other period is independent rolling plus ordinary
 	# control assistance; there is no continuous turn lerp.
 	var turn_anchor_active := dribble_phase == DribblePhase.TURNAROUND_ANCHOR
+	var external_force := false
 	if turn_anchor_active:
 		dribble_turn_anchor_timer = maxf(dribble_turn_anchor_timer - delta, 0.0)
 		ball_plane = carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * 0.24
@@ -387,6 +389,17 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 		# The ball is free between contacts. A contact is the sole point where a
 		# new lane, a velocity reset, or a turn penalty is allowed to take effect.
 		ball_velocity_plane = DribblePhysics3D.apply_ground_friction_2d(ball_velocity_plane, delta)
+		external_force = (ball_velocity_plane - carrier_velocity_plane).length() > 14.0
+		# Let a released controlled carrier coast with the ball at ordinary speeds,
+		# then cut the long friction tail once both are visibly settling. This is a
+		# stop condition, not an attraction: the ball stays at its current position.
+		var released_controlled_carrier := int(carrier.id) == controlled_id and not has_movement_intent
+		if released_controlled_carrier and not opponent_interference and not external_force and \
+			ball_velocity_plane.length() <= IDLE_CONTROLLED_STOP_SPEED:
+			ball_velocity_plane = Vector2.ZERO
+			carrier_velocity_plane = Vector2.ZERO
+			carrier_speed = 0.0
+			_stop_player_motion(int(carrier.id))
 		dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
 		var contact_zone := DribblePhysics3D.touch_offset(technique, mode) + 0.82
 		var in_contact_range := distance <= control_distance and distance <= contact_zone + 0.72
@@ -452,7 +465,6 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var post_distance := ball_plane.distance_to(carrier_plane)
 	var away_from_carrier := ball_velocity_plane.dot(ball_plane - carrier_plane) > 0.0
 	var carrier_pulling_away := carrier_velocity_plane.dot(carrier_plane - ball_plane) > 0.0
-	var external_force := (ball_velocity_plane - carrier_velocity_plane).length() > 14.0
 	# A ball is never pulled back to the carrier and a player cannot lose
 	# possession merely by releasing input. Only interference or external force
 	# can turn an overlong touch into a loose ball.
@@ -509,6 +521,16 @@ func _apply_dribble_turn_penalty(player_id: int, turn_type: int) -> void:
 			continue
 		player.velocity = Coordinate3D.ground(player.velocity) * multiplier
 		player.cutback_cooldown = 0.24
+		players[index] = player
+		return
+
+func _stop_player_motion(player_id: int) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) != player_id:
+			continue
+		player.velocity = Vector3.ZERO
+		player.movement_intent = false
 		players[index] = player
 		return
 
