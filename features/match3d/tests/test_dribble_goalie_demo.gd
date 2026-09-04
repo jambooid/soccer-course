@@ -31,6 +31,30 @@ func _run() -> void:
 	carrier = demo._player_by_id(demo.DEMO_PLAYER_ID)
 	var relative: Vector3 = demo.ball_position - (carrier.position as Vector3)
 	_expect(relative.x < 1.0, "dribble lab reverse turn brings ball back to the leading side")
+	var keeper: Dictionary = demo._player_by_id(demo.DEMO_KEEPER_ID)
+	var keeper_start_z := (keeper.position as Vector3).z
+	demo.ball_position = Vector3(18.0, 0.08, 27.0)
+	for _i in range(30):
+		demo._process(1.0 / 60.0)
+	keeper = demo._player_by_id(demo.DEMO_KEEPER_ID)
+	_expect((keeper.position as Vector3).z > keeper_start_z + 0.35,
+		"goalkeeper tracks the ball laterally along the goal line")
+	carrier = demo._player_by_id(demo.DEMO_PLAYER_ID)
+	keeper.position = Vector3(76.0, 0.0, 18.0)
+	carrier.position = Vector3(74.7, 0.0, 18.0)
+	demo.players[demo.DEMO_KEEPER_ID] = keeper
+	demo.players[demo.DEMO_PLAYER_ID] = carrier
+	demo.ball_position = Vector3(74.7, 0.08, 18.0)
+	demo.ball_velocity = Vector3.ZERO
+	demo.carrier_id = demo.DEMO_PLAYER_ID
+	demo._resolve_cpu_tackle(carrier)
+	_expect(demo.carrier_id == -1, "goalkeeper wins a close dribble challenge")
+	_expect(demo.ball_velocity.x < -0.1, "goalkeeper challenge sends the ball away from goal")
+	demo._reset_kickoff(true)
+	carrier = demo._player_by_id(demo.DEMO_PLAYER_ID)
+	_expect((carrier.position as Vector3).is_equal_approx(demo.DEMO_START) and
+		demo.carrier_id == demo.DEMO_PLAYER_ID,
+		"dribble lab reset restores the carrier and ball setup")
 	demo.free()
 	print("=== Dribble Goalie Lab Tests ===")
 	print("Results: %d passed, %d failed" % [passed, failed])

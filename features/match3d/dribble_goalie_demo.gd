@@ -8,7 +8,6 @@ const DEMO_PLAYER_ID := 0
 const DEMO_KEEPER_ID := 1
 const DEMO_START := Vector3(18.0, 0.0, 18.0)
 const DEMO_KEEPER_START := Vector3(76.0, 0.0, 18.0)
-const KEEPER_SPEED := 5.2
 const KEEPER_PRESS_DISTANCE := 1.55
 
 var _demo_label: Label
@@ -67,10 +66,10 @@ func _reset_kickoff(_home_kicks_off: bool) -> void:
 
 func _create_hud() -> void:
 	super._create_hud()
-	_demo_label = _hud_label(13, HORIZONTAL_ALIGNMENT_LEFT)
-	_demo_label.position = Vector2(12, 356)
-	_demo_label.size = Vector2(536, 34)
-	_demo_label.text = "DRIBBLE LAB: WASD MOVE   I SPRINT   L RESET   U TEST TACKLE"
+	_demo_label = _hud_label(11, HORIZONTAL_ALIGNMENT_LEFT)
+	_demo_label.position = Vector2(12, 84)
+	_demo_label.size = Vector2(536, 44)
+	_demo_label.text = "DRIBBLE LAB: WASD MOVE   I SPRINT   J SHOOT   U TACKLE   R RESET"
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	layer.add_child(_demo_label)
@@ -100,14 +99,17 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 
 func _update_hud() -> void:
 	super._update_hud()
-	if _demo_label != null and carrier_id == DEMO_PLAYER_ID:
-		var carrier := _player_by_id(DEMO_PLAYER_ID)
-		var keeper := _player_by_id(DEMO_KEEPER_ID)
-		var distance := (carrier.position as Vector3).distance_to(keeper.position as Vector3)
-		_demo_label.text = "DRIBBLE LAB   BALL %.2fm   KEEPER %.2fm   TOUCHES %d" % [
-			(carrier.position as Vector3).distance_to(Coordinate3D.ground(ball_position)), distance, dribble_touch_count]
+	if _demo_label == null:
+		return
+	var carrier := _player_by_id(DEMO_PLAYER_ID)
+	var keeper := _player_by_id(DEMO_KEEPER_ID)
+	var distance := (carrier.position as Vector3).distance_to(keeper.position as Vector3)
+	var possession := "PLAYER" if carrier_id == DEMO_PLAYER_ID else ("KEEPER" if carrier_id == DEMO_KEEPER_ID else "LOOSE")
+	_demo_label.text = "DRIBBLE LAB: WASD MOVE   I SPRINT   J SHOOT   U TACKLE   R RESET\nBALL %.2fm   KEEPER %.2fm   TOUCHES %d   POSSESSION %s" % [
+		(carrier.position as Vector3).distance_to(Coordinate3D.ground(ball_position)), distance,
+		dribble_touch_count, possession]
 
 func _process(delta: float) -> void:
 	super._process(delta)
-	if Input.is_key_pressed(KEY_L):
+	if Input.is_key_pressed(KEY_R):
 		_reset_kickoff(true)
