@@ -13,6 +13,9 @@ func _run() -> void:
 	root.add_child(demo)
 	await process_frame
 	demo.kickoff_timer = 0.0
+	var camera := demo.get_node("Camera") as Camera3D
+	_expect(camera.position.distance_to(demo.DEMO_CAMERA_BASE_FOCUS) < 45.0,
+		"dribble lab uses a close inspection camera")
 	_expect(demo.players.size() == 2, "dribble lab creates one carrier and one goalkeeper")
 	_expect(demo.carrier_id == demo.DEMO_PLAYER_ID and demo.controlled_id == demo.DEMO_PLAYER_ID,
 		"dribble lab starts with the carrier under manual control")

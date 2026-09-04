@@ -9,6 +9,11 @@ const DEMO_KEEPER_ID := 1
 const DEMO_START := Vector3(18.0, 0.0, 18.0)
 const DEMO_KEEPER_START := Vector3(76.0, 0.0, 18.0)
 const KEEPER_PRESS_DISTANCE := 1.55
+const DEMO_CAMERA_BASE_POSITION := Vector3(42.5, 29.0, 40.0)
+const DEMO_CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
+const DEMO_CAMERA_LATERAL_LIMIT := 18.0
+const DEMO_CAMERA_LATERAL_DEADZONE := 1.8
+const DEMO_CAMERA_LATERAL_FOLLOW := 0.38
 
 var _demo_label: Label
 
@@ -16,6 +21,30 @@ func _ready() -> void:
 	print("DEMO_READY_BEGIN")
 	super._ready()
 	print("DEMO_READY_END")
+
+func _frame_camera() -> void:
+	var camera := get_node_or_null("Camera") as Camera3D
+	if camera == null:
+		return
+	camera.position = DEMO_CAMERA_BASE_POSITION
+	camera.look_at(DEMO_CAMERA_BASE_FOCUS)
+	camera_fixed_rotation = camera.rotation
+	camera_rotation_initialized = true
+
+func _update_camera(delta: float) -> void:
+	var camera := get_node_or_null("Camera") as Camera3D
+	if camera == null:
+		return
+	if not camera_rotation_initialized:
+		_frame_camera()
+	var ball_x := clampf(ball_position.x, 0.0, Rules.PITCH_SIZE.x)
+	var center_x := Rules.PITCH_SIZE.x * 0.5
+	var lateral_delta := ball_x - center_x
+	var target_offset := clampf(sign(lateral_delta) * maxf(absf(lateral_delta) - DEMO_CAMERA_LATERAL_DEADZONE, 0.0) * DEMO_CAMERA_LATERAL_FOLLOW,
+		-DEMO_CAMERA_LATERAL_LIMIT, DEMO_CAMERA_LATERAL_LIMIT)
+	camera_lateral_offset = lerpf(camera_lateral_offset, target_offset, 1.0 - exp(-3.0 * delta))
+	camera.position = DEMO_CAMERA_BASE_POSITION + Vector3(camera_lateral_offset, 0.0, 0.0)
+	camera.rotation = camera_fixed_rotation
 
 func _create_match() -> void:
 	players.clear()
