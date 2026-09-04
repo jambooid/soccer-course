@@ -404,6 +404,21 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 					settle_error_plane.normalized() * minf(settle_error_plane.length() * 5.0, 3.0),
 					80.0 * delta)
 
+		# Keep a small, readable lead during ordinary running. Touches remain
+		# independent impulses, but a slow ball must not collapse into the
+		# player's centre between two contacts (the 2D implementation uses the
+		# same moving-ideal-position constraint).
+		if carrier_speed > 0.25:
+			var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + 0.18
+			var current_lead := (ball_plane - carrier_plane).dot(intent_plane)
+			if current_lead < desired_lead:
+				var running_target := carrier_plane + intent_plane * desired_lead
+				var running_error := running_target - ball_plane
+				if not running_error.is_zero_approx():
+					var running_speed := maxf(carrier_speed * 1.35, 4.0)
+					ball_velocity_plane = ball_velocity_plane.move_toward(
+						running_error.normalized() * running_speed, 50.0 * delta)
+
 		# If the ball is outside the pocket during a non-turning run, recover it
 		# toward the carrier. During a turn this force is intentionally disabled,
 		# otherwise it fights the new-foot target and recreates the trailing feel.

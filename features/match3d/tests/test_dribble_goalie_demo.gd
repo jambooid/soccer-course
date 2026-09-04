@@ -26,6 +26,8 @@ func _run() -> void:
 	Input.action_release("p1_right")
 	var carrier: Dictionary = demo._player_by_id(demo.DEMO_PLAYER_ID)
 	_expect((carrier.position as Vector3).x > start.x + 0.2, "dribble lab carrier responds to movement input")
+	_expect((demo.ball_position - (carrier.position as Vector3)).dot(Vector3.RIGHT) > 0.35,
+		"straight dribble keeps the ball clearly in front of the carrier")
 	_expect(demo.ball_velocity.length() > 0.1, "dribble lab ball receives a foot impulse")
 	var turn_ball_start: Vector3 = demo.ball_position
 	Input.action_press("p1_left")
