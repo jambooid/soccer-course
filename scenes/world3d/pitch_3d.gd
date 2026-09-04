@@ -3,13 +3,15 @@ extends Node3D
 
 const LowPolyPitchScene := preload("res://assets/3d/generated/pitch.obj")
 const Match3DRulesScript := preload("res://utils/match3d_rules.gd")
+const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 
 ## Keep the visible goal mouth on the same contract as goal_scoring_team().
 const GOAL_HALF_WIDTH := Match3DRulesScript.GOAL_HALF_WIDTH
 const GOAL_WIDTH := GOAL_HALF_WIDTH * 2.0
 const GOAL_DEPTH := 4.2
 
-@export var simulation_scale := 0.1
+## The generated pitch mesh is authored in canonical 85 x 36 world units.
+@export var simulation_scale := 1.0
 
 func _ready() -> void:
 	var pitch := MeshInstance3D.new()
@@ -38,8 +40,8 @@ func _make_material(color: Color) -> StandardMaterial3D:
 func _add_markings() -> void:
 	var white := Color(0.93, 0.96, 0.85)
 	var line := 0.14
-	var width := PitchConstants.WIDTH * simulation_scale
-	var height := PitchConstants.HEIGHT * simulation_scale
+	var width := Coordinate3D.PITCH_SIZE.x * simulation_scale
+	var height := Coordinate3D.PITCH_SIZE.z * simulation_scale
 	_add_box(Vector3(width, 0.018, line), Vector3(width * 0.5, 0.014, line * 0.5), white)
 	_add_box(Vector3(width, 0.018, line), Vector3(width * 0.5, 0.014, height - line * 0.5), white)
 	_add_box(Vector3(line, 0.018, height), Vector3(line * 0.5, 0.014, height * 0.5), white)
@@ -63,8 +65,8 @@ func _add_markings() -> void:
 	_add_box(Vector3(line, 0.018, 9.45), Vector3(width - 3.1, 0.014, height * 0.5), white)
 
 func _add_goals() -> void:
-	var width := PitchConstants.WIDTH * simulation_scale
-	var center_z := PitchConstants.HEIGHT * simulation_scale * 0.5
+	var width := Coordinate3D.PITCH_SIZE.x * simulation_scale
+	var center_z := Coordinate3D.PITCH_SIZE.z * simulation_scale * 0.5
 	for goal_x in [0.0, width]:
 		# Goal depth extends away from the playable pitch: left goal toward -X,
 		# right goal toward +X. The front frame remains on the scoring line.
@@ -98,8 +100,8 @@ func _add_goal_frame(frame_x: float, center_z: float, goal_color: Color) -> void
 	_add_box(Vector3(0.18, 0.18, goal_width), Vector3(frame_x, 3.1, center_z), goal_color)
 
 func _add_stands() -> void:
-	var width := PitchConstants.WIDTH * simulation_scale
-	var height := PitchConstants.HEIGHT * simulation_scale
+	var width := Coordinate3D.PITCH_SIZE.x * simulation_scale
+	var height := Coordinate3D.PITCH_SIZE.z * simulation_scale
 	_add_box(Vector3(width + 5.0, 2.1, 2.8), Vector3(width * 0.5, 0.8, -2.0), Color(0.12, 0.18, 0.26))
 	_add_box(Vector3(width + 5.0, 2.1, 2.8), Vector3(width * 0.5, 0.8, height + 2.0), Color(0.16, 0.12, 0.2))
 

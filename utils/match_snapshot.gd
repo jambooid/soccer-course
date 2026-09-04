@@ -5,11 +5,15 @@ var tick := 0
 var match_seed := 0
 var rng_state := 0
 var ball := {
-	"position": Vector2.ZERO,
-	"velocity": Vector2.ZERO,
-	"height": 0.0,
-	"height_velocity": 0.0,
-	"carrier_id": -1,
+		"position": Vector2.ZERO,
+		"velocity": Vector2.ZERO,
+		"world_position": Vector3.ZERO,
+		"world_velocity": Vector3.ZERO,
+		"height": 0.0,
+		"height_velocity": 0.0,
+		"grounded": true,
+		"bounce_count": 0,
+		"carrier_id": -1,
 }
 var players: Array[Dictionary] = []
 var events: Array[Dictionary] = []
@@ -42,10 +46,13 @@ func _serialize() -> String:
 
 func _vector_dictionary(value: Dictionary) -> Dictionary:
 	var result := value.duplicate(true)
-	for key in ["position", "velocity"]:
+	for key in ["position", "velocity", "world_position", "world_velocity"]:
 		if result.get(key) is Vector2:
 			var vector: Vector2 = result[key]
 			result[key] = {"x": vector.x, "y": vector.y}
+		elif result.get(key) is Vector3:
+			var vector_3d: Vector3 = result[key]
+			result[key] = {"x": vector_3d.x, "y": vector_3d.y, "z": vector_3d.z}
 	return result
 
 func _sort_player_snapshots(value: Array[Dictionary]) -> Array[Dictionary]:

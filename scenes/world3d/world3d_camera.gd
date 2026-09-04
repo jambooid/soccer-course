@@ -1,7 +1,9 @@
 class_name World3DCamera
 extends Camera3D
 
-@export var pitch_size := Vector2(85.0, 36.0)
+const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
+
+@export var pitch_size := Vector2(Coordinate3D.PITCH_SIZE.x, Coordinate3D.PITCH_SIZE.z)
 @export var follow_height := 30.0
 @export var follow_distance := 34.0
 @export var follow_speed := 6.0

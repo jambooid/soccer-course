@@ -8,6 +8,7 @@ const ShootingSuiteScript := preload("res://features/shooting/tests/test_physics
 const MatchSnapshotScript := preload("res://utils/match_snapshot.gd")
 const MatchSimulationScript := preload("res://utils/match_simulation.gd")
 const BallTrajectoryScript := preload("res://utils/ball_trajectory.gd")
+const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
 const BallInteractionResolverScript := preload("res://utils/ball_interaction_resolver.gd")
 const ControlProfileScript := preload("res://utils/control_profile.gd")
 const TeamTacticsScript := preload("res://utils/team_tactics.gd")
@@ -24,6 +25,8 @@ const CpuMatchDiagnosticScript := preload("res://utils/cpu_match_diagnostic.gd")
 const DribbleTouchControllerScript := preload("res://utils/dribble_touch_controller.gd")
 const CpuActionSelectorScript := preload("res://utils/cpu_action_selector.gd")
 const Presentation3DScript := preload("res://utils/presentation_3d.gd")
+const PitchCoordinate3DScript := preload("res://utils/pitch_coordinate_3d.gd")
+const Match3DRules := preload("res://utils/match3d_rules.gd")
 const World3DPreviewScene := preload("res://scenes/world3d/world3d_preview.tscn")
 const World3DMatchScene := preload("res://scenes/world3d/world3d_match.tscn")
 const PlayerFootprintResolverScript := preload("res://utils/player_footprint_resolver.gd")
@@ -44,6 +47,7 @@ func _run() -> void:
 	_run_suite("match_snapshot", _test_match_snapshot)
 	_run_suite("match_simulation", _test_match_simulation)
 	_run_suite("ball_trajectory", _test_ball_trajectory)
+	_run_suite("ball_trajectory_3d", _test_ball_trajectory_3d)
 	_run_suite("ball_interaction_resolver", _test_ball_interaction_resolver)
 	_run_suite("control_profile", _test_control_profile)
 	_run_suite("team_tactics", _test_team_tactics)
@@ -127,6 +131,14 @@ func _test_match_simulation() -> void:
 	_expect(first.snapshot.tick == 60, "advances at fixed tick count")
 	_expect(first.snapshot.tick_hash() == second.snapshot.tick_hash(), "same seed and ticks remain deterministic")
 	_expect(is_equal_approx(first.snapshot.ball.position.x, 120.0), "fixed tick ball displacement")
+	_expect(first.snapshot.ball.world_position.is_equal_approx(Vector3(120.0, 0.0, 0.0)),
+		"fixed tick exposes the same displacement in 3D world coordinates")
+	var aerial := MatchSimulationScript.new(91)
+	aerial.snapshot.ball.world_position = Vector3(0.0, 1.0, 0.0)
+	aerial.snapshot.ball.world_velocity = Vector3(0.0, 12.0, 4.0)
+	aerial.advance()
+	_expect(aerial.snapshot.ball.world_position.y > 1.0 and aerial.snapshot.ball.world_position.z > 0.0,
+		"shared simulation advances an elevated 3D ball")
 	var at_30hz := MatchSimulationScript.new(90, initial)
 	var at_120hz := MatchSimulationScript.new(90, initial)
 	for ignored in range(30):
@@ -166,6 +178,29 @@ func _test_ball_trajectory() -> void:
 			"timed ground pass reaches %d px target" % int(scenario.distance))
 	var bounced := BallTrajectoryScript.bounce_velocity(Vector2(10.0, 0.0), Vector2(-1.0, 0.0), 0.8)
 	_expect(is_equal_approx(bounced.x, -8.0), "bounce reflects and loses energy")
+
+func _test_ball_trajectory_3d() -> void:
+	var origin := Vector3(4.0, 0.0, 8.0)
+	var target := Vector3(24.0, 0.0, 18.0)
+	var launch := BallTrajectory3DScript.launch_velocity(origin, target, 1.0, 22.0)
+	var predicted := BallTrajectory3DScript.position_at(origin, launch, 1.0, 22.0)
+	_expect(predicted.distance_to(target) < 0.001, "3D launch reaches target at flight time")
+	_expect(launch.y > 0.0 and launch.x > 0.0 and launch.z > 0.0,
+		"3D launch has horizontal direction and upward arc")
+	var state := BallTrajectory3DScript.step(Vector3(10.0, 1.0, 10.0),
+		Vector3(8.0, -4.0, 0.0), 1.0 / 60.0, 22.0, 14.0, 4.0, 0.5)
+	_expect((state.position as Vector3).y >= 0.0, "3D step never penetrates the ground")
+	var repeat_a := BallTrajectory3DScript.step(Vector3(2.0, 3.0, 7.0), Vector3(9.0, 4.0, -2.0),
+		0.25, 22.0, 14.0, 4.0, 0.4)
+	var repeat_b := BallTrajectory3DScript.step(Vector3(2.0, 3.0, 7.0), Vector3(9.0, 4.0, -2.0),
+		0.25, 22.0, 14.0, 4.0, 0.4)
+	_expect(repeat_a == repeat_b, "3D trajectory step is deterministic")
+	var samples := BallTrajectory3DScript.sample_path(Vector3.ZERO, Vector3(10.0, 8.0, 0.0),
+		0.5, 0.1, 22.0, 14.0, 4.0, 0.0)
+	_expect(samples.size() == 6 and samples[0] == Vector3.ZERO,
+		"3D trajectory sampler returns fixed-interval points")
+	_expect(samples[1].y > samples[0].y and samples[-1].y >= 0.0,
+		"sampled 3D trajectory preserves the airborne arc")
 
 func _test_ball_interaction_resolver() -> void:
 	var intents: Array[Dictionary] = [
@@ -559,6 +594,18 @@ func _test_presentation_3d() -> void:
 	_expect(world == Vector3(1.2, 0.5, -0.7), "simulation coordinates map to XZ and height")
 	_expect(Presentation3DScript.from_world(world, 0.1) == ground,
 		"3D presentation mapping round trips")
+	var canonical_world := PitchCoordinate3DScript.to_world(Vector2(12.0, 8.0), 2.5)
+	_expect(canonical_world == Vector3(12.0, 2.5, 8.0),
+		"canonical pitch coordinates map directly to world X/Y/Z")
+	_expect(PitchCoordinate3DScript.from_world(canonical_world) == Vector2(12.0, 8.0),
+		"canonical pitch coordinates round trip without scale drift")
+	_expect(PitchCoordinate3DScript.clamp_ground(Vector2(-2.0, 40.0)) ==
+		Vector2(0.0, PitchCoordinate3DScript.PITCH_SIZE.z),
+		"canonical ground bounds clamp to the playable pitch")
+	_expect(Match3DRules.can_ground_player_control_ball(Vector2(4.0, 8.0),
+		Vector3(4.5, 0.4, 8.0)), "ground player controls a low 3D ball in range")
+	_expect(not Match3DRules.can_ground_player_control_ball(Vector2(4.0, 8.0),
+		Vector3(4.5, 2.0, 8.0)), "ground player rejects an elevated 3D ball")
 	_expect(World3DPreviewScene != null, "primitive 3D presentation scene loads")
 	var preview := World3DPreviewScene.instantiate()
 	_expect(preview.get_node("Camera").get_script() != null,

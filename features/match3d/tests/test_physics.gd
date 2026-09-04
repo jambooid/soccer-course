@@ -2,6 +2,7 @@ extends SceneTree
 
 const Rules := preload("res://utils/match3d_rules.gd")
 const Pitch3D := preload("res://scenes/world3d/pitch_3d.gd")
+const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
 
 var passed := 0
 var failed := 0
@@ -18,6 +19,8 @@ func run_suite() -> Dictionary:
 	_test_directional_pass_prefers_forward_teammate()
 	_test_pass_speed_and_shot_speed_are_distinct()
 	_test_goal_detection()
+	_test_3d_goal_height()
+	_test_trajectory_events_and_pitch_bounds()
 	_test_camera_target()
 	_test_nearest_player_filtering()
 	_test_switch_target()
@@ -69,6 +72,28 @@ func _test_goal_detection() -> void:
 	_expect(Rules.goal_scoring_team(Vector2(-0.1, 18.0)) == -1, "left goal awards the away team")
 	_expect(Rules.goal_scoring_team(Vector2(85.1, 18.0)) == 1, "right goal awards the home team")
 	_expect(Rules.goal_scoring_team(Vector2(-0.1, 1.0)) == 0, "ball outside goal mouth is not a goal")
+
+func _test_3d_goal_height() -> void:
+	_expect(Rules.goal_scoring_team_3d(Vector3(-0.1, 1.2, 18.0)) == -1,
+		"low ball crossing the goal line scores in 3D")
+	_expect(Rules.goal_scoring_team_3d(Vector3(-0.1, Rules.GOAL_HEIGHT + 0.1, 18.0)) == 0,
+		"ball above the crossbar does not score")
+
+func _test_trajectory_events_and_pitch_bounds() -> void:
+	var impact := BallTrajectory3DScript.step(Vector3(2.0, 0.1, 2.0), Vector3(0.0, -4.0, 0.0),
+		0.1, 22.0, 14.0, 4.0, 0.5)
+	_expect(bool(impact.ground_contact) and float(impact.impact_speed) > 0.0,
+		"3D trajectory reports ground contact and impact speed")
+	var wall := BallTrajectory3DScript.step_on_pitch(Vector3(1.0, 0.0, 0.2), Vector3(0.0, 0.0, -8.0),
+		0.1, 22.0, 14.0, 4.0, 0.0, Rules.PITCH_SIZE, Rules.GOAL_HALF_WIDTH,
+		Rules.GOAL_HEIGHT, 0.62)
+	_expect(bool(wall.boundary_hit) and wall.boundary_axis == "z" and wall.position.z >= 0.0,
+		"pitch boundary reflects and reports the touched axis")
+	var goal := BallTrajectory3DScript.step_on_pitch(Vector3(0.1, 1.0, 18.0), Vector3(-8.0, 0.0, 0.0),
+		0.1, 22.0, 14.0, 4.0, 0.0, Rules.PITCH_SIZE, Rules.GOAL_HALF_WIDTH,
+		Rules.GOAL_HEIGHT, 0.62)
+	_expect(bool(goal.goal_crossed) and not bool(goal.boundary_hit),
+		"low ball can cross the open goal mouth without reflecting")
 
 func _test_nearest_player_filtering() -> void:
 	var players := [

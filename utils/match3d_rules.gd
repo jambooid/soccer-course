@@ -1,13 +1,16 @@
 class_name Match3DRules
 extends RefCounted
 
+const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 ## Pure gameplay helpers for the playable 3D match. Coordinates are meters on
 ## the X/Z pitch plane; Vector2.y maps to world Z in the presentation layer.
 
-const PITCH_SIZE := Vector2(85.0, 36.0)
-const GOAL_HALF_WIDTH := 5.2
+const PITCH_SIZE := Vector2(Coordinate3D.PITCH_SIZE.x, Coordinate3D.PITCH_SIZE.z)
+const GOAL_HALF_WIDTH := Coordinate3D.GOAL_HALF_WIDTH
+const GOAL_HEIGHT := 3.1
 const PLAYER_RADIUS := 0.48
 const CONTROL_RADIUS := 1.18
+const PLAYER_CONTROL_HEIGHT_MAX := 1.25
 const PASS_SPEED := 27.0
 const LONG_PASS_SPEED := 35.0
 const SHOT_SPEED := 48.0
@@ -66,10 +69,24 @@ static func goal_scoring_team(ball_position: Vector2) -> int:
 		return 1
 	return 0
 
+static func goal_scoring_team_3d(ball_world_position: Vector3) -> int:
+	if ball_world_position.y < -0.001 or ball_world_position.y > GOAL_HEIGHT:
+		return 0
+	return goal_scoring_team(Coordinate3D.from_world(ball_world_position))
+
+static func can_ground_player_control_ball(player_position: Vector2,
+		ball_world_position: Vector3, radius: float = CONTROL_RADIUS,
+		max_height: float = PLAYER_CONTROL_HEIGHT_MAX) -> bool:
+	## Ground players only control a ball inside their footprint and below the
+	## configured foot-control height. Aerial control can be added separately.
+	if ball_world_position.y < -0.001 or ball_world_position.y > max_height:
+		return false
+	return player_position.distance_to(Vector2(ball_world_position.x,
+		ball_world_position.z)) <= maxf(radius, 0.0)
+
 static func camera_target(ball_position: Vector2) -> Vector2:
-	return Vector2(
-		clampf(ball_position.x, CAMERA_TARGET_X_MIN, CAMERA_TARGET_X_MAX),
-		clampf(ball_position.y, CAMERA_TARGET_Y_MIN, CAMERA_TARGET_Y_MAX))
+	return Coordinate3D.camera_target(ball_position,
+		Vector2(CAMERA_TARGET_X_MIN, CAMERA_TARGET_Y_MIN))
 
 static func nearest_player_id(players: Array, ball_position: Vector2, home_filter: int = 0) -> int:
 	var closest_id := -1

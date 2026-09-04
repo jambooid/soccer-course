@@ -7,7 +7,7 @@ extends Node3D
 const PlayerViewScene := preload("res://scenes/world3d/player_3d_view.gd")
 const BallViewScene := preload("res://scenes/world3d/ball_3d_view.gd")
 
-@export var simulation_scale := 0.1
+@export var simulation_scale := 1.0
 @export var interpolation_speed := 16.0
 @export var snapshot_source: NodePath
 
@@ -60,20 +60,21 @@ func _sync_players(weight: float) -> void:
 		if view == null:
 			continue
 		var current_position := player_data.get("position", Vector2.ZERO) as Vector2
+		var current_world := player_data.get("world_position", Vector3(current_position.x, 0.0, current_position.y)) as Vector3
 		var previous: Dictionary = previous_by_id.get(player_id, player_data)
 		var previous_position := previous.get("position", current_position) as Vector2
-		var current_height := float(player_data.get("height", 0.0))
-		var previous_height := float(previous.get("height", current_height))
-		view.sync_from_simulation(previous_position.lerp(current_position, weight), lerpf(previous_height, current_height, weight))
+		var previous_world := previous.get("world_position", Vector3(previous_position.x, 0.0, previous_position.y)) as Vector3
+		view.sync_world_position(previous_world.lerp(current_world, weight))
 
 func _sync_ball(weight: float) -> void:
 	var current_ball: Dictionary = _current_snapshot.get("ball", {})
 	var previous_ball: Dictionary = _previous_snapshot.get("ball", current_ball)
-	var current_position := current_ball.get("position", Vector2.ZERO) as Vector2
-	var previous_position := previous_ball.get("position", current_position) as Vector2
-	var current_height := float(current_ball.get("height", 0.0))
-	var previous_height := float(previous_ball.get("height", current_height))
-	_ball_view.sync_from_simulation(previous_position.lerp(current_position, weight), lerpf(previous_height, current_height, weight))
+	var current_ground := current_ball.get("position", Vector2.ZERO) as Vector2
+	var current_world := current_ball.get("world_position",
+		Vector3(current_ground.x, float(current_ball.get("height", 0.0)), current_ground.y)) as Vector3
+	var previous_world := previous_ball.get("world_position", current_world) as Vector3
+	var current_velocity := current_ball.get("velocity", Vector3.ZERO) as Vector3
+	_ball_view.sync_world_position(previous_world.lerp(current_world, weight), current_velocity)
 
 func _players_by_id(snapshot: Dictionary) -> Dictionary:
 	var by_id := {}

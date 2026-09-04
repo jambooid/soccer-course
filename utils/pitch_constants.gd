@@ -48,6 +48,11 @@ const SCALE_FACTOR := WIDTH / REFERENCE_WIDTH
 ## 目前主要用于验证宽高比是否一致
 const SCALE_FACTOR_Y := HEIGHT / REFERENCE_HEIGHT
 
+## Canonical 3D match dimensions. Match3D uses these world units directly;
+## only the legacy pixel-oriented 2D scenes apply SCALE_FACTOR.
+const WORLD_SCALE := 0.1
+const WORLD_PITCH_SIZE := Vector2(WIDTH * WORLD_SCALE, HEIGHT * WORLD_SCALE)
+
 # ========================================
 # 基础几何常量
 # ========================================

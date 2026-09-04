@@ -3,10 +3,11 @@ extends RefCounted
 
 const MatchSnapshotScript := preload("res://utils/match_snapshot.gd")
 const SeededRngScript := preload("res://utils/seeded_rng.gd")
+const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
+const BallPhysics3D := preload("res://utils/ball_physics_3d_constants.gd")
 
 const TICKS_PER_SECOND := 60
 const TICK_SECONDS := 1.0 / TICKS_PER_SECOND
-const GRAVITY := 600.0
 
 var snapshot
 var rng
@@ -82,11 +83,31 @@ func resolve_seeded_event(event_type: String, probability: float) -> bool:
 func _step_ball() -> void:
 	var position: Vector2 = snapshot.ball.position
 	var velocity: Vector2 = snapshot.ball.velocity
-	position += velocity * TICK_SECONDS
-	snapshot.ball.position = position
-	if snapshot.ball.height > 0.0 or snapshot.ball.height_velocity > 0.0:
-		snapshot.ball.height_velocity -= GRAVITY * TICK_SECONDS
-		snapshot.ball.height += snapshot.ball.height_velocity * TICK_SECONDS
-		if snapshot.ball.height <= 0.0:
-			snapshot.ball.height = 0.0
-			snapshot.ball.height_velocity = 0.0
+	var world_position: Vector3 = snapshot.ball.get("world_position", Vector3(position.x,
+		snapshot.ball.height, position.y))
+	var world_velocity: Vector3 = snapshot.ball.get("world_velocity", Vector3(velocity.x,
+		snapshot.ball.height_velocity, velocity.y))
+	# Keep callers that still write the Vector2 fields source-compatible. Once a
+	# 3D velocity exists, the world state remains authoritative for the tick.
+	if world_position.is_zero_approx() and (not position.is_zero_approx() or \
+		absf(snapshot.ball.height) > 0.000001):
+		world_position = Vector3(position.x, snapshot.ball.height, position.y)
+	if world_velocity.length_squared() <= 0.000001 and velocity.length_squared() > 0.000001:
+		world_position = Vector3(position.x, snapshot.ball.height, position.y)
+		world_velocity = Vector3(velocity.x, snapshot.ball.height_velocity, velocity.y)
+	# MatchSimulation remains a legacy replay boundary: its historical 2D
+	# snapshots model constant horizontal velocity, while gravity and bounce
+	# now use the canonical 3D world units.
+	var result := BallTrajectory3DScript.step(world_position, world_velocity, TICK_SECONDS,
+		BallPhysics3D.GRAVITY, 0.0, 0.0, BallPhysics3D.BOUNCINESS)
+	world_position = result.position
+	world_velocity = result.velocity
+	snapshot.ball.world_position = world_position
+	snapshot.ball.world_velocity = world_velocity
+	snapshot.ball.position = Vector2(world_position.x, world_position.z)
+	snapshot.ball.velocity = Vector2(world_velocity.x, world_velocity.z)
+	snapshot.ball.height = world_position.y
+	snapshot.ball.height_velocity = world_velocity.y
+	snapshot.ball.grounded = bool(result.get("grounded", false))
+	if bool(result.get("bounced", false)):
+		snapshot.ball.bounce_count = int(snapshot.ball.get("bounce_count", 0)) + 1

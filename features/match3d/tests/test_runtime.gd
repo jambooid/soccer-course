@@ -15,6 +15,8 @@ func _run() -> void:
 	game.kickoff_timer = 0.0
 	game._process(1.0 / 60.0)
 	_expect(game.players.size() == 22, "runtime creates a full 11v11 match")
+	_expect(game.players[0].world_position is Vector3 and game.players[0].world_position.y == 0.0,
+		"players expose canonical 3D world positions")
 	_expect(game.carrier_id >= 0 and game.controlled_id >= 0, "kickoff assigns a controllable carrier")
 	game._sync_views()
 	var carrier_view := game._views[game.carrier_id] as Player3DView
@@ -26,10 +28,15 @@ func _run() -> void:
 	Input.action_release("p1_right")
 	var controlled_after: Vector2 = game._player_by_id(game.controlled_id).position
 	_expect(controlled_after.x > controlled_before.x + 0.12, "right input moves the controlled player")
+	var controlled_world: Vector3 = game._player_by_id(game.controlled_id).world_position
+	_expect(is_equal_approx(controlled_world.x, controlled_after.x) and is_equal_approx(controlled_world.z, controlled_after.y),
+		"player movement keeps the legacy projection aligned with X/Z world coordinates")
 	Input.action_press("p1_pass")
 	game._process(1.0 / 60.0)
 	Input.action_release("p1_pass")
 	_expect(game.carrier_id == -1 and game.ball_velocity.length() > 0.0, "pass input releases the ball with velocity")
+	_expect(game.ball_world_position.y > 0.0 and game._ball_view.global_position.is_equal_approx(game.ball_world_position),
+		"ball keeps a canonical 3D position and view uses the same world units")
 	var prior_controlled: int = game.controlled_id
 	Input.action_press("p1_through_pass")
 	game._process(1.0 / 60.0)
@@ -115,11 +122,44 @@ func _run() -> void:
 	charge_game._process(1.0 / 60.0)
 	_expect(not charge_game.shot_charging and charge_game.carrier_id == -1 and charge_game.ball_velocity.length() > 0.0,
 		"releasing shoot launches the charged ball")
+	_expect(charge_game.ball_world_velocity.y > 0.0,
+		"charged shot launches with an explicit vertical 3D component")
 	charge_game.free()
 	game.free()
+	await _test_render_cadence_determinism()
 	print("=== 3D Match Runtime Tests ===")
 	print("Results: %d passed, %d failed" % [passed, failed])
 	quit(0 if failed == 0 else 1)
+
+func _test_render_cadence_determinism() -> void:
+	var low_rate := MatchScene.instantiate()
+	var high_rate := MatchScene.instantiate()
+	root.add_child(low_rate)
+	root.add_child(high_rate)
+	await process_frame
+	for simulation in [low_rate, high_rate]:
+		simulation.kickoff_timer = 0.0
+		simulation.carrier_id = -1
+		simulation.ball_position = Vector2(42.0, 18.0)
+		simulation.ball_world_position = Vector3(42.0, 1.5, 18.0)
+		simulation.ball_world_velocity = Vector3(18.0, 6.0, 3.0)
+		simulation.ball_velocity = Vector2(18.0, 3.0)
+		simulation.ball_height = 1.5
+		simulation.ball_height_velocity = 6.0
+		simulation._simulation_accumulator = 0.0
+		simulation._simulation_tick = 0
+	for _i in range(30):
+		low_rate._process(1.0 / 30.0)
+	for _i in range(120):
+		high_rate._process(1.0 / 120.0)
+	_expect(low_rate._simulation_tick == high_rate._simulation_tick,
+		"render cadence advances the same number of fixed ticks")
+	_expect(low_rate.ball_world_position.is_equal_approx(high_rate.ball_world_position),
+		"render cadence produces the same 3D ball position")
+	_expect(low_rate.ball_world_velocity.is_equal_approx(high_rate.ball_world_velocity),
+		"render cadence produces the same 3D ball velocity")
+	low_rate.free()
+	high_rate.free()
 
 func _expect(condition: bool, label: String) -> void:
 	if condition:
