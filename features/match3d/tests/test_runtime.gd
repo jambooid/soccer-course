@@ -17,6 +17,9 @@ func _run() -> void:
 	await process_frame
 	game.kickoff_timer = 0.0
 	game._process(1.0 / 60.0)
+	# The remaining checks advance this instance explicitly. Keeping its engine
+	# process callback disabled prevents auxiliary scene setup from adding ticks.
+	game.set_process(false)
 	_expect(game.players.size() == 22, "runtime creates a full 11v11 match")
 	_expect(game.players[0].position is Vector3 and game.players[0].position.y == 0.0,
 		"players expose canonical 3D positions")
@@ -51,6 +54,19 @@ func _run() -> void:
 		"ball mesh and shadow use the authored ground-contact radius")
 	single_step_ball_view.free()
 	split_step_ball_view.free()
+	var interpolation_game := MatchScene.instantiate()
+	root.add_child(interpolation_game)
+	await process_frame
+	interpolation_game._previous_ball_position = Vector3(12.0, 0.0, 18.0)
+	interpolation_game._has_previous_ball_position = true
+	interpolation_game.carrier_id = -1
+	interpolation_game.ball_position = Vector3(12.45, 0.0, 18.0)
+	interpolation_game.ball_velocity = Vector3(27.0, 0.0, 0.0)
+	interpolation_game._simulation_accumulator = interpolation_game.FIXED_TICK * 0.5
+	interpolation_game._sync_views(true)
+	_expect(interpolation_game._ball_view.global_position.is_equal_approx(Vector3(12.225, 0.0, 18.0)),
+		"fast passed balls render between adjacent fixed simulation positions")
+	interpolation_game.free()
 	var regression_game := MatchScene.instantiate()
 	root.add_child(regression_game)
 	await process_frame
@@ -448,8 +464,8 @@ func _run() -> void:
 	game._process(1.0 / 60.0)
 	Input.action_release("p1_pass")
 	_expect(game.carrier_id == -1 and game.ball_velocity.length() > 0.0, "pass input releases the ball with velocity")
-	_expect(game.ball_position.y > 0.0 and game._ball_view.global_position.is_equal_approx(game.ball_position),
-		"ball keeps a canonical 3D position and view uses the same world units")
+	_expect(game.ball_position.y > 0.0 and game._ball_view.global_position.is_equal_approx(game._previous_ball_position),
+		"ball keeps canonical 3D physics coordinates while presentation interpolates its path")
 	var prior_controlled: int = game.controlled_id
 	Input.action_press("p1_through_pass")
 	game._process(1.0 / 60.0)

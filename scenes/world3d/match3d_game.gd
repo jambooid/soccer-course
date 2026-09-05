@@ -53,6 +53,8 @@ var ball_grounded := true
 var ball_flight_time := 0.0
 var _simulation_accumulator := 0.0
 var _simulation_tick := 0
+var _previous_ball_position := ball_position
+var _has_previous_ball_position := false
 var _sampled_just_pressed: Dictionary = {}
 var _sampled_just_released: Dictionary = {}
 var carrier_id := -1
@@ -199,8 +201,10 @@ func _process(delta: float) -> void:
 	_simulation_accumulator = minf(_simulation_accumulator + delta, 0.25)
 	while _simulation_accumulator >= FIXED_TICK:
 		_simulation_accumulator -= FIXED_TICK
+		_previous_ball_position = ball_position
+		_has_previous_ball_position = true
 		_simulate_tick(FIXED_TICK)
-	_sync_views()
+	_sync_views(true)
 	_update_camera(delta)
 	_update_hud()
 
@@ -995,7 +999,7 @@ func _set_ball_state(position: Vector3, velocity: Vector3, grounded: bool = fals
 	ball_velocity = velocity
 	ball_grounded = grounded
 
-func _sync_views() -> void:
+func _sync_views(interpolate_ball := false) -> void:
 	for player: Dictionary in players:
 		var view := _views.get(int(player.id)) as Player3DView
 		if view == null:
@@ -1006,7 +1010,14 @@ func _sync_views() -> void:
 		view.set_selected(int(player.id) == controlled_id)
 		view.set_ball_carrier(int(player.id) == carrier_id)
 	if _ball_view != null:
-		_ball_view.sync_world_position(ball_position, ball_velocity)
+		var presented_ball_position := ball_position
+		# Carried balls are already constrained by foot contacts, so keep them
+		# aligned with the directly rendered player. Interpolation is for free
+		# balls, whose pass and clearance speeds make fixed-tick stepping visible.
+		if interpolate_ball and carrier_id < 0 and _has_previous_ball_position:
+			var interpolation_weight := clampf(_simulation_accumulator / FIXED_TICK, 0.0, 1.0)
+			presented_ball_position = _previous_ball_position.lerp(ball_position, interpolation_weight)
+		_ball_view.sync_world_position(presented_ball_position, ball_velocity)
 
 func _create_hud() -> void:
 	var layer := CanvasLayer.new()
