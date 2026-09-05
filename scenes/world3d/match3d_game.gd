@@ -20,11 +20,17 @@ const MATCH_SECONDS := 180.0
 const KICKOFF_DELAY := 1.4
 const SHOOT_CHARGE_SECONDS := 0.75
 const FIXED_TICK := 1.0 / 60.0
-const CAMERA_BASE_POSITION := Vector3(42.5, 42.0, 50.0)
 const CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
-const CAMERA_LATERAL_FOLLOW := 0.30
-const CAMERA_LATERAL_LIMIT := 14.0
-const CAMERA_LATERAL_DEADZONE := 2.5
+const CAMERA_VIEW_OFFSET := Vector3(0.0, 11.5, 8.76)
+const CAMERA_BASE_POSITION := CAMERA_BASE_FOCUS + CAMERA_VIEW_OFFSET
+const CAMERA_FOLLOW_RESPONSE := 9.0
+const CAMERA_SCREEN_X_OFFSET := 2.36
+const CAMERA_SCREEN_Z_OFFSET := 3.20
+const CAMERA_FOCUS_X_MIN := 10.7
+const CAMERA_FOCUS_X_MAX := Rules.PITCH_SIZE.x - CAMERA_FOCUS_X_MIN
+const CAMERA_FOCUS_Z_MIN := 14.1
+const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 6.4
+const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
@@ -52,6 +58,7 @@ var cpu_tackle_cooldown := 0.0
 var frame_count := 0
 var camera_shake := 0.0
 var camera_lateral_offset := 0.0
+var camera_focus := CAMERA_BASE_FOCUS
 var camera_fixed_rotation := Vector3.ZERO
 var camera_rotation_initialized := false
 var shot_charge := 0.0
@@ -98,8 +105,9 @@ func _ready() -> void:
 func _frame_camera() -> void:
 	var camera := get_node_or_null("Camera") as Camera3D
 	if camera != null:
-		camera.position = CAMERA_BASE_POSITION
-		camera.look_at(CAMERA_BASE_FOCUS)
+		camera_focus = CAMERA_BASE_FOCUS
+		camera.position = camera_focus + CAMERA_VIEW_OFFSET
+		camera.look_at(camera_focus)
 		camera_fixed_rotation = camera.rotation
 		camera_rotation_initialized = true
 
@@ -108,21 +116,30 @@ func _update_camera(delta: float) -> void:
 	if camera == null:
 		return
 	if not camera_rotation_initialized:
-		camera.position = CAMERA_BASE_POSITION
-		camera.look_at(CAMERA_BASE_FOCUS)
-		camera_fixed_rotation = camera.rotation
-		camera_rotation_initialized = true
-	# In this broadcast orientation, screen-left/right maps to world X. Pan only
-	# along that axis; the rotation is restored every frame, so there is no yaw.
-	var ball_x := clampf(ball_position.x, 0.0, Rules.PITCH_SIZE.x)
-	var center_x := Rules.PITCH_SIZE.x * 0.5
-	var lateral_delta := ball_x - center_x
-	var target_offset := clampf(sign(lateral_delta) * maxf(absf(lateral_delta) - CAMERA_LATERAL_DEADZONE, 0.0) * CAMERA_LATERAL_FOLLOW,
-		-CAMERA_LATERAL_LIMIT, CAMERA_LATERAL_LIMIT)
-	camera_lateral_offset = lerpf(camera_lateral_offset, target_offset,
-		1.0 - exp(-2.4 * delta))
-	camera.position = CAMERA_BASE_POSITION + Vector3(camera_lateral_offset, 0.0, 0.0)
+		_frame_camera()
+	# Keep the controlled subject in the attacking-side lower-left third. During a
+	# pass the ball becomes the subject, while a clamped focus preserves the pitch
+	# edge instead of exposing space beyond a goal line or touchline.
+	var desired_focus := _camera_desired_focus()
+	camera_focus = camera_focus.lerp(desired_focus, 1.0 - exp(-CAMERA_FOLLOW_RESPONSE * delta))
+	camera_focus = _clamp_camera_focus(camera_focus)
+	camera.position = camera_focus + CAMERA_VIEW_OFFSET
 	camera.rotation = camera_fixed_rotation
+
+func _camera_desired_focus() -> Vector3:
+	var subject_position := Coordinate3D.ground(ball_position)
+	var attacking_right := last_touch_home
+	var carrier := _player_by_id(carrier_id)
+	if not carrier.is_empty():
+		subject_position = Coordinate3D.ground(carrier.position)
+		attacking_right = bool(carrier.home)
+	var attack_sign := 1.0 if attacking_right else -1.0
+	return _clamp_camera_focus(subject_position + Vector3(
+		attack_sign * CAMERA_SCREEN_X_OFFSET, 0.0, CAMERA_SCREEN_Z_OFFSET))
+
+func _clamp_camera_focus(focus: Vector3) -> Vector3:
+	return Vector3(clampf(focus.x, CAMERA_FOCUS_X_MIN, CAMERA_FOCUS_X_MAX), 0.0,
+		clampf(focus.z, CAMERA_FOCUS_Z_MIN, CAMERA_FOCUS_Z_MAX))
 
 func _process(delta: float) -> void:
 	# Input is sampled once per render frame, while gameplay advances in a
@@ -282,6 +299,8 @@ func _step_players(delta: float) -> void:
 		var speed := 7.5 if bool(player.goalkeeper) else 8.8
 		var sprint_input := player_id == controlled_id and Input.is_action_pressed("p1_sprint")
 		var sprinting := player_id == carrier_id and sprint_input
+		if player_id == carrier_id and not sprinting:
+			speed = JOG_DRIBBLE_TOP_SPEED
 		if sprint_input:
 			speed = 11.0
 		var acceleration := 24.0

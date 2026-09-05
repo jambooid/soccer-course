@@ -2,6 +2,7 @@ extends SceneTree
 
 const MatchScene := preload("res://scenes/world3d/match3d_game.tscn")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
+const Rules := preload("res://utils/match3d_rules.gd")
 
 var passed := 0
 var failed := 0
@@ -47,20 +48,45 @@ func _run() -> void:
 		regression_game._process(1.0 / 60.0)
 	_expect(camera.position.distance_to(settled_camera_position) < 0.03,
 		"camera remains stable while the ball and player are idle")
-	regression_game.ball_position = Vector3(5.0, 0.08, 18.0)
+	var camera_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	camera_carrier.position = Vector3(24.0, 0.0, 12.0)
+	regression_game.players[regression_game.carrier_id] = camera_carrier
+	var carrier_camera_target: Vector3 = regression_game._camera_desired_focus()
 	for _i in range(20):
 		regression_game._process(1.0 / 60.0)
-	var left_camera_position := camera.position
-	_expect(left_camera_position.x < settled_camera_position.x - 0.5 and
-		is_equal_approx(left_camera_position.y, settled_camera_position.y) and
-		is_equal_approx(left_camera_position.z, settled_camera_position.z) and
+	_expect(camera.position.distance_to(carrier_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 1.2 and
 		camera.rotation.is_equal_approx(settled_camera_rotation),
-		"camera pans laterally while keeping depth, height, and rotation")
-	regression_game.ball_position = Vector3(80.0, 0.08, 18.0)
+		"camera frames a carrier at the 2/5-width and 1/3-height tracking anchor")
+	camera_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	camera_carrier.position = Vector3(84.0, 0.0, 35.0)
+	regression_game.players[regression_game.carrier_id] = camera_carrier
+	var edge_camera_target: Vector3 = regression_game._camera_desired_focus()
 	for _i in range(40):
 		regression_game._process(1.0 / 60.0)
-	_expect(camera.position.x > settled_camera_position.x + 0.5,
-		"camera pans laterally when the ball changes sides")
+	_expect(edge_camera_target.is_equal_approx(Vector3(regression_game.CAMERA_FOCUS_X_MAX, 0.0,
+		regression_game.CAMERA_FOCUS_Z_MAX)) and
+		camera.position.distance_to(edge_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 0.2,
+		"camera stops at pitch boundaries instead of tracking beyond the field")
+	regression_game.carrier_id = -1
+	regression_game.last_touch_home = true
+	regression_game.ball_position = Vector3(38.0, 0.08, 16.0)
+	_expect(regression_game._camera_desired_focus().is_equal_approx(Vector3(
+		38.0 + regression_game.CAMERA_SCREEN_X_OFFSET, 0.0,
+		16.0 + regression_game.CAMERA_SCREEN_Z_OFFSET)),
+		"after a pass the ball uses the same attacking-side screen anchor")
+	regression_game.carrier_id = regression_game.controlled_id
+	var paced_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	paced_carrier.position = Vector3(42.5, 0.0, 18.0)
+	paced_carrier.velocity = Vector3.ZERO
+	regression_game.players[regression_game.carrier_id] = paced_carrier
+	regression_game.controlled_id = -1
+	for _i in range(30):
+		regression_game._step_players(1.0 / 60.0)
+	paced_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect(is_equal_approx(paced_carrier.velocity.length(), regression_game.JOG_DRIBBLE_TOP_SPEED) and
+		is_equal_approx(regression_game.JOG_DRIBBLE_TOP_SPEED * 10.0, Rules.PITCH_SIZE.x * 0.5),
+		"non-sprint ball carrying reaches the halfway line from a goal line in about ten seconds")
+	regression_game.controlled_id = regression_game.carrier_id
 	var force_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
 	force_carrier.velocity = Vector3.ZERO
 	force_carrier.movement_intent = false
