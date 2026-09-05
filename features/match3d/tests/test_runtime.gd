@@ -24,6 +24,11 @@ func _run() -> void:
 	game._sync_views()
 	var carrier_view := game._views[game.carrier_id] as Player3DView
 	_expect(carrier_view.carrier_marker.visible, "carrier has a readable on-pitch marker")
+	for animation_name in [&"idle/clip", &"jog/clip", &"dribble/clip", &"turnaround/clip",
+		&"pass/clip", &"shot/clip", &"tackle/clip", &"keeper_idle/clip"]:
+		var clip := carrier_view.animation_player.get_animation(animation_name)
+		_expect(_has_origin_locked_hips_track(clip),
+			"%s animation keeps horizontal root motion at the player origin" % animation_name)
 	var single_step_ball_view := BallView.new() as Ball3DView
 	var split_step_ball_view := BallView.new() as Ball3DView
 	root.add_child(single_step_ball_view)
@@ -529,6 +534,22 @@ func _test_render_cadence_determinism() -> void:
 		"render cadence produces the same 3D ball velocity")
 	low_rate.free()
 	high_rate.free()
+
+func _has_origin_locked_hips_track(clip: Animation) -> bool:
+	if clip == null:
+		return false
+	for track in clip.get_track_count():
+		if clip.track_get_type(track) != Animation.TYPE_POSITION_3D:
+			continue
+		var path := clip.track_get_path(track)
+		if path.get_subname_count() != 1 or path.get_subname(0) != &"mixamorig5_Hips":
+			continue
+		for key in clip.track_get_key_count(track):
+			var position := clip.track_get_key_value(track, key) as Vector3
+			if not is_zero_approx(position.x) or not is_zero_approx(position.z):
+				return false
+		return true
+	return false
 
 func _expect(condition: bool, label: String) -> void:
 	if condition:

@@ -44,10 +44,8 @@ func _create_character_model() -> void:
 	if animation_player != null:
 		_add_clip(IdleScene, &"idle", true)
 		_add_clip(JogScene, &"jog", true)
-		_add_clip(DribbleScene, &"dribble", true, true)
-		# The short planted-foot transition reads as a deliberate cut, unlike a
-		# backwards running loop. Its horizontal root motion stays in simulation.
-		_add_clip(TurnaroundScene, &"turnaround", false, true)
+		_add_clip(DribbleScene, &"dribble", true)
+		_add_clip(TurnaroundScene, &"turnaround", false)
 		_add_clip(PassScene, &"pass", false)
 		_add_clip(ShotScene, &"shot", false)
 		_add_clip(TackleScene, &"tackle", false)
@@ -56,8 +54,7 @@ func _create_character_model() -> void:
 		_play_locomotion(true)
 	_apply_team_color()
 
-func _add_clip(source_scene: PackedScene, library_name: StringName, loop: bool,
-		lock_horizontal_root_motion: bool = false) -> void:
+func _add_clip(source_scene: PackedScene, library_name: StringName, loop: bool) -> void:
 	var source_root := source_scene.instantiate() as Node
 	var source_player := source_root.get_node_or_null("AnimationPlayer") as AnimationPlayer
 	if source_player == null:
@@ -69,8 +66,7 @@ func _add_clip(source_scene: PackedScene, library_name: StringName, loop: bool,
 		return
 	var clip := source_clip.duplicate(true) as Animation
 	clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
-	if lock_horizontal_root_motion:
-		_lock_horizontal_root_motion(clip)
+	_lock_horizontal_root_motion(clip)
 	var library := AnimationLibrary.new()
 	library.add_animation(&"clip", clip)
 	animation_player.add_animation_library(library_name, library)
@@ -85,11 +81,13 @@ func _lock_horizontal_root_motion(clip: Animation) -> void:
 			continue
 		if clip.track_get_key_count(track) == 0:
 			continue
-		var origin := clip.track_get_key_value(track, 0) as Vector3
 		for key in clip.track_get_key_count(track):
 			var position := clip.track_get_key_value(track, key) as Vector3
-			position.x = origin.x
-			position.z = origin.z
+			# Source FBX actions often bake forward movement into the Hips track.
+			# Gameplay owns X/Z translation, so anchor every action at its first pose
+			# and preserve only vertical body motion.
+			position.x = 0.0
+			position.z = 0.0
 			clip.track_set_key_value(track, key, position)
 
 func _create_pitch_markers() -> void:
