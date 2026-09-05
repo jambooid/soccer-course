@@ -72,6 +72,53 @@ static func select_pass_target(players: Array, passer_id: int, home: bool,
 			best = candidate
 	return best.duplicate(true)
 
+## CPU pass selection favours forward receivers only when the ground passing
+## lane has usable clearance from an opponent. This is intentionally a cheap
+## point-to-segment test so it can be evaluated frequently like WE2000's
+## ray-style pass checks.
+static func select_safe_pass_target(players: Array, passer_id: int, home: bool,
+		ball_position: Vector3) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := -INF
+	var attack_sign := 1.0 if home else -1.0
+	for candidate: Dictionary in players:
+		if bool(candidate.get("home", false)) != home or int(candidate.get("id", -1)) == passer_id:
+			continue
+		var target: Vector3 = Coordinate3D.ground(candidate.get("position", Vector3.ZERO))
+		var offset := target - Coordinate3D.ground(ball_position)
+		var distance := offset.length()
+		if distance < 3.0 or distance > 32.0:
+			continue
+		var progress := offset.x * attack_sign
+		if progress < -4.0:
+			continue
+		var clearance := _pass_lane_clearance(players, home, ball_position, target)
+		if clearance < 0.95:
+			continue
+		var score := progress * 0.16 + clearance * 0.82 - distance * 0.025
+		if score > best_score:
+			best_score = score
+			best = candidate
+	return best.duplicate(true)
+
+static func _pass_lane_clearance(players: Array, home: bool, origin: Vector3,
+		target: Vector3) -> float:
+	var closest := INF
+	var lane := Coordinate3D.ground(target - origin)
+	var lane_length_squared := lane.length_squared()
+	if lane_length_squared <= 0.001:
+		return 0.0
+	for player: Dictionary in players:
+		if bool(player.get("home", false)) == home:
+			continue
+		var relative := Coordinate3D.ground(player.get("position", Vector3.ZERO) - origin)
+		var progress := clampf(relative.dot(lane) / lane_length_squared, 0.12, 0.92)
+		var closest_point := lane * progress
+		closest = minf(closest, relative.distance_to(closest_point))
+	# An empty opponent list is a valid test/training setup. Cap the value so
+	# forward progress and pass distance still decide between equally open lanes.
+	return minf(closest, 12.0)
+
 static func pass_velocity(origin: Vector3, target: Vector3, long_pass := false) -> Vector3:
 	var speed := LONG_PASS_SPEED if long_pass else PASS_SPEED
 	return Coordinate3D.ground(target - origin).normalized() * speed

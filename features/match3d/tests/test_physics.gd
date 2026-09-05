@@ -18,6 +18,7 @@ func run_suite() -> Dictionary:
 	_test_player_motion_is_bounded()
 	_test_player_turn_is_arc_based()
 	_test_directional_pass_prefers_forward_teammate()
+	_test_safe_pass_avoids_intercepted_lane()
 	_test_pass_speed_and_shot_speed_are_distinct()
 	_test_goal_detection()
 	_test_3d_goal_height()
@@ -67,6 +68,17 @@ func _test_directional_pass_prefers_forward_teammate() -> void:
 	_expect(int(target.id) == 2, "rightward pass selects the forward teammate")
 	var reverse := Rules.select_pass_target(players, 1, true, Vector3.FORWARD, Vector3(30.0, 0.0, 18.0))
 	_expect(int(reverse.id) == 3, "vertical input selects the vertical outlet")
+
+func _test_safe_pass_avoids_intercepted_lane() -> void:
+	var players := [
+		{"id": 1, "home": true, "position": Vector3(30.0, 0.0, 18.0)},
+		{"id": 2, "home": true, "position": Vector3(46.0, 0.0, 18.0)},
+		{"id": 3, "home": true, "position": Vector3(41.0, 0.0, 28.0)},
+		{"id": 4, "home": false, "position": Vector3(38.0, 0.0, 18.2)},
+	]
+	var target := Rules.select_safe_pass_target(players, 1, true, Vector3(30.0, 0.0, 18.0))
+	_expect(int(target.id) == 3,
+		"safe pass selection rejects the forward lane occupied by an interceptor")
 
 func _test_pass_speed_and_shot_speed_are_distinct() -> void:
 	var short_kick := Rules.pass_velocity(Vector3.ZERO, Vector3(10.0, 0.0, 0.0))

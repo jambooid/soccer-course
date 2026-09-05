@@ -514,6 +514,39 @@ func _run() -> void:
 	game.kickoff_timer = 0.0
 	game._resolve_cpu_tackle(home_carrier)
 	_expect(game.carrier_id == 17, "CPU defender wins a close active tackle while facing the carrier")
+	# 4-3-3 tactical layer: one defender presses, a second blocks the most
+	# dangerous lane, and the remaining back line stays ball-relative.
+	var tactics_game := MatchScene.instantiate()
+	root.add_child(tactics_game)
+	await process_frame
+	tactics_game.kickoff_timer = 0.0
+	tactics_game.controlled_id = -1
+	var tactical_carrier: Dictionary = tactics_game._player_by_id(9)
+	tactical_carrier.position = Vector3(57.0, 0.0, 28.0)
+	tactical_carrier.velocity = Vector3.RIGHT * 4.0
+	tactics_game.players[9] = tactical_carrier
+	tactics_game.carrier_id = 9
+	tactics_game.ball_position = tactical_carrier.position
+	tactics_game._update_tactical_roles()
+	var presser_id := int(tactics_game.primary_presser_by_team.away)
+	var presser_assignment: Dictionary = tactics_game.tactical_assignments[presser_id]
+	_expect(presser_id >= 11 and presser_assignment.state == "primary_press",
+		"4-3-3 assigns exactly one away primary presser against a home carrier")
+	var has_lane_cover := false
+	for player: Dictionary in tactics_game.players:
+		if not bool(player.home) and player.get("ai_state", "") == "lane_cover":
+			has_lane_cover = true
+	_expect(has_lane_cover, "4-3-3 assigns a second defender to cover a forward passing lane")
+	var far_side_fullback: Dictionary = tactics_game._player_by_id(12)
+	var far_side_assignment: Dictionary = tactics_game.tactical_assignments[12]
+	_expect(absf((far_side_assignment.target as Vector3).z - far_side_fullback.spawn.z) > 1.0,
+		"defensive formation shifts laterally with ball position instead of staying at spawn anchors")
+	var advanced_winger: Dictionary = tactics_game._player_by_id(8)
+	tactics_game._assign_team_tactics(true, tactical_carrier, true)
+	var winger_assignment: Dictionary = tactics_game.tactical_assignments[int(advanced_winger.id)]
+	_expect(winger_assignment.state == "forward_run" and (winger_assignment.target as Vector3).x > advanced_winger.spawn.x,
+		"attacking 4-3-3 winger makes a forward support run when its lane is open")
+	tactics_game.free()
 	var kickoff_game := MatchScene.instantiate()
 	root.add_child(kickoff_game)
 	await process_frame

@@ -42,6 +42,10 @@ const CAMERA_FOCUS_Z_MIN := 8.0
 # The pitch's authored stand apron absorbs this extra tracking range.
 const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 4.8
 const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
+const FORMATION_BALL_X_WEIGHT := 0.32
+const FORMATION_BALL_Z_WEIGHT := 0.34
+const PRESSER_SWITCH_MARGIN := 1.18
+const PRESSER_JOCKEY_DISTANCE := 1.85
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
@@ -100,6 +104,8 @@ var dribble_stop_roll_direction := Vector2.ZERO
 var dribble_stop_roll_distance := 0.0
 var dribble_stop_roll_carrier_start := Vector3.ZERO
 var dribble_stop_roll_ball_target := Vector2.ZERO
+var tactical_assignments: Dictionary = {}
+var primary_presser_by_team: Dictionary = {"home": -1, "away": -1}
 var _views: Dictionary = {}
 var _ball_view: Ball3DView
 var _score_label: Label
@@ -225,6 +231,7 @@ func _simulate_tick(step: float) -> void:
 	_event_timer = maxf(_event_timer - step, 0.0)
 	_handle_player_switch()
 	_update_controlled_player()
+	_update_tactical_roles()
 	_step_players(step)
 	if action_cooldown <= 0.0 and _action_just_pressed("p1_special"):
 		_attempt_tackle(_player_by_id(controlled_id))
@@ -283,7 +290,8 @@ func _create_match() -> void:
 				"velocity": Vector3.ZERO, "facing": Vector3.RIGHT if home else Vector3.LEFT,
 				"input_direction": Vector3.RIGHT if home else Vector3.LEFT,
 				"goalkeeper": index == 0, "technique": technique, "dribble_mode": DribblePhysics3D.Mode.JOG,
-				"cutback_cooldown": 0.0}
+				"cutback_cooldown": 0.0, "formation_index": index,
+				"formation_line": _formation_line(index), "ai_state": "formation"}
 			players.append(entry)
 			var view := PlayerView.new() as Player3DView
 			view.name = "Home_%02d" % index if home else "Away_%02d" % index
@@ -427,9 +435,225 @@ func _hold_45_turn_until_touch(player: Dictionary, requested_direction: Vector3)
 		return false
 	return DribblePhysics3D.classify_turn(_player_carry_direction(player), requested_direction) == DribblePhysics3D.TurnType.DEGREE_45
 
+func _formation_line(index: int) -> int:
+	if index == 0:
+		return 0
+	if index <= 4:
+		return 1
+	if index <= 7:
+		return 2
+	return 3
+
+func _update_tactical_roles() -> void:
+	tactical_assignments.clear()
+	var carrier := _player_by_id(carrier_id)
+	if carrier.is_empty():
+		_assign_loose_ball_tactics(true)
+		_assign_loose_ball_tactics(false)
+		return
+	var possession_home := bool(carrier.home)
+	_assign_team_tactics(possession_home, carrier, true)
+	_assign_team_tactics(not possession_home, carrier, false)
+
+func _assign_loose_ball_tactics(team_home: bool) -> void:
+	var closest_id := Rules.nearest_player_id(players, ball_position, 1 if team_home else -1)
+	for player: Dictionary in players:
+		if bool(player.home) != team_home:
+			continue
+		var target := _formation_target(player, Coordinate3D.ground(ball_position), false)
+		var state := "defensive_shape"
+		if int(player.id) == closest_id and not bool(player.goalkeeper):
+			target = Coordinate3D.ground(ball_position)
+			state = "contest_ball"
+		_set_tactical_assignment(player, state, target)
+
+func _assign_team_tactics(team_home: bool, carrier: Dictionary, in_possession: bool) -> void:
+	var focus: Vector3 = Coordinate3D.ground(carrier.position)
+	if in_possession:
+		for player: Dictionary in players:
+			if bool(player.home) != team_home:
+				continue
+			if int(player.id) == int(carrier.id):
+				_set_tactical_assignment(player, "ball_control", _cpu_attack_goal_target(player))
+				continue
+			var target := _formation_target(player, focus, true)
+			var state := "offensive_support"
+			if _can_make_forward_run(player, carrier):
+				target = _forward_run_target(player, target)
+				state = "forward_run"
+			_set_tactical_assignment(player, state, target)
+		return
+
+	var primary := _select_primary_presser(team_home, carrier)
+	var secondary := _select_secondary_defender(team_home, carrier, primary)
+	var threat := _most_dangerous_receiver(not team_home, carrier)
+	for player: Dictionary in players:
+		if bool(player.home) != team_home:
+			continue
+		var target := _formation_target(player, focus, false)
+		var state := "defensive_shape"
+		if int(player.id) == int(primary.get("id", -1)):
+			target = _presser_target(player, carrier)
+			state = "primary_press"
+		elif int(player.id) == int(secondary.get("id", -1)) and not threat.is_empty():
+			target = focus.lerp(Coordinate3D.ground(threat.position), 0.58)
+			state = "lane_cover"
+		_set_tactical_assignment(player, state, target)
+
+func _set_tactical_assignment(player: Dictionary, state: String, target: Vector3) -> void:
+	var player_id := int(player.id)
+	tactical_assignments[player_id] = {"state": state,
+		"target": Coordinate3D.clamp_pitch(Coordinate3D.ground(target), Rules.PLAYER_RADIUS)}
+	for index in players.size():
+		if int(players[index].id) == player_id:
+			var updated_player := players[index]
+			updated_player.ai_state = state
+			players[index] = updated_player
+			return
+
+func _formation_target(player: Dictionary, focus: Vector3, attacking: bool) -> Vector3:
+	var base: Vector3 = player.spawn
+	var attack_sign := 1.0 if bool(player.home) else -1.0
+	var ball_progress := (focus.x - Rules.PITCH_SIZE.x * 0.5) * attack_sign
+	var forward_shift := clampf(ball_progress * FORMATION_BALL_X_WEIGHT, -11.0, 11.0)
+	if attacking:
+		forward_shift += 2.0
+	var line := int(player.get("formation_line", 1))
+	var lateral_weight := FORMATION_BALL_Z_WEIGHT
+	if line == 1:
+		lateral_weight = 0.24
+	elif line == 3:
+		lateral_weight = 0.42
+	var target := base + Vector3(attack_sign * forward_shift, 0.0,
+		(focus.z - Rules.PITCH_SIZE.z * 0.5) * lateral_weight)
+	# The far side contracts toward the ball but never collapses into its lane.
+	var compactness := 0.11 if line <= 1 else 0.06
+	target.z = lerpf(target.z, Rules.PITCH_SIZE.z * 0.5, compactness)
+	return Coordinate3D.clamp_pitch(target, Rules.PLAYER_RADIUS)
+
+func _can_make_forward_run(player: Dictionary, carrier: Dictionary) -> bool:
+	if bool(player.goalkeeper) or int(player.get("formation_line", 0)) < 2:
+		return false
+	var attack_sign := 1.0 if bool(player.home) else -1.0
+	if (carrier.position.x - Rules.PITCH_SIZE.x * 0.5) * attack_sign < -5.0:
+		return false
+	var forward := Vector3(attack_sign, 0.0, 0.0)
+	for opponent: Dictionary in players:
+		if bool(opponent.home) == bool(player.home):
+			continue
+		var offset := Coordinate3D.ground(opponent.position - player.position)
+		if offset.length() < 7.0 and not offset.is_zero_approx() and forward.dot(offset.normalized()) > 0.72:
+			return false
+	return true
+
+func _forward_run_target(player: Dictionary, formation_target: Vector3) -> Vector3:
+	var attack_sign := 1.0 if bool(player.home) else -1.0
+	var line := int(player.get("formation_line", 2))
+	var run_distance := 6.0 if line >= 3 else 3.6
+	return Coordinate3D.clamp_pitch(formation_target + Vector3(attack_sign * run_distance, 0.0, 0.0),
+		Rules.PLAYER_RADIUS)
+
+func _select_primary_presser(team_home: bool, carrier: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := INF
+	var candidate_scores: Dictionary = {}
+	for player: Dictionary in players:
+		if bool(player.home) != team_home or bool(player.goalkeeper) or int(player.id) == controlled_id:
+			continue
+		var to_ball := Coordinate3D.ground(carrier.position - player.position)
+		var distance := to_ball.length()
+		if distance <= 0.01:
+			continue
+		var approach_alignment := Coordinate3D.ground(player.facing).normalized().dot(to_ball.normalized())
+		var role_penalty := 0.42 if int(player.get("formation_line", 1)) == 1 else 0.0
+		var score := distance / 8.8 + (1.0 - approach_alignment) * 0.24 + role_penalty
+		candidate_scores[int(player.id)] = score
+		if score < best_score:
+			best_score = score
+			best = player
+	var key := "home" if team_home else "away"
+	var current_id := int(primary_presser_by_team.get(key, -1))
+	if candidate_scores.has(current_id) and float(candidate_scores[current_id]) <= best_score * PRESSER_SWITCH_MARGIN:
+		best = _player_by_id(current_id)
+	primary_presser_by_team[key] = int(best.get("id", -1))
+	return best
+
+func _select_secondary_defender(team_home: bool, carrier: Dictionary, primary: Dictionary) -> Dictionary:
+	if primary.is_empty():
+		return {}
+	var best: Dictionary = {}
+	var best_score := INF
+	var primary_offset := Coordinate3D.ground(primary.position - carrier.position).normalized()
+	for player: Dictionary in players:
+		if bool(player.home) != team_home or bool(player.goalkeeper) or int(player.id) == int(primary.id) or \
+			int(player.id) == controlled_id or _is_last_defender(player, team_home):
+			continue
+		var offset := Coordinate3D.ground(player.position - carrier.position)
+		var distance := offset.length()
+		if distance < 0.01 or distance > 17.0:
+			continue
+		var angle_penalty := absf(primary_offset.dot(offset.normalized())) * 1.1
+		var score := distance / 8.8 + angle_penalty
+		if score < best_score:
+			best_score = score
+			best = player
+	return best
+
+func _is_last_defender(player: Dictionary, team_home: bool) -> bool:
+	var player_depth := float(player.position.x) if team_home else Rules.PITCH_SIZE.x - float(player.position.x)
+	for teammate: Dictionary in players:
+		if bool(teammate.home) != team_home or bool(teammate.goalkeeper) or int(teammate.id) == int(player.id):
+			continue
+		var depth := float(teammate.position.x) if team_home else Rules.PITCH_SIZE.x - float(teammate.position.x)
+		if depth < player_depth - 0.35:
+			return false
+	return true
+
+func _most_dangerous_receiver(attacking_home: bool, carrier: Dictionary) -> Dictionary:
+	var best: Dictionary = {}
+	var best_score := -INF
+	var attack_sign := 1.0 if attacking_home else -1.0
+	for player: Dictionary in players:
+		if bool(player.home) != attacking_home or int(player.id) == int(carrier.id) or bool(player.goalkeeper):
+			continue
+		var player_position: Vector3 = player.position
+		var goal_progress: float = (player_position.x - Rules.PITCH_SIZE.x * 0.5) * attack_sign
+		var distance: float = Coordinate3D.ground(player_position - carrier.position).length()
+		var score: float = goal_progress * 0.18 - distance * 0.025
+		if score > best_score:
+			best_score = score
+			best = player
+	return best
+
+func _presser_target(presser: Dictionary, carrier: Dictionary) -> Vector3:
+	var predicted_ball := Coordinate3D.ground(carrier.position + carrier.velocity * 0.18)
+	var own_goal := Vector3(0.0 if bool(presser.home) else Rules.PITCH_SIZE.x, 0.0,
+		Rules.PITCH_SIZE.z * 0.5)
+	return Coordinate3D.clamp_pitch(predicted_ball + (own_goal - predicted_ball).normalized() * PRESSER_JOCKEY_DISTANCE,
+		Rules.PLAYER_RADIUS)
+
+func _cpu_attack_goal_target(player: Dictionary) -> Vector3:
+	return Vector3(Rules.PITCH_SIZE.x if bool(player.home) else 0.0, 0.0, Rules.PITCH_SIZE.z * 0.5)
+
+func _cpu_carrier_intent(player: Dictionary) -> Vector3:
+	var goal_target := _cpu_attack_goal_target(player)
+	var desired := Coordinate3D.ground(goal_target - player.position).normalized()
+	var nearest: Dictionary = {}
+	var nearest_distance := INF
+	for opponent: Dictionary in players:
+		if bool(opponent.home) == bool(player.home):
+			continue
+		var offset := Coordinate3D.ground(opponent.position - player.position)
+		if offset.length() < nearest_distance and not offset.is_zero_approx() and desired.dot(offset.normalized()) > 0.15:
+			nearest_distance = offset.length()
+			nearest = opponent
+	if not nearest.is_empty() and nearest_distance < 5.0:
+		var evade := Coordinate3D.ground(player.position - nearest.position).normalized()
+		desired = (desired + evade * (1.0 - nearest_distance / 5.0) * 0.9).normalized()
+	return desired
+
 func _player_intent(player: Dictionary) -> Vector3:
 	var id := int(player.id)
-	var home := bool(player.home)
 	if id == controlled_id:
 		var input := _input_direction()
 		if not input.is_zero_approx():
@@ -438,21 +662,9 @@ func _player_intent(player: Dictionary) -> Vector3:
 		# carrier/formation AI when the stick is released.
 		return Vector3.ZERO
 	if id == carrier_id:
-		var facing: Vector3 = player.facing
-		if home:
-			return facing.lerp(Vector3.RIGHT, 0.25).normalized()
-		return facing.lerp(Vector3.LEFT, 0.25).normalized()
-	var target: Vector3 = player.spawn
-	var carrier := _player_by_id(carrier_id)
-	if not carrier.is_empty():
-		var carrier_position: Vector3 = carrier.position
-		if bool(carrier.home) == home:
-			target += Vector3(2.2 if home else -2.2, 0.0, (carrier_position.z - target.z) * 0.15)
-		else:
-			var pressure := clampf(1.0 - player.position.distance_to(carrier_position) / 20.0, 0.0, 1.0)
-			target = target.lerp(carrier_position, pressure * (0.75 if not bool(player.goalkeeper) else 0.2))
-	elif player.position.distance_to(Coordinate3D.ground(ball_position)) < 12.0:
-		target = Coordinate3D.ground(ball_position)
+		return _cpu_carrier_intent(player)
+	var assignment: Dictionary = tactical_assignments.get(id, {})
+	var target: Vector3 = assignment.get("target", player.spawn)
 	return Coordinate3D.ground(target - player.position).normalized()
 
 func _handle_player_switch() -> void:
@@ -829,8 +1041,33 @@ func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 		if goal_distance < 21.0:
 			_shoot(carrier, (Rules.PITCH_SIZE.z * 0.5 - carrier.position.z) * 0.35)
 		elif frame_count % 3 == 0:
-			_kick_to_target(carrier, false, Vector3.LEFT)
+			var target := Rules.select_safe_pass_target(players, int(carrier.id), carrier_home, ball_position)
+			if not target.is_empty():
+				_kick_to_cpu_target(carrier, target)
 		cpu_action_cooldown = 0.85
+
+func _kick_to_cpu_target(carrier: Dictionary, target: Dictionary) -> void:
+	var lead: Vector3 = target.velocity * 0.16
+	var launch_velocity := Rules.pass_velocity(ball_position, target.position + lead)
+	launch_velocity.y = 1.4
+	var launch_position := ball_position
+	launch_position.y = 0.12
+	_set_ball_state(launch_position, launch_velocity, false)
+	ball_bounce_count = 0
+	ball_grounded = false
+	ball_flight_time = 0.0
+	carrier_id = -1
+	dribble_touch_timer = 0.0
+	dribble_loss_timer = 0.0
+	_reset_dribble_turn_state()
+	last_touch_home = bool(carrier.home)
+	action_cooldown = 0.22
+	_event_label.text = "PASS"
+	_event_timer = 0.35
+	_play_sfx("pass")
+	var passer_view := _views.get(int(carrier.id)) as Player3DView
+	if passer_view != null:
+		passer_view.play_action("pass")
 
 func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void:
 	var target := Rules.select_pass_target(players, int(carrier.id), bool(carrier.home), aim, ball_position)
