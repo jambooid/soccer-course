@@ -23,8 +23,10 @@ const GROUND_FRICTION_PER_SECOND := 0.28
 const TURN_45_MIN_DEGREES := 25.0
 const TURN_90_MIN_DEGREES := 65.0
 const TURN_180_MIN_DEGREES := 135.0
+const TURN_90_BALL_ANCHOR_SECONDS := 0.07
 const TURNAROUND_BALL_ANCHOR_SECONDS := 0.10
 const TURNAROUND_INPUT_LOCK_SECONDS := 0.20
+const TURN_45_PLAYER_ALIGN_SECONDS := 0.15
 
 ## Dribbling lives on the pitch plane. Keep the simulation in Vector2 (x/z)
 ## and only convert back to Vector3 when publishing the ball's world position.
@@ -92,6 +94,8 @@ static func turn_speed_multiplier(turn_type: int) -> float:
 
 static func turn_touch_multiplier(turn_type: int) -> float:
 	match turn_type:
+		TurnType.DEGREE_45:
+			return 0.95
 		TurnType.DEGREE_90:
 			return 0.80
 		TurnType.DEGREE_180:
@@ -99,7 +103,12 @@ static func turn_touch_multiplier(turn_type: int) -> float:
 	return 1.0
 
 static func turn_anchor_duration(turn_type: int) -> float:
-	return TURNAROUND_BALL_ANCHOR_SECONDS if turn_type == TurnType.DEGREE_180 else 0.0
+	match turn_type:
+		TurnType.DEGREE_90:
+			return TURN_90_BALL_ANCHOR_SECONDS
+		TurnType.DEGREE_180:
+			return TURNAROUND_BALL_ANCHOR_SECONDS
+	return 0.0
 
 ## The front defender is projected forward briefly, then the three nearby
 ## eight-way lanes are scored. This is intentionally a small correction: it
@@ -160,15 +169,24 @@ static func touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 		blend -= 0.06
 	return Coordinate3D.ground(current_velocity).lerp(target, clampf(blend, 0.42, 0.88))
 
-## 90 and 180 degree cuts deliberately discard the old ball heading. Smaller
-## turns keep the ordinary touch blend, preserving a smooth 45 degree arc.
+static func touch_target_speed(player_velocity: Vector3, mode: int) -> float:
+	var speed := Coordinate3D.ground(player_velocity).length()
+	var multiplier := SPRINT_PUSH_MULTIPLIER if mode == Mode.SPRINT else JOG_PUSH_MULTIPLIER
+	var idle_speed := IDLE_PUSH_SPEED_SPRINT if mode == Mode.SPRINT else IDLE_PUSH_SPEED_JOG
+	return maxf(speed * multiplier, idle_speed)
+
+## Every classified cut clears the old ball heading at its foot-contact event.
+## The 45 degree cut immediately releases a near-full diagonal touch, while
+## 90 and 180 degree cuts use their stronger deceleration and anchor states.
 static func turn_touch_velocity(current_velocity: Vector3, player_velocity: Vector3,
 		facing: Vector3, technique: float, mode: int, requested_direction: Vector3,
 		turn_type: int) -> Vector3:
-	if turn_type == TurnType.DEGREE_90 or turn_type == TurnType.DEGREE_180:
+	if turn_type == TurnType.DEGREE_45 or turn_type == TurnType.DEGREE_90 or turn_type == TurnType.DEGREE_180:
 		var requested := quantize_direction(requested_direction)
 		if requested.is_zero_approx():
 			requested = quantize_direction(facing)
+		if turn_type == TurnType.DEGREE_45:
+			return requested * touch_target_speed(player_velocity, mode) * turn_touch_multiplier(turn_type)
 		var ordinary := touch_velocity(Vector3.ZERO, player_velocity, facing,
 			technique, mode, requested)
 		return requested * ordinary.length() * turn_touch_multiplier(turn_type)

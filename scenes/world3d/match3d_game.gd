@@ -27,7 +27,7 @@ const CAMERA_LATERAL_LIMIT := 14.0
 const CAMERA_LATERAL_DEADZONE := 2.5
 const IDLE_CONTROLLED_STOP_SPEED := 0.75
 
-enum DribblePhase { FREE_ROLL, TURNAROUND_ANCHOR }
+enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
 var players: Array[Dictionary] = []
 var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
@@ -63,11 +63,14 @@ var dribble_mode := DribblePhysics3D.Mode.JOG
 var dribble_touch_count := 0
 var dribble_queued_direction := Vector3.ZERO
 var dribble_turn_anchor_timer := 0.0
+var dribble_turn_anchor_duration := 0.0
 var dribble_turn_anchor_direction := Vector3.ZERO
 var dribble_turn_anchor_start := Vector2.ZERO
+var dribble_turn_anchor_offset := 0.0
 var dribble_turn_release_velocity := Vector3.ZERO
 var dribble_last_turn_type := DribblePhysics3D.TurnType.NONE
 var dribble_phase := DribblePhase.FREE_ROLL
+var dribble_45_turn_commit_timer := 0.0
 var dribble_turn_lock_timer := 0.0
 var dribble_turn_locked_direction := Vector3.ZERO
 var _views: Dictionary = {}
@@ -217,6 +220,7 @@ func _create_match() -> void:
 
 func _step_players(delta: float) -> void:
 	dribble_turn_lock_timer = maxf(dribble_turn_lock_timer - delta, 0.0)
+	dribble_45_turn_commit_timer = maxf(dribble_45_turn_commit_timer - delta, 0.0)
 	for index in players.size():
 		var player := players[index]
 		var player_id := int(player.id)
@@ -231,9 +235,16 @@ func _step_players(delta: float) -> void:
 				player.facing = player.facing.lerp(dribble_turn_locked_direction, 0.62).normalized()
 			players[index] = player
 			continue
-		var desired := _player_intent(player)
-		var has_input_intent := not desired.is_zero_approx()
+		var requested_direction := _player_intent(player)
+		var has_input_intent := not requested_direction.is_zero_approx()
 		player.movement_intent = has_input_intent
+		var desired := requested_direction
+		# A 45-degree touch is the handoff between the old and new running lanes.
+		# Hold the body on its existing lane until that foot contact, while keeping
+		# the new input queued for the ball. This prevents the player from running
+		# away from a ball that has not changed direction yet.
+		if _hold_45_turn_until_touch(player, requested_direction):
+			desired = _player_carry_direction(player)
 		# Releasing the stick never pulls the ball back. Instead, the controlled
 		# carrier coasts with the loose ball's remaining ground velocity, so both
 		# settle together while possession remains intact.
@@ -258,12 +269,26 @@ func _step_players(delta: float) -> void:
 		player.position = motion.position
 		player.velocity = motion.velocity
 		player.dribble_mode = DribblePhysics3D.Mode.SPRINT if sprinting else DribblePhysics3D.Mode.JOG
-		if not desired.is_zero_approx():
-			player.input_direction = Coordinate3D.ground(desired).normalized()
+		if not requested_direction.is_zero_approx():
+			player.input_direction = Coordinate3D.ground(requested_direction).normalized()
 			# Facing follows the actual velocity, with input only as a fallback.
 			var actual_direction := Coordinate3D.ground(player.velocity).normalized()
 			player.facing = actual_direction if not actual_direction.is_zero_approx() else desired.normalized()
 		players[index] = player
+
+func _player_carry_direction(player: Dictionary) -> Vector3:
+	var carry_direction := Coordinate3D.ground(player.velocity).normalized()
+	if carry_direction.is_zero_approx():
+		carry_direction = Coordinate3D.ground(player.facing).normalized()
+	return carry_direction
+
+func _hold_45_turn_until_touch(player: Dictionary, requested_direction: Vector3) -> bool:
+	if int(player.id) != carrier_id or dribble_phase != DribblePhase.FREE_ROLL or \
+		dribble_45_turn_commit_timer > 0.0 or dribble_touch_timer <= 0.0:
+		return false
+	if Coordinate3D.ground(player.velocity).length() <= 0.12:
+		return false
+	return DribblePhysics3D.classify_turn(_player_carry_direction(player), requested_direction) == DribblePhysics3D.TurnType.DEGREE_45
 
 func _player_intent(player: Dictionary) -> Vector3:
 	var id := int(player.id)
@@ -373,16 +398,15 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	if carry_direction_plane.is_zero_approx():
 		carry_direction_plane = intent_plane
 
-	# The 180-degree turnaround has a short support-foot lock before the rear
-	# touch is released. Every other period is independent rolling plus ordinary
-	# control assistance; there is no continuous turn lerp.
-	var turn_anchor_active := dribble_phase == DribblePhase.TURNAROUND_ANCHOR
+	# 90 and 180 degree cuts use a short foot-contact anchor before their new
+	# touch velocity is released. A 45 degree cut stays in the running loop and
+	# releases its diagonal touch immediately; only 180 degrees locks movement.
+	var turn_anchor_active := dribble_phase != DribblePhase.FREE_ROLL
 	var external_force := false
 	if turn_anchor_active:
 		dribble_turn_anchor_timer = maxf(dribble_turn_anchor_timer - delta, 0.0)
-		var anchor_target := carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * 0.24
-		var anchor_duration := DribblePhysics3D.turn_anchor_duration(DribblePhysics3D.TurnType.DEGREE_180)
-		var anchor_progress := 1.0 - dribble_turn_anchor_timer / maxf(anchor_duration, 0.001)
+		var anchor_target := carrier_plane + DribblePhysics3D.to_pitch_plane(dribble_turn_anchor_direction) * dribble_turn_anchor_offset
+		var anchor_progress := 1.0 - dribble_turn_anchor_timer / maxf(dribble_turn_anchor_duration, 0.001)
 		ball_plane = dribble_turn_anchor_start.lerp(anchor_target, smoothstep(0.0, 1.0, anchor_progress))
 		ball_velocity_plane = Vector2.ZERO
 		if dribble_turn_anchor_timer <= 0.0:
@@ -421,17 +445,25 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 			dribble_touch_timer = DribblePhysics3D.touch_interval(technique, mode)
 			dribble_touch_count += 1
 			dribble_loss_timer = 0.0
-			if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180:
-				dribble_turn_anchor_timer = DribblePhysics3D.turn_anchor_duration(dribble_last_turn_type)
-				dribble_turn_anchor_direction = DribblePhysics3D.from_pitch_plane(-carry_direction_plane)
+			var turn_anchor_duration := DribblePhysics3D.turn_anchor_duration(dribble_last_turn_type)
+			if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45:
+				dribble_45_turn_commit_timer = DribblePhysics3D.TURN_45_PLAYER_ALIGN_SECONDS
+			if turn_anchor_duration > 0.0:
+				dribble_turn_anchor_timer = turn_anchor_duration
+				dribble_turn_anchor_duration = turn_anchor_duration
+				dribble_turn_anchor_direction = contact_direction
+				dribble_turn_anchor_offset = DribblePhysics3D.touch_offset(technique, mode)
+				if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180:
+					dribble_turn_anchor_direction = DribblePhysics3D.from_pitch_plane(-carry_direction_plane)
+					dribble_turn_anchor_offset = 0.24
+					dribble_turn_lock_timer = DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
+					dribble_turn_locked_direction = contact_direction
+				dribble_phase = DribblePhase.TURNAROUND_ANCHOR if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180 else DribblePhase.TURN_ANCHOR
 				dribble_turn_anchor_start = ball_plane
-				dribble_turn_lock_timer = DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
-				dribble_turn_locked_direction = contact_direction
 				dribble_turn_release_velocity = DribblePhysics3D.turn_touch_velocity(
-					Vector3.ZERO, carrier.velocity, carrier.facing, technique, mode,
-					contact_direction, dribble_last_turn_type)
+					DribblePhysics3D.from_pitch_plane(ball_velocity_plane), carrier.velocity,
+					carrier.facing, technique, mode, contact_direction, dribble_last_turn_type)
 				ball_velocity_plane = Vector2.ZERO
-				dribble_phase = DribblePhase.TURNAROUND_ANCHOR
 				turn_anchor_active = true
 			else:
 				ball_velocity_plane = DribblePhysics3D.to_pitch_plane(DribblePhysics3D.turn_touch_velocity(
@@ -443,7 +475,8 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 			# independent impulses, but a slow ball must not collapse into the
 			# player's centre between two contacts (the 2D implementation uses the
 			# same moving-ideal-position constraint).
-			if has_movement_intent and carrier_speed > 0.25:
+			var direct_45_touch := touched_this_tick and dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45
+			if not direct_45_touch and has_movement_intent and carrier_speed > 0.25:
 				var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + 0.18
 				var current_lead := (ball_plane - carrier_plane).dot(intent_plane)
 				if current_lead < desired_lead:
@@ -488,11 +521,14 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 func _reset_dribble_turn_state() -> void:
 	dribble_queued_direction = Vector3.ZERO
 	dribble_turn_anchor_timer = 0.0
+	dribble_turn_anchor_duration = 0.0
 	dribble_turn_anchor_direction = Vector3.ZERO
 	dribble_turn_anchor_start = Vector2.ZERO
+	dribble_turn_anchor_offset = 0.0
 	dribble_turn_release_velocity = Vector3.ZERO
 	dribble_last_turn_type = DribblePhysics3D.TurnType.NONE
 	dribble_phase = DribblePhase.FREE_ROLL
+	dribble_45_turn_commit_timer = 0.0
 	dribble_turn_lock_timer = 0.0
 	dribble_turn_locked_direction = Vector3.ZERO
 

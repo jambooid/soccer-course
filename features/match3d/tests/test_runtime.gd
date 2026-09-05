@@ -196,10 +196,69 @@ func _run() -> void:
 	regression_game.ball_velocity = Vector3.RIGHT * 11.0
 	regression_game.dribble_touch_timer = 0.0
 	regression_game.dribble_turn_anchor_timer = 0.0
+	var pre_90_anchor_position: Vector3 = regression_game.ball_position
 	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
 	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_90 and
-		regression_game.ball_velocity.x < 0.1 and regression_game.ball_velocity.z < -0.1,
-		"90 degree cut clears old ball velocity and applies a lateral touch")
+		regression_game.dribble_phase == regression_game.DribblePhase.TURN_ANCHOR and
+		regression_game.ball_velocity.length() < 0.01 and
+		is_equal_approx(regression_game.ball_position.x, pre_90_anchor_position.x) and
+		is_equal_approx(regression_game.ball_position.z, pre_90_anchor_position.z),
+		"90 degree cut starts a short smooth anchor at the contact position")
+	for _i in range(5):
+		regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_velocity.x < 0.1 and regression_game.ball_velocity.z < -0.1,
+		"90 degree cut clears old ball velocity and releases a lateral touch after the anchor")
+	regression_game._reset_dribble_turn_state()
+	turn_carrier.input_direction = Vector3(1.0, 0.0, -1.0)
+	turn_carrier.velocity = Vector3.RIGHT * 8.0
+	turn_carrier.facing = Vector3.RIGHT
+	turn_carrier.movement_intent = true
+	regression_game.players[regression_game.carrier_id] = turn_carrier
+	regression_game.ball_position = turn_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_velocity = Vector3.RIGHT * 9.0
+	regression_game.dribble_touch_timer = 0.0
+	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45 and
+		regression_game.dribble_phase == regression_game.DribblePhase.FREE_ROLL and
+		regression_game.dribble_turn_lock_timer <= 0.0 and
+		regression_game.ball_velocity.normalized().dot(Vector3(1.0, 0.0, -1.0).normalized()) > 0.99,
+		"45 degree cut immediately redirects the ball into its new diagonal lane without anchoring")
+	var turned_45_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
+	var expected_45_ball_speed := DribblePhysics3D.touch_target_speed(turn_carrier.velocity,
+		int(turn_carrier.dribble_mode)) * 0.95
+	_expect(is_equal_approx(regression_game.ball_velocity.length(), expected_45_ball_speed) and
+		is_equal_approx(turned_45_carrier.velocity.length(), 7.6) and
+		is_equal_approx(DribblePhysics3D.turn_speed_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.95) and
+		is_equal_approx(DribblePhysics3D.turn_touch_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.95),
+		"45 degree cut preserves near-full player and ball speed")
+	regression_game._reset_dribble_turn_state()
+	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	turn_carrier.position = Vector3(42.0, 0.0, 18.0)
+	turn_carrier.velocity = Vector3.RIGHT * 8.0
+	turn_carrier.facing = Vector3.RIGHT
+	turn_carrier.input_direction = Vector3.RIGHT
+	turn_carrier.movement_intent = true
+	regression_game.players[regression_game.carrier_id] = turn_carrier
+	regression_game.ball_position = turn_carrier.position + Vector3.RIGHT * 0.62 + Vector3.UP * 0.08
+	regression_game.ball_velocity = Vector3.RIGHT * 8.0
+	regression_game.dribble_touch_timer = 0.04
+	var pre_queued_turn_position: Vector3 = turn_carrier.position
+	Input.action_press("p1_right")
+	Input.action_press("p1_up")
+	for _i in range(3):
+		regression_game._step_players(1.0 / 60.0)
+		turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
+		regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect(is_equal_approx(turn_carrier.position.z, pre_queued_turn_position.z) and
+		regression_game.ball_velocity.z < -0.1 and regression_game.dribble_45_turn_commit_timer > 0.0,
+		"45 degree input keeps the carrier on the old lane until the ball touch redirects it")
+	regression_game._step_players(1.0 / 60.0)
+	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	_expect(turn_carrier.velocity.z < -0.1,
+		"45 degree carrier begins its diagonal arc only after the ball has changed lane")
+	Input.action_release("p1_right")
+	Input.action_release("p1_up")
 	_expect(DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3(1.0, 0.0, 1.0)) ==
 		DribblePhysics3D.TurnType.DEGREE_45 and DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3(-1.0, 0.0, 1.0)) ==
 		DribblePhysics3D.TurnType.DEGREE_180 and DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3.LEFT) ==
