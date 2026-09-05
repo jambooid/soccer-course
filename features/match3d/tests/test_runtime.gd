@@ -108,6 +108,41 @@ func _run() -> void:
 		camera.position.z < regression_game.CAMERA_BASE_POSITION.z - 8.0 and
 		camera.rotation.is_equal_approx(settled_camera_rotation),
 		"camera follows play toward the far upper half without changing the broadcast angle")
+	# The near touchline is the tightest part of this low broadcast angle. Keep
+	# following a carrier that is still moving toward it, rather than allowing
+	# interpolation to leave the player/ball below the viewport for a frame.
+	camera_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	camera_carrier.position = Vector3(42.5, 0.0, Rules.PITCH_SIZE.z - Rules.PLAYER_RADIUS)
+	camera_carrier.velocity = Vector3(0.0, 0.0, 4.25)
+	regression_game.players[regression_game.carrier_id] = camera_carrier
+	regression_game.ball_position = Vector3(42.5, 0.0, Rules.PITCH_SIZE.z - 0.12)
+	regression_game.ball_velocity = Vector3(0.0, 0.0, 4.25)
+	var near_edge_camera_target: Vector3 = regression_game._camera_desired_focus()
+	for _i in range(120):
+		regression_game._update_camera(1.0 / 60.0)
+	var viewport_height := camera.get_viewport().get_visible_rect().size.y
+	var carrier_screen := camera.unproject_position(camera_carrier.position + Vector3.UP * 1.0)
+	var ball_screen := camera.unproject_position(regression_game.ball_position + Vector3.UP * 0.2)
+	_expect(is_equal_approx(near_edge_camera_target.z, regression_game.CAMERA_FOCUS_Z_MAX) and
+		camera.position.z > regression_game.CAMERA_BASE_POSITION.z + 1.0 and
+		carrier_screen.y >= 0.0 and carrier_screen.y <= viewport_height and
+		ball_screen.y >= 0.0 and ball_screen.y <= viewport_height and
+		camera.rotation.is_equal_approx(settled_camera_rotation),
+		"camera keeps a moving carrier and ball visible at the near touchline")
+	camera_carrier.position = Vector3(Rules.PITCH_SIZE.x - Rules.PLAYER_RADIUS, 0.0,
+		Rules.PITCH_SIZE.z - Rules.PLAYER_RADIUS)
+	regression_game.players[regression_game.carrier_id] = camera_carrier
+	regression_game.ball_position = Vector3(Rules.PITCH_SIZE.x - 0.12, 0.0,
+		Rules.PITCH_SIZE.z - 0.12)
+	var near_corner_camera_target: Vector3 = regression_game._camera_desired_focus()
+	for _i in range(120):
+		regression_game._update_camera(1.0 / 60.0)
+	ball_screen = camera.unproject_position(regression_game.ball_position + Vector3.UP * 0.2)
+	var viewport_width := camera.get_viewport().get_visible_rect().size.x
+	_expect(near_corner_camera_target.is_equal_approx(Vector3(regression_game.CAMERA_FOCUS_X_MAX, 0.0,
+		regression_game.CAMERA_FOCUS_Z_MAX)) and ball_screen.x >= 0.0 and ball_screen.x <= viewport_width and
+		ball_screen.y >= 0.0 and ball_screen.y <= viewport_height,
+		"camera keeps the ball visible in the near right corner")
 	regression_game.carrier_id = -1
 	regression_game.last_touch_home = true
 	regression_game.ball_position = Vector3(38.0, 0.0, 16.0)

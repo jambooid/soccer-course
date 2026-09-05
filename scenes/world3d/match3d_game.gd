@@ -33,10 +33,14 @@ const CAMERA_BALL_LOOKAHEAD_MAX_DISTANCE := 7.0
 const CAMERA_FAST_BALL_SPEED := 12.0
 const CAMERA_FOCUS_DEADZONE_X := 0.75
 const CAMERA_FOCUS_DEADZONE_Z := 0.45
-const CAMERA_FOCUS_X_MIN := 10.7
+const CAMERA_FOCUS_X_MIN := 8.0
 const CAMERA_FOCUS_X_MAX := Rules.PITCH_SIZE.x - CAMERA_FOCUS_X_MIN
 const CAMERA_FOCUS_Z_MIN := 8.0
-const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 6.4
+# The near and side edges of the broadcast frame need more run-off than the
+# playable pitch itself. The old margins could leave a carrier or the ball at
+# their feet outside the viewport while the camera was clamped at a near corner.
+# The pitch's authored stand apron absorbs this extra tracking range.
+const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 4.8
 const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
@@ -160,9 +164,20 @@ func _camera_desired_focus() -> Vector3:
 func _camera_focus_after_deadzone(desired_focus: Vector3) -> Vector3:
 	var deadzone_focus := camera_focus
 	var focus_delta := desired_focus - camera_focus
-	if absf(focus_delta.x) > CAMERA_FOCUS_DEADZONE_X:
+	# A clamped edge target has no remaining forward tracking room. Do not leave
+	# the normal deadzone gap there, or a ball at the near corner can still sit
+	# just outside the frame after the camera has otherwise settled.
+	var target_at_x_edge := is_equal_approx(desired_focus.x, CAMERA_FOCUS_X_MIN) or \
+		is_equal_approx(desired_focus.x, CAMERA_FOCUS_X_MAX)
+	var target_at_z_edge := is_equal_approx(desired_focus.z, CAMERA_FOCUS_Z_MIN) or \
+		is_equal_approx(desired_focus.z, CAMERA_FOCUS_Z_MAX)
+	if target_at_x_edge:
+		deadzone_focus.x = desired_focus.x
+	elif absf(focus_delta.x) > CAMERA_FOCUS_DEADZONE_X:
 		deadzone_focus.x = desired_focus.x - sign(focus_delta.x) * CAMERA_FOCUS_DEADZONE_X
-	if absf(focus_delta.z) > CAMERA_FOCUS_DEADZONE_Z:
+	if target_at_z_edge:
+		deadzone_focus.z = desired_focus.z
+	elif absf(focus_delta.z) > CAMERA_FOCUS_DEADZONE_Z:
 		deadzone_focus.z = desired_focus.z - sign(focus_delta.z) * CAMERA_FOCUS_DEADZONE_Z
 	return _clamp_camera_focus(deadzone_focus)
 
