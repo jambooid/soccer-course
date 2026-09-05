@@ -225,12 +225,14 @@ func _run() -> void:
 		"45 degree cut immediately redirects the ball into its new diagonal lane without anchoring")
 	var turned_45_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
 	var expected_45_ball_speed := DribblePhysics3D.touch_target_speed(turn_carrier.velocity,
-		int(turn_carrier.dribble_mode)) * 0.95
+		int(turn_carrier.dribble_mode)) * 0.75
 	_expect(is_equal_approx(regression_game.ball_velocity.length(), expected_45_ball_speed) and
 		is_equal_approx(turned_45_carrier.velocity.length(), 7.6) and
+		turned_45_carrier.velocity.normalized().dot(Vector3.RIGHT) > 0.99 and
+		turned_45_carrier.facing.dot(Vector3.RIGHT) > 0.99 and
 		is_equal_approx(DribblePhysics3D.turn_speed_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.95) and
-		is_equal_approx(DribblePhysics3D.turn_touch_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.95),
-		"45 degree cut preserves near-full player and ball speed")
+		is_equal_approx(DribblePhysics3D.turn_touch_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.75),
+		"45 degree contact sends the ball into its new lane before the player follows")
 	regression_game._reset_dribble_turn_state()
 	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	turn_carrier.position = Vector3(42.0, 0.0, 18.0)
@@ -251,12 +253,15 @@ func _run() -> void:
 		regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
 	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	_expect(is_equal_approx(turn_carrier.position.z, pre_queued_turn_position.z) and
-		regression_game.ball_velocity.z < -0.1 and regression_game.dribble_45_turn_commit_timer > 0.0,
-		"45 degree input keeps the carrier on the old lane until the ball touch redirects it")
-	regression_game._step_players(1.0 / 60.0)
+		regression_game.ball_velocity.z < -0.1 and turn_carrier.velocity.z > -0.01 and
+		regression_game.dribble_45_turn_commit_timer > 0.0 and
+		not regression_game.dribble_45_turn_pending_direction.is_zero_approx(),
+		"45 degree touch gives the ball a short lead before the carrier turns")
+	for _i in range(3):
+		regression_game._step_players(1.0 / 60.0)
 	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	_expect(turn_carrier.velocity.z < -0.1,
-		"45 degree carrier begins its diagonal arc only after the ball has changed lane")
+		"45 degree carrier follows the ball into the committed diagonal lane")
 	Input.action_release("p1_right")
 	Input.action_release("p1_up")
 	_expect(DribblePhysics3D.classify_turn(Vector3.RIGHT, Vector3(1.0, 0.0, 1.0)) ==

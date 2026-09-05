@@ -9,14 +9,14 @@ const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 enum Mode { JOG, SPRINT }
 enum TurnType { NONE, DEGREE_45, DEGREE_90, DEGREE_180 }
 
-const TOUCH_INTERVAL_JOG := 0.22
-const TOUCH_INTERVAL_SPRINT := 0.42
-const CONTROL_DISTANCE_JOG := 1.35
-const CONTROL_DISTANCE_SPRINT := 2.30
-const TOUCH_OFFSET_JOG := 0.62
-const TOUCH_OFFSET_SPRINT := 0.82
-const JOG_PUSH_MULTIPLIER := 1.45
-const SPRINT_PUSH_MULTIPLIER := 1.25
+const TOUCH_INTERVAL_JOG := 0.18
+const TOUCH_INTERVAL_SPRINT := 0.30
+const CONTROL_DISTANCE_JOG := 1.20
+const CONTROL_DISTANCE_SPRINT := 1.75
+const TOUCH_OFFSET_JOG := 0.52
+const TOUCH_OFFSET_SPRINT := 0.70
+const JOG_PUSH_MULTIPLIER := 1.30
+const SPRINT_PUSH_MULTIPLIER := 1.17
 const IDLE_PUSH_SPEED_JOG := 0.9
 const IDLE_PUSH_SPEED_SPRINT := 1.2
 const GROUND_FRICTION_PER_SECOND := 0.28
@@ -26,7 +26,7 @@ const TURN_180_MIN_DEGREES := 135.0
 const TURN_90_BALL_ANCHOR_SECONDS := 0.07
 const TURNAROUND_BALL_ANCHOR_SECONDS := 0.10
 const TURNAROUND_INPUT_LOCK_SECONDS := 0.20
-const TURN_45_PLAYER_ALIGN_SECONDS := 0.15
+const TURN_45_BALL_LEAD_SECONDS := 0.05
 
 ## Dribbling lives on the pitch plane. Keep the simulation in Vector2 (x/z)
 ## and only convert back to Vector3 when publishing the ball's world position.
@@ -95,7 +95,10 @@ static func turn_speed_multiplier(turn_type: int) -> float:
 static func turn_touch_multiplier(turn_type: int) -> float:
 	match turn_type:
 		TurnType.DEGREE_45:
-			return 0.95
+			# A diagonal touch must change lanes immediately, but the previous
+			# near-full push sent the ball beyond the leading foot before the body
+			# could complete its turn.
+			return 0.75
 		TurnType.DEGREE_90:
 			return 0.80
 		TurnType.DEGREE_180:

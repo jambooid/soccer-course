@@ -71,6 +71,7 @@ var dribble_turn_release_velocity := Vector3.ZERO
 var dribble_last_turn_type := DribblePhysics3D.TurnType.NONE
 var dribble_phase := DribblePhase.FREE_ROLL
 var dribble_45_turn_commit_timer := 0.0
+var dribble_45_turn_pending_direction := Vector3.ZERO
 var dribble_turn_lock_timer := 0.0
 var dribble_turn_locked_direction := Vector3.ZERO
 var _views: Dictionary = {}
@@ -220,7 +221,10 @@ func _create_match() -> void:
 
 func _step_players(delta: float) -> void:
 	dribble_turn_lock_timer = maxf(dribble_turn_lock_timer - delta, 0.0)
+	var turn_45_ball_lead_active := dribble_45_turn_commit_timer > 0.0
 	dribble_45_turn_commit_timer = maxf(dribble_45_turn_commit_timer - delta, 0.0)
+	if dribble_45_turn_commit_timer < 0.0001:
+		dribble_45_turn_commit_timer = 0.0
 	for index in players.size():
 		var player := players[index]
 		var player_id := int(player.id)
@@ -239,11 +243,20 @@ func _step_players(delta: float) -> void:
 		var has_input_intent := not requested_direction.is_zero_approx()
 		player.movement_intent = has_input_intent
 		var desired := requested_direction
+		var waiting_for_45_turn := player_id == carrier_id and dribble_45_turn_commit_timer > 0.0 and \
+			not dribble_45_turn_pending_direction.is_zero_approx()
+		var start_45_turn := player_id == carrier_id and turn_45_ball_lead_active and \
+			dribble_45_turn_commit_timer <= 0.0 and not dribble_45_turn_pending_direction.is_zero_approx()
+		if start_45_turn:
+			var turn_direction := Coordinate3D.ground(dribble_45_turn_pending_direction).normalized()
+			player.velocity = turn_direction * Coordinate3D.ground(player.velocity).length()
+			player.facing = turn_direction
+			desired = turn_direction
+			dribble_45_turn_pending_direction = Vector3.ZERO
 		# A 45-degree touch is the handoff between the old and new running lanes.
-		# Hold the body on its existing lane until that foot contact, while keeping
-		# the new input queued for the ball. This prevents the player from running
-		# away from a ball that has not changed direction yet.
-		if _hold_45_turn_until_touch(player, requested_direction):
+		# Hold the body on its existing lane until that foot contact, then let the
+		# ball roll briefly before the body follows the same touched lane.
+		if waiting_for_45_turn or _hold_45_turn_until_touch(player, requested_direction):
 			desired = _player_carry_direction(player)
 		# Releasing the stick never pulls the ball back. Instead, the controlled
 		# carrier coasts with the loose ball's remaining ground velocity, so both
@@ -447,7 +460,8 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 			dribble_loss_timer = 0.0
 			var turn_anchor_duration := DribblePhysics3D.turn_anchor_duration(dribble_last_turn_type)
 			if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45:
-				dribble_45_turn_commit_timer = DribblePhysics3D.TURN_45_PLAYER_ALIGN_SECONDS
+				dribble_45_turn_commit_timer = DribblePhysics3D.TURN_45_BALL_LEAD_SECONDS
+				dribble_45_turn_pending_direction = contact_direction
 			if turn_anchor_duration > 0.0:
 				dribble_turn_anchor_timer = turn_anchor_duration
 				dribble_turn_anchor_duration = turn_anchor_duration
@@ -529,6 +543,7 @@ func _reset_dribble_turn_state() -> void:
 	dribble_last_turn_type = DribblePhysics3D.TurnType.NONE
 	dribble_phase = DribblePhase.FREE_ROLL
 	dribble_45_turn_commit_timer = 0.0
+	dribble_45_turn_pending_direction = Vector3.ZERO
 	dribble_turn_lock_timer = 0.0
 	dribble_turn_locked_direction = Vector3.ZERO
 

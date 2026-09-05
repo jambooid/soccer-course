@@ -10,6 +10,6 @@ script = ExtResource("1_demo")
 script = ExtResource("2_pitch")
 
 [node name="Camera" type="Camera3D" parent="."]
-position = Vector3(42.5, 42, 50)
+position = Vector3(32, 21, 32)
 current = true
-fov = 50.0
+fov = 48.0
