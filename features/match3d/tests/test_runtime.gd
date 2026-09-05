@@ -1,6 +1,7 @@
 extends SceneTree
 
 const MatchScene := preload("res://scenes/world3d/match3d_game.tscn")
+const BallView := preload("res://scenes/world3d/ball_3d_view.gd")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
 const Rules := preload("res://utils/match3d_rules.gd")
 
@@ -23,6 +24,28 @@ func _run() -> void:
 	game._sync_views()
 	var carrier_view := game._views[game.carrier_id] as Player3DView
 	_expect(carrier_view.carrier_marker.visible, "carrier has a readable on-pitch marker")
+	var single_step_ball_view := BallView.new() as Ball3DView
+	var split_step_ball_view := BallView.new() as Ball3DView
+	root.add_child(single_step_ball_view)
+	root.add_child(split_step_ball_view)
+	await process_frame
+	single_step_ball_view.sync_world_position(Vector3(12.0, 0.0, 18.0))
+	single_step_ball_view.sync_world_position(Vector3(12.14, 0.0, 18.0))
+	var single_step_basis := single_step_ball_view.model.basis
+	split_step_ball_view.sync_world_position(Vector3(12.0, 0.0, 18.0))
+	for offset in [0.035, 0.07, 0.105, 0.14]:
+		split_step_ball_view.sync_world_position(Vector3(12.0 + offset, 0.0, 18.0))
+	_expect(single_step_basis.is_equal_approx(split_step_ball_view.model.basis),
+		"ball roll is determined by traveled distance instead of render cadence")
+	single_step_ball_view.reset_roll_baseline()
+	single_step_ball_view.sync_world_position(Vector3(42.5, 0.0, 18.0))
+	_expect(single_step_basis.is_equal_approx(single_step_ball_view.model.basis),
+		"ball reset establishes a roll baseline without a spin jump")
+	_expect(single_step_ball_view.model.scale.is_equal_approx(Vector3.ONE) and
+		is_equal_approx(single_step_ball_view.shadow.position.y, 0.006),
+		"ball mesh and shadow use the authored ground-contact radius")
+	single_step_ball_view.free()
+	split_step_ball_view.free()
 	var regression_game := MatchScene.instantiate()
 	root.add_child(regression_game)
 	await process_frame
@@ -45,35 +68,69 @@ func _run() -> void:
 	var settled_camera_position := camera.position
 	var settled_camera_rotation := camera.rotation
 	for _i in range(20):
-		regression_game._process(1.0 / 60.0)
+		regression_game._update_camera(1.0 / 60.0)
 	_expect(camera.position.distance_to(settled_camera_position) < 0.03,
 		"camera remains stable while the ball and player are idle")
 	var camera_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
 	camera_carrier.position = Vector3(24.0, 0.0, 12.0)
+	camera_carrier.velocity = Vector3.ZERO
 	regression_game.players[regression_game.carrier_id] = camera_carrier
 	var carrier_camera_target: Vector3 = regression_game._camera_desired_focus()
-	for _i in range(20):
-		regression_game._process(1.0 / 60.0)
-	_expect(camera.position.distance_to(carrier_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 1.2 and
+	for _i in range(50):
+		regression_game._update_camera(1.0 / 60.0)
+	_expect(camera.position.distance_to(carrier_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 1.1 and
 		camera.rotation.is_equal_approx(settled_camera_rotation),
-		"camera frames a carrier at the 2/5-width and 1/3-height tracking anchor")
+		"camera frames a carrier at the broadcast tracking anchor without rotating")
 	camera_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	camera_carrier.position = Vector3(84.0, 0.0, 35.0)
+	camera_carrier.velocity = Vector3.ZERO
 	regression_game.players[regression_game.carrier_id] = camera_carrier
 	var edge_camera_target: Vector3 = regression_game._camera_desired_focus()
-	for _i in range(40):
-		regression_game._process(1.0 / 60.0)
+	for _i in range(120):
+		regression_game._update_camera(1.0 / 60.0)
 	_expect(edge_camera_target.is_equal_approx(Vector3(regression_game.CAMERA_FOCUS_X_MAX, 0.0,
 		regression_game.CAMERA_FOCUS_Z_MAX)) and
-		camera.position.distance_to(edge_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 0.2,
+		camera.position.distance_to(edge_camera_target + regression_game.CAMERA_VIEW_OFFSET) < 1.0,
 		"camera stops at pitch boundaries instead of tracking beyond the field")
+	camera_carrier = regression_game._player_by_id(regression_game.carrier_id)
+	camera_carrier.position = Vector3(42.5, 0.0, 3.0)
+	camera_carrier.velocity = Vector3.ZERO
+	regression_game.players[regression_game.carrier_id] = camera_carrier
+	var far_side_camera_target: Vector3 = regression_game._camera_desired_focus()
+	for _i in range(120):
+		regression_game._update_camera(1.0 / 60.0)
+	_expect(is_equal_approx(far_side_camera_target.z, regression_game.CAMERA_FOCUS_Z_MIN) and
+		camera.position.z < regression_game.CAMERA_BASE_POSITION.z - 8.0 and
+		camera.rotation.is_equal_approx(settled_camera_rotation),
+		"camera follows play toward the far upper half without changing the broadcast angle")
 	regression_game.carrier_id = -1
 	regression_game.last_touch_home = true
-	regression_game.ball_position = Vector3(38.0, 0.08, 16.0)
+	regression_game.ball_position = Vector3(38.0, 0.0, 16.0)
+	regression_game.ball_velocity = Vector3.ZERO
 	_expect(regression_game._camera_desired_focus().is_equal_approx(Vector3(
 		38.0 + regression_game.CAMERA_SCREEN_X_OFFSET, 0.0,
 		16.0 + regression_game.CAMERA_SCREEN_Z_OFFSET)),
-		"after a pass the ball uses the same attacking-side screen anchor")
+		"a stationary loose ball keeps the normal attacking-side screen anchor")
+	regression_game.ball_velocity = Vector3(30.0, 0.0, 0.0)
+	var fast_ball_target: Vector3 = regression_game._camera_desired_focus()
+	_expect(is_equal_approx(fast_ball_target.x, 38.0 + 30.0 * regression_game.CAMERA_BALL_LOOKAHEAD_SECONDS +
+		regression_game.CAMERA_SCREEN_X_OFFSET) and
+		is_equal_approx(fast_ball_target.z, 16.0 + regression_game.CAMERA_SCREEN_Z_OFFSET) and
+		is_equal_approx(regression_game._camera_follow_response(), regression_game.CAMERA_FAST_BALL_FOLLOW_RESPONSE),
+		"a fast loose ball receives capped trajectory lookahead and faster camera response")
+	regression_game.ball_velocity = Vector3.ZERO
+	regression_game.camera_focus = regression_game.CAMERA_BASE_FOCUS
+	var deadzone_carrier: Dictionary = regression_game._player_by_id(regression_game.controlled_id)
+	deadzone_carrier.position = Vector3(
+		regression_game.CAMERA_BASE_FOCUS.x - regression_game.CAMERA_SCREEN_X_OFFSET + regression_game.CAMERA_FOCUS_DEADZONE_X * 0.5,
+		0.0,
+		regression_game.CAMERA_BASE_FOCUS.z - regression_game.CAMERA_SCREEN_Z_OFFSET + regression_game.CAMERA_FOCUS_DEADZONE_Z * 0.5)
+	deadzone_carrier.velocity = Vector3.ZERO
+	regression_game.players[regression_game.controlled_id] = deadzone_carrier
+	regression_game.carrier_id = regression_game.controlled_id
+	regression_game._update_camera(1.0 / 60.0)
+	_expect(regression_game.camera_focus.is_equal_approx(regression_game.CAMERA_BASE_FOCUS),
+		"small close-control movement remains inside the camera deadzone")
 	regression_game.carrier_id = regression_game.controlled_id
 	var paced_carrier: Dictionary = regression_game._player_by_id(regression_game.carrier_id)
 	paced_carrier.position = Vector3(42.5, 0.0, 18.0)
@@ -91,7 +148,7 @@ func _run() -> void:
 	force_carrier.velocity = Vector3.ZERO
 	force_carrier.movement_intent = false
 	regression_game.players[regression_game.carrier_id] = force_carrier
-	regression_game.ball_position = force_carrier.position + Vector3(0.0, 0.08, 0.0)
+	regression_game.ball_position = force_carrier.position
 	regression_game.ball_velocity = Vector3.ZERO
 	regression_game.dribble_touch_timer = 0.0
 	var parked_position: Vector3 = regression_game.ball_position
@@ -117,6 +174,8 @@ func _run() -> void:
 	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
 	_expect(regression_game.ball_velocity.length() > 0.1,
 		"a moving carrier applies a measurable foot impulse")
+	_expect(is_zero_approx(regression_game.ball_position.y),
+		"a moving human carrier keeps the ball at the pitch contact height")
 	force_carrier.velocity = Vector3.RIGHT * 4.0
 	force_carrier.movement_intent = false
 	regression_game.players[regression_game.carrier_id] = force_carrier
@@ -142,7 +201,7 @@ func _run() -> void:
 	force_carrier.velocity = Vector3.RIGHT * 0.70
 	force_carrier.movement_intent = false
 	regression_game.players[regression_game.carrier_id] = force_carrier
-	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62 + Vector3.UP * 0.08
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
 	regression_game.ball_velocity = Vector3.RIGHT * 0.74
 	var low_speed_position: Vector3 = regression_game.ball_position
 	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
@@ -315,6 +374,26 @@ func _run() -> void:
 		Vector3(1.4, 0.0, 0.0), Vector3.ZERO)
 	_expect(safe_lane.z != 0.0 and safe_lane.dot(Vector3.RIGHT) > 0.0,
 		"front defender selects a forward diagonal safety lane")
+	var cpu_ground_game := MatchScene.instantiate()
+	root.add_child(cpu_ground_game)
+	await process_frame
+	cpu_ground_game.kickoff_timer = 0.0
+	var cpu_ground_carrier: Dictionary = cpu_ground_game._player_by_id(20)
+	cpu_ground_carrier.position = Vector3(64.0, 0.0, 18.0)
+	cpu_ground_carrier.velocity = Vector3.LEFT * 4.0
+	cpu_ground_carrier.facing = Vector3.LEFT
+	cpu_ground_carrier.input_direction = Vector3.LEFT
+	cpu_ground_carrier.movement_intent = true
+	cpu_ground_game.players[20] = cpu_ground_carrier
+	cpu_ground_game.carrier_id = 20
+	cpu_ground_game.controlled_id = -1
+	cpu_ground_game.ball_position = cpu_ground_carrier.position + Vector3.LEFT * 0.44
+	cpu_ground_game.ball_velocity = Vector3.ZERO
+	cpu_ground_game.dribble_touch_timer = 0.0
+	cpu_ground_game._step_dribbling_ball(cpu_ground_carrier, 1.0 / 60.0)
+	_expect(is_zero_approx(cpu_ground_game.ball_position.y),
+		"a moving CPU carrier keeps the ball at the pitch contact height")
+	cpu_ground_game.free()
 	regression_game.free()
 	var controlled_before: Vector3 = game._player_by_id(game.controlled_id).position
 	Input.action_press("p1_right")

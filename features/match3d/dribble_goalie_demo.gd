@@ -83,7 +83,9 @@ func _reset_kickoff(_home_kicks_off: bool) -> void:
 		player.input_direction = player.facing
 		players[index] = player
 	var carrier_position := DEMO_START
-	_set_ball_state(carrier_position + Vector3(0.62, 0.08, 0.0), Vector3.ZERO, true)
+	_set_ball_state(carrier_position + Vector3(0.62, 0.0, 0.0), Vector3.ZERO, true)
+	if _ball_view != null:
+		_ball_view.reset_roll_baseline()
 	carrier_id = DEMO_PLAYER_ID
 	controlled_id = DEMO_PLAYER_ID
 	dribble_touch_timer = 0.0

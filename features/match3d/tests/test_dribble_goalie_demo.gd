@@ -52,7 +52,7 @@ func _run() -> void:
 	carrier.velocity = Vector3.ZERO
 	carrier.movement_intent = false
 	demo.players[demo.DEMO_PLAYER_ID] = carrier
-	demo.ball_position = carrier.position + Vector3(0.3, 0.08, 0.0)
+	demo.ball_position = carrier.position + Vector3(0.3, 0.0, 0.0)
 	demo.ball_velocity = Vector3(7.0, 0.0, 0.0)
 	demo.dribble_touch_timer = 0.2
 	var released_speed: float = demo.ball_velocity.length()
@@ -64,7 +64,7 @@ func _run() -> void:
 		"a stationary receiver traps the ball at its current position")
 	var keeper: Dictionary = demo._player_by_id(demo.DEMO_KEEPER_ID)
 	var keeper_start_z := (keeper.position as Vector3).z
-	demo.ball_position = Vector3(18.0, 0.08, 27.0)
+	demo.ball_position = Vector3(18.0, 0.0, 27.0)
 	for _i in range(30):
 		demo._process(1.0 / 60.0)
 	keeper = demo._player_by_id(demo.DEMO_KEEPER_ID)
@@ -75,7 +75,7 @@ func _run() -> void:
 	carrier.position = Vector3(74.7, 0.0, 18.0)
 	demo.players[demo.DEMO_KEEPER_ID] = keeper
 	demo.players[demo.DEMO_PLAYER_ID] = carrier
-	demo.ball_position = Vector3(74.7, 0.08, 18.0)
+	demo.ball_position = Vector3(74.7, 0.0, 18.0)
 	demo.ball_velocity = Vector3.ZERO
 	demo.carrier_id = demo.DEMO_PLAYER_ID
 	demo._resolve_cpu_tackle(carrier)

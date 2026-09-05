@@ -23,19 +23,26 @@ const FIXED_TICK := 1.0 / 60.0
 const CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
 const CAMERA_VIEW_OFFSET := Vector3(0.0, 11.5, 8.76)
 const CAMERA_BASE_POSITION := CAMERA_BASE_FOCUS + CAMERA_VIEW_OFFSET
-const CAMERA_FOLLOW_RESPONSE := 9.0
+const CAMERA_FOLLOW_RESPONSE := 6.0
+const CAMERA_FAST_BALL_FOLLOW_RESPONSE := 10.0
 const CAMERA_SCREEN_X_OFFSET := 2.36
 const CAMERA_SCREEN_Z_OFFSET := 3.20
+const CAMERA_CARRIER_LOOKAHEAD_SECONDS := 0.16
+const CAMERA_BALL_LOOKAHEAD_SECONDS := 0.18
+const CAMERA_BALL_LOOKAHEAD_MAX_DISTANCE := 7.0
+const CAMERA_FAST_BALL_SPEED := 12.0
+const CAMERA_FOCUS_DEADZONE_X := 0.75
+const CAMERA_FOCUS_DEADZONE_Z := 0.45
 const CAMERA_FOCUS_X_MIN := 10.7
 const CAMERA_FOCUS_X_MAX := Rules.PITCH_SIZE.x - CAMERA_FOCUS_X_MIN
-const CAMERA_FOCUS_Z_MIN := 14.1
+const CAMERA_FOCUS_Z_MIN := 8.0
 const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 6.4
 const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
 var players: Array[Dictionary] = []
-var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
+var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5)
 var ball_velocity := Vector3.ZERO
 var ball_bounce_count := 0
 var ball_grounded := true
@@ -117,25 +124,52 @@ func _update_camera(delta: float) -> void:
 		return
 	if not camera_rotation_initialized:
 		_frame_camera()
-	# Keep the controlled subject in the attacking-side lower-left third. During a
-	# pass the ball becomes the subject, while a clamped focus preserves the pitch
-	# edge instead of exposing space beyond a goal line or touchline.
+	# Keep the attacking subject in the lower third. A small deadzone keeps close
+	# control stable, while fast loose balls get a quicker response. The far-side
+	# focus limit remains deliberately wider than the near-side limit so the
+	# camera can follow play into the upper half of the broadcast view.
 	var desired_focus := _camera_desired_focus()
-	camera_focus = camera_focus.lerp(desired_focus, 1.0 - exp(-CAMERA_FOLLOW_RESPONSE * delta))
+	var deadzone_focus := _camera_focus_after_deadzone(desired_focus)
+	camera_focus = camera_focus.lerp(deadzone_focus,
+		1.0 - exp(-_camera_follow_response() * delta))
 	camera_focus = _clamp_camera_focus(camera_focus)
 	camera.position = camera_focus + CAMERA_VIEW_OFFSET
 	camera.rotation = camera_fixed_rotation
 
 func _camera_desired_focus() -> Vector3:
 	var subject_position := Coordinate3D.ground(ball_position)
+	var subject_velocity := Coordinate3D.ground(ball_velocity)
 	var attacking_right := last_touch_home
 	var carrier := _player_by_id(carrier_id)
 	if not carrier.is_empty():
 		subject_position = Coordinate3D.ground(carrier.position)
+		subject_velocity = Coordinate3D.ground(carrier.velocity)
 		attacking_right = bool(carrier.home)
+		subject_position += subject_velocity * CAMERA_CARRIER_LOOKAHEAD_SECONDS
+	else:
+		var ball_lookahead := subject_velocity * CAMERA_BALL_LOOKAHEAD_SECONDS
+		if ball_lookahead.length() > CAMERA_BALL_LOOKAHEAD_MAX_DISTANCE:
+			ball_lookahead = ball_lookahead.normalized() * CAMERA_BALL_LOOKAHEAD_MAX_DISTANCE
+		subject_position += ball_lookahead
+		if absf(subject_velocity.x) > 0.1:
+			attacking_right = subject_velocity.x > 0.0
 	var attack_sign := 1.0 if attacking_right else -1.0
 	return _clamp_camera_focus(subject_position + Vector3(
 		attack_sign * CAMERA_SCREEN_X_OFFSET, 0.0, CAMERA_SCREEN_Z_OFFSET))
+
+func _camera_focus_after_deadzone(desired_focus: Vector3) -> Vector3:
+	var deadzone_focus := camera_focus
+	var focus_delta := desired_focus - camera_focus
+	if absf(focus_delta.x) > CAMERA_FOCUS_DEADZONE_X:
+		deadzone_focus.x = desired_focus.x - sign(focus_delta.x) * CAMERA_FOCUS_DEADZONE_X
+	if absf(focus_delta.z) > CAMERA_FOCUS_DEADZONE_Z:
+		deadzone_focus.z = desired_focus.z - sign(focus_delta.z) * CAMERA_FOCUS_DEADZONE_Z
+	return _clamp_camera_focus(deadzone_focus)
+
+func _camera_follow_response() -> float:
+	if carrier_id < 0 and Coordinate3D.ground(ball_velocity).length() >= CAMERA_FAST_BALL_SPEED:
+		return CAMERA_FAST_BALL_FOLLOW_RESPONSE
+	return CAMERA_FOLLOW_RESPONSE
 
 func _clamp_camera_focus(focus: Vector3) -> Vector3:
 	return Vector3(clampf(focus.x, CAMERA_FOCUS_X_MIN, CAMERA_FOCUS_X_MAX), 0.0,
@@ -612,10 +646,7 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 					ball_plane = carrier_plane + jog_relative.normalized() * DribblePhysics3D.JOG_MAX_BALL_DISTANCE
 	ball_plane.x = clampf(ball_plane.x, 0.12, Rules.PITCH_SIZE.x - 0.12)
 	ball_plane.y = clampf(ball_plane.y, 0.12, Rules.PITCH_SIZE.z - 0.12)
-	var ball_height := 0.08
-	if carrier_speed > 0.12 or ball_velocity_plane.length() > 0.001:
-		ball_height += sin(float(frame_count) * 0.42) * 0.012
-	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane, ball_height)
+	ball_position = DribblePhysics3D.from_pitch_plane(ball_plane)
 	ball_velocity = DribblePhysics3D.from_pitch_plane(ball_velocity_plane)
 	ball_grounded = true
 	ball_flight_time = 0.0
@@ -907,8 +938,10 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 		player.position = player.spawn
 		player.velocity = Vector3.ZERO
 		players[index] = player
-	var kickoff_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.08, Rules.PITCH_SIZE.z * 0.5)
+	var kickoff_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5)
 	_set_ball_state(kickoff_position, Vector3.ZERO, true)
+	if _ball_view != null:
+		_ball_view.reset_roll_baseline()
 	ball_bounce_count = 0
 	ball_grounded = true
 	ball_flight_time = 0.0
