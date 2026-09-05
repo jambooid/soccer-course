@@ -79,23 +79,22 @@ func _run() -> void:
 	var coast_start: Vector3 = force_carrier.position
 	regression_game._step_players(1.0 / 60.0)
 	force_carrier = regression_game._player_by_id(regression_game.carrier_id)
-	_expect((force_carrier.position as Vector3).x > coast_start.x and force_carrier.velocity.x > 0.0 and
-		force_carrier.velocity.length() < 4.0,
-		"released player input decelerates momentum instead of stopping instantly")
+	_expect((force_carrier.position as Vector3).is_equal_approx(coast_start) and force_carrier.velocity.is_zero_approx(),
+		"released dribble input immediately plants the controlled carrier")
 	force_carrier.velocity = Vector3.RIGHT * 4.0
 	force_carrier.facing = Vector3.RIGHT
 	force_carrier.input_direction = Vector3.RIGHT
 	force_carrier.movement_intent = true
 	regression_game.players[regression_game.carrier_id] = force_carrier
-	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.44
 	regression_game.dribble_touch_timer = 0.0
 	regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
 	_expect(regression_game.ball_velocity.length() > 0.1,
 		"a moving carrier applies a measurable foot impulse")
-	force_carrier.velocity = Vector3.ZERO
+	force_carrier.velocity = Vector3.RIGHT * 4.0
 	force_carrier.movement_intent = false
 	regression_game.players[regression_game.carrier_id] = force_carrier
-	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
+	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.44
 	regression_game.ball_velocity = Vector3.RIGHT * 6.0
 	regression_game.dribble_touch_timer = 1.0
 	var rolling_start: Vector3 = regression_game.ball_position
@@ -104,10 +103,15 @@ func _run() -> void:
 		regression_game._step_players(1.0 / 60.0)
 		force_carrier = regression_game._player_by_id(regression_game.carrier_id)
 		regression_game._step_dribbling_ball(force_carrier, 1.0 / 60.0)
-	_expect(regression_game.ball_position.x > rolling_start.x and regression_game.ball_velocity.x > 0.0 and
-		regression_game.ball_velocity.length() < 6.0 and (force_carrier.position as Vector3).x > follower_start.x and
+	var stop_roll_distance: float = regression_game.ball_position.x - rolling_start.x
+	var carrier_stop_distance: float = (force_carrier.position as Vector3).x - follower_start.x
+	var final_foot_gap: float = regression_game.ball_position.x - (force_carrier.position as Vector3).x
+	_expect(stop_roll_distance > 0.10 and stop_roll_distance <= DribblePhysics3D.STOP_ROLL_DISTANCE_JOG + 0.01 and
+		is_equal_approx(regression_game.ball_position.z, rolling_start.z) and regression_game.ball_velocity.is_zero_approx() and
+		carrier_stop_distance > 0.08 and carrier_stop_distance < stop_roll_distance and
+		absf(final_foot_gap - DribblePhysics3D.STOP_TRAP_FOOT_DISTANCE_JOG) < 0.02 and
 		regression_game.carrier_id == int(force_carrier.id),
-		"released input lets carrier and ball coast forward together without pullback or lost possession")
+		"a moving carrier follows the short stop roll and traps the ball at the foot")
 	force_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	force_carrier.velocity = Vector3.RIGHT * 0.70
 	force_carrier.movement_intent = false
@@ -120,7 +124,7 @@ func _run() -> void:
 	_expect(regression_game.ball_velocity.is_zero_approx() and force_carrier.velocity.is_zero_approx() and
 		regression_game.ball_position.is_equal_approx(low_speed_position) and
 		regression_game.carrier_id == int(force_carrier.id),
-		"a released controlled carrier and low-speed ball stop together without pullback")
+		"a released controlled carrier traps even a low-speed ball without pullback")
 	regression_game.carrier_id = int(force_carrier.id)
 	regression_game.controlled_id = int(force_carrier.id)
 	regression_game.ball_position = force_carrier.position + Vector3.RIGHT * 0.62
@@ -185,6 +189,11 @@ func _run() -> void:
 	_expect(is_equal_approx(DribblePhysics3D.turn_speed_multiplier(DribblePhysics3D.TurnType.DEGREE_180), 0.15) and
 		is_equal_approx(DribblePhysics3D.turn_anchor_duration(DribblePhysics3D.TurnType.DEGREE_180), 0.10),
 		"180 degree cut uses the WE-style heavy penalty and short ball anchor")
+	_expect(DribblePhysics3D.touch_offset(64.0, DribblePhysics3D.Mode.JOG) < 0.40 and
+		DribblePhysics3D.touch_offset(64.0, DribblePhysics3D.Mode.JOG) < DribblePhysics3D.touch_offset(64.0, DribblePhysics3D.Mode.SPRINT),
+		"non-sprint dribbling keeps the ball close to the controlling foot")
+	_expect(DribblePhysics3D.JOG_MAX_BALL_DISTANCE < DribblePhysics3D.control_distance(64.0, DribblePhysics3D.Mode.JOG),
+		"non-sprint ball-distance cap keeps loose touches inside the control radius")
 	regression_game._reset_dribble_turn_state()
 	regression_game.controlled_id = regression_game.carrier_id
 	turn_carrier.input_direction = Vector3.FORWARD
@@ -233,6 +242,11 @@ func _run() -> void:
 		is_equal_approx(DribblePhysics3D.turn_speed_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.95) and
 		is_equal_approx(DribblePhysics3D.turn_touch_multiplier(DribblePhysics3D.TurnType.DEGREE_45), 0.75),
 		"45 degree contact sends the ball into its new lane before the player follows")
+	var direct_45_velocity: Vector3 = regression_game.ball_velocity
+	regression_game._step_dribbling_ball(turned_45_carrier, 1.0 / 60.0)
+	_expect(regression_game.ball_velocity.normalized().dot(direct_45_velocity.normalized()) > 0.999 and
+		regression_game.ball_velocity.length() < direct_45_velocity.length(),
+		"45 degree ball free-rolls in its touched lane without carrier correction")
 	regression_game._reset_dribble_turn_state()
 	turn_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	turn_carrier.position = Vector3(42.0, 0.0, 18.0)

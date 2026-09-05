@@ -11,9 +11,9 @@ enum TurnType { NONE, DEGREE_45, DEGREE_90, DEGREE_180 }
 
 const TOUCH_INTERVAL_JOG := 0.18
 const TOUCH_INTERVAL_SPRINT := 0.30
-const CONTROL_DISTANCE_JOG := 1.20
+const CONTROL_DISTANCE_JOG := 0.95
 const CONTROL_DISTANCE_SPRINT := 1.75
-const TOUCH_OFFSET_JOG := 0.52
+const TOUCH_OFFSET_JOG := 0.38
 const TOUCH_OFFSET_SPRINT := 0.70
 const JOG_PUSH_MULTIPLIER := 1.30
 const SPRINT_PUSH_MULTIPLIER := 1.17
@@ -27,6 +27,14 @@ const TURN_90_BALL_ANCHOR_SECONDS := 0.07
 const TURNAROUND_BALL_ANCHOR_SECONDS := 0.10
 const TURNAROUND_INPUT_LOCK_SECONDS := 0.20
 const TURN_45_BALL_LEAD_SECONDS := 0.05
+const STOP_ROLL_MIN_CARRIER_SPEED := 0.85
+const STOP_ROLL_DURATION := 0.10
+const STOP_ROLL_DISTANCE_JOG := 0.20
+const STOP_ROLL_DISTANCE_SPRINT := 0.28
+const STOP_ROLL_CARRIER_FOLLOW := 0.88
+const JOG_MAX_BALL_DISTANCE := 0.58
+const STOP_TRAP_FOOT_DISTANCE_JOG := 0.46
+const STOP_TRAP_FOOT_DISTANCE_SPRINT := 0.64
 
 ## Dribbling lives on the pitch plane. Keep the simulation in Vector2 (x/z)
 ## and only convert back to Vector3 when publishing the ball's world position.
@@ -177,6 +185,18 @@ static func touch_target_speed(player_velocity: Vector3, mode: int) -> float:
 	var multiplier := SPRINT_PUSH_MULTIPLIER if mode == Mode.SPRINT else JOG_PUSH_MULTIPLIER
 	var idle_speed := IDLE_PUSH_SPEED_SPRINT if mode == Mode.SPRINT else IDLE_PUSH_SPEED_JOG
 	return maxf(speed * multiplier, idle_speed)
+
+static func stop_roll_distance(carrier_speed: float, mode: int) -> float:
+	if carrier_speed <= STOP_ROLL_MIN_CARRIER_SPEED:
+		return 0.0
+	var maximum := STOP_ROLL_DISTANCE_SPRINT if mode == Mode.SPRINT else STOP_ROLL_DISTANCE_JOG
+	var reference_speed := 11.0 if mode == Mode.SPRINT else 8.8
+	var speed_fraction := clampf((carrier_speed - STOP_ROLL_MIN_CARRIER_SPEED) /
+		maxf(reference_speed - STOP_ROLL_MIN_CARRIER_SPEED, 0.001), 0.0, 1.0)
+	return lerpf(maximum * 0.65, maximum, speed_fraction)
+
+static func stop_trap_foot_distance(mode: int) -> float:
+	return STOP_TRAP_FOOT_DISTANCE_SPRINT if mode == Mode.SPRINT else STOP_TRAP_FOOT_DISTANCE_JOG
 
 ## Every classified cut clears the old ball heading at its foot-contact event.
 ## The 45 degree cut immediately releases a near-full diagonal touch, while

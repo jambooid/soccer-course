@@ -33,6 +33,9 @@ func _run() -> void:
 	_expect((carrier.position as Vector3).x > start.x + 0.2, "dribble lab carrier responds to movement input")
 	_expect((demo.ball_position - (carrier.position as Vector3)).dot(Vector3.RIGHT) > 0.35,
 		"straight dribble keeps the ball clearly in front of the carrier")
+	_expect(Vector2(demo.ball_position.x - (carrier.position as Vector3).x,
+		demo.ball_position.z - (carrier.position as Vector3).z).length() <= 0.58,
+		"non-sprint dribble keeps the ball close to the controlling foot")
 	_expect(demo.ball_velocity.length() > 0.1, "dribble lab ball receives a foot impulse")
 	var turn_ball_start: Vector3 = demo.ball_position
 	Input.action_press("p1_left")
@@ -56,9 +59,9 @@ func _run() -> void:
 	var released_x: float = demo.ball_position.x
 	for _i in range(8):
 		demo._step_dribbling_ball(carrier, 1.0 / 60.0)
-	_expect(demo.ball_position.x > released_x and demo.ball_velocity.x > 0.0 and
+	_expect(is_equal_approx(demo.ball_position.x, released_x) and demo.ball_velocity.is_zero_approx() and
 		demo.ball_velocity.length() < released_speed,
-		"idle dribble lab ball rolls forward and slows without being pulled back")
+		"a stationary receiver traps the ball at its current position")
 	var keeper: Dictionary = demo._player_by_id(demo.DEMO_KEEPER_ID)
 	var keeper_start_z := (keeper.position as Vector3).z
 	demo.ball_position = Vector3(18.0, 0.08, 27.0)

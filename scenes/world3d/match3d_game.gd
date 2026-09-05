@@ -25,7 +25,6 @@ const CAMERA_BASE_FOCUS := Vector3(42.5, 0.0, 18.0)
 const CAMERA_LATERAL_FOLLOW := 0.30
 const CAMERA_LATERAL_LIMIT := 14.0
 const CAMERA_LATERAL_DEADZONE := 2.5
-const IDLE_CONTROLLED_STOP_SPEED := 0.75
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
@@ -74,6 +73,12 @@ var dribble_45_turn_commit_timer := 0.0
 var dribble_45_turn_pending_direction := Vector3.ZERO
 var dribble_turn_lock_timer := 0.0
 var dribble_turn_locked_direction := Vector3.ZERO
+var dribble_stop_roll_timer := 0.0
+var dribble_stop_roll_start := Vector2.ZERO
+var dribble_stop_roll_direction := Vector2.ZERO
+var dribble_stop_roll_distance := 0.0
+var dribble_stop_roll_carrier_start := Vector3.ZERO
+var dribble_stop_roll_ball_target := Vector2.ZERO
 var _views: Dictionary = {}
 var _ball_view: Ball3DView
 var _score_label: Label
@@ -242,6 +247,19 @@ func _step_players(delta: float) -> void:
 		var requested_direction := _player_intent(player)
 		var has_input_intent := not requested_direction.is_zero_approx()
 		player.movement_intent = has_input_intent
+		var stopping_controlled_dribble := player_id == controlled_id and player_id == carrier_id and \
+			not has_input_intent and dribble_phase == DribblePhase.FREE_ROLL
+		if stopping_controlled_dribble:
+			# A stationary receiver traps on the spot. A moving carrier gets WE2000's
+			# short forward settling roll, which is resolved in _step_dribbling_ball.
+			if dribble_stop_roll_timer <= 0.0:
+				_begin_dribble_stop_roll(player)
+			player.velocity = Vector3.ZERO
+			player.dribble_mode = DribblePhysics3D.Mode.JOG
+			players[index] = player
+			continue
+		if player_id == controlled_id and player_id == carrier_id and has_input_intent:
+			_clear_dribble_stop_roll()
 		var desired := requested_direction
 		var waiting_for_45_turn := player_id == carrier_id and dribble_45_turn_commit_timer > 0.0 and \
 			not dribble_45_turn_pending_direction.is_zero_approx()
@@ -258,16 +276,7 @@ func _step_players(delta: float) -> void:
 		# ball roll briefly before the body follows the same touched lane.
 		if waiting_for_45_turn or _hold_45_turn_until_touch(player, requested_direction):
 			desired = _player_carry_direction(player)
-		# Releasing the stick never pulls the ball back. Instead, the controlled
-		# carrier coasts with the loose ball's remaining ground velocity, so both
-		# settle together while possession remains intact.
-		var follow_released_ball := player_id == controlled_id and player_id == carrier_id and not has_input_intent
-		var released_ball_velocity := Coordinate3D.ground(ball_velocity)
-		if follow_released_ball and released_ball_velocity.length() > 0.12:
-			desired = released_ball_velocity.normalized()
 		var speed := 7.5 if bool(player.goalkeeper) else 8.8
-		if follow_released_ball:
-			speed = minf(speed, released_ball_velocity.length())
 		var sprint_input := player_id == controlled_id and Input.is_action_pressed("p1_sprint")
 		var sprinting := player_id == carrier_id and sprint_input
 		if sprint_input:
@@ -276,8 +285,6 @@ func _step_players(delta: float) -> void:
 		if sprinting:
 			acceleration = 17.0
 		player.cutback_cooldown = maxf(float(player.get("cutback_cooldown", 0.0)) - delta, 0.0)
-		# Releasing input stops adding drive, but does not erase the player's
-		# current momentum. Player and ball therefore come to rest independently.
 		var motion := Rules.advance_player(player.position, player.velocity, desired, delta, speed, acceleration)
 		player.position = motion.position
 		player.velocity = motion.velocity
@@ -294,6 +301,48 @@ func _player_carry_direction(player: Dictionary) -> Vector3:
 	if carry_direction.is_zero_approx():
 		carry_direction = Coordinate3D.ground(player.facing).normalized()
 	return carry_direction
+
+func _begin_dribble_stop_roll(player: Dictionary) -> void:
+	var velocity := Coordinate3D.ground(player.velocity)
+	var distance := DribblePhysics3D.stop_roll_distance(velocity.length(), int(player.get("dribble_mode", DribblePhysics3D.Mode.JOG)))
+	if distance <= 0.0:
+		_clear_dribble_stop_roll()
+		return
+	var direction := velocity.normalized()
+	if direction.is_zero_approx():
+		_clear_dribble_stop_roll()
+		return
+	dribble_stop_roll_timer = DribblePhysics3D.STOP_ROLL_DURATION
+	dribble_stop_roll_start = DribblePhysics3D.to_pitch_plane(ball_position)
+	dribble_stop_roll_direction = DribblePhysics3D.to_pitch_plane(direction)
+	dribble_stop_roll_distance = distance
+	dribble_stop_roll_carrier_start = player.position
+	var carrier_stop_distance := distance * DribblePhysics3D.STOP_ROLL_CARRIER_FOLLOW
+	var carrier_stop_plane := DribblePhysics3D.to_pitch_plane(player.position) + dribble_stop_roll_direction * carrier_stop_distance
+	dribble_stop_roll_ball_target = carrier_stop_plane + dribble_stop_roll_direction * \
+		DribblePhysics3D.stop_trap_foot_distance(int(player.get("dribble_mode", DribblePhysics3D.Mode.JOG)))
+
+func _clear_dribble_stop_roll() -> void:
+	dribble_stop_roll_timer = 0.0
+	dribble_stop_roll_start = Vector2.ZERO
+	dribble_stop_roll_direction = Vector2.ZERO
+	dribble_stop_roll_distance = 0.0
+	dribble_stop_roll_carrier_start = Vector3.ZERO
+	dribble_stop_roll_ball_target = Vector2.ZERO
+
+func _advance_dribble_stop_roll_carrier(player_id: int, ball_distance: float) -> void:
+	var player_distance := ball_distance * DribblePhysics3D.STOP_ROLL_CARRIER_FOLLOW
+	var offset := DribblePhysics3D.from_pitch_plane(dribble_stop_roll_direction * player_distance)
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) != player_id:
+			continue
+		player.position = Coordinate3D.clamp_pitch(dribble_stop_roll_carrier_start + offset, Rules.PLAYER_RADIUS)
+		player.position.y = 0.0
+		player.velocity = Vector3.ZERO
+		player.movement_intent = false
+		players[index] = player
+		return
 
 func _hold_45_turn_until_touch(player: Dictionary, requested_direction: Vector3) -> bool:
 	if int(player.id) != carrier_id or dribble_phase != DribblePhase.FREE_ROLL or \
@@ -403,6 +452,8 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	# the next foot-contact event. This is the gameplay-side equivalent of an
 	# animation event and keeps large cuts from steering the ball every frame.
 	dribble_queued_direction = quantized_request
+	if has_movement_intent:
+		_clear_dribble_stop_roll()
 	var contact_direction := dribble_queued_direction
 	var intent_plane := DribblePhysics3D.to_pitch_plane(contact_direction)
 	var carry_direction_plane := carrier_velocity_plane.normalized()
@@ -431,15 +482,33 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 		# new lane, a velocity reset, or a turn penalty is allowed to take effect.
 		ball_velocity_plane = DribblePhysics3D.apply_ground_friction_2d(ball_velocity_plane, delta)
 		external_force = (ball_velocity_plane - carrier_velocity_plane).length() > 14.0
-		# Let a released controlled carrier coast with the ball at ordinary speeds,
-		# then cut the long friction tail once both are visibly settling. This is a
-		# stop condition, not an attraction: the ball stays at its current position.
+		# Releasing direction traps a stationary receiver at once. A moving carrier
+		# rolls the ball just ahead before the trap settles, instead of coasting.
 		var released_controlled_carrier := int(carrier.id) == controlled_id and not has_movement_intent
-		if released_controlled_carrier and not opponent_interference and not external_force and \
-			ball_velocity_plane.length() <= IDLE_CONTROLLED_STOP_SPEED:
-			ball_velocity_plane = Vector2.ZERO
+		var applying_stop_roll := false
+		if released_controlled_carrier:
+			if dribble_stop_roll_timer > 0.0:
+				applying_stop_roll = true
+				var prior_progress := 1.0 - dribble_stop_roll_timer / DribblePhysics3D.STOP_ROLL_DURATION
+				dribble_stop_roll_timer = maxf(dribble_stop_roll_timer - delta, 0.0)
+				var next_progress := 1.0 - dribble_stop_roll_timer / DribblePhysics3D.STOP_ROLL_DURATION
+				var prior_eased_progress := smoothstep(0.0, 1.0, prior_progress)
+				var next_eased_progress := smoothstep(0.0, 1.0, next_progress)
+				var prior_ball_plane := dribble_stop_roll_start.lerp(dribble_stop_roll_ball_target, prior_eased_progress)
+				ball_plane = dribble_stop_roll_start.lerp(dribble_stop_roll_ball_target, next_eased_progress)
+				ball_velocity_plane = (ball_plane - prior_ball_plane) / maxf(delta, 0.001)
+				var ball_roll_distance := next_eased_progress * dribble_stop_roll_distance
+				_advance_dribble_stop_roll_carrier(int(carrier.id), ball_roll_distance)
+				if dribble_stop_roll_timer <= 0.0:
+					ball_velocity_plane = Vector2.ZERO
+			else:
+				ball_velocity_plane = Vector2.ZERO
 			carrier_velocity_plane = Vector2.ZERO
 			carrier_speed = 0.0
+			dribble_touch_timer = 0.0
+			dribble_last_turn_type = DribblePhysics3D.TurnType.NONE
+			dribble_45_turn_commit_timer = 0.0
+			dribble_45_turn_pending_direction = Vector3.ZERO
 			_stop_player_motion(int(carrier.id))
 		dribble_touch_timer = maxf(dribble_touch_timer - delta, 0.0)
 		var contact_zone := DribblePhysics3D.touch_offset(technique, mode) + 0.82
@@ -489,9 +558,14 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 			# independent impulses, but a slow ball must not collapse into the
 			# player's centre between two contacts (the 2D implementation uses the
 			# same moving-ideal-position constraint).
-			var direct_45_touch := touched_this_tick and dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45
-			if not direct_45_touch and has_movement_intent and carrier_speed > 0.25:
-				var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + 0.18
+			# A diagonal touch owns the ball's entire free-roll window. Re-aiming it
+			# toward a moving ideal point during that window looks like the carrier is
+			# dragging the ball sideways at the end of an ordinary running stride.
+			var direct_45_roll := dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_45 and \
+				dribble_touch_timer > 0.0
+			if not direct_45_roll and has_movement_intent and carrier_speed > 0.25:
+				var desired_lead := DribblePhysics3D.touch_offset(technique, mode) + \
+					(0.08 if mode == DribblePhysics3D.Mode.JOG else 0.18)
 				var current_lead := (ball_plane - carrier_plane).dot(intent_plane)
 				if current_lead < desired_lead:
 					var running_target := carrier_plane + intent_plane * desired_lead
@@ -501,9 +575,15 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 						ball_velocity_plane = ball_velocity_plane.move_toward(
 							running_error.normalized() * running_speed, 50.0 * delta)
 
-			# Integrate only after touch and forward lead forces. There is deliberately
-			# no pull back toward the carrier: an overrun ball remains independent.
-			ball_plane += ball_velocity_plane * delta
+			# Integrate only after touch and forward lead forces. A stop roll already
+			# authored its exact position above, so it must not be integrated twice.
+			if not applying_stop_roll:
+				ball_plane += ball_velocity_plane * delta
+			if mode == DribblePhysics3D.Mode.JOG and has_movement_intent and \
+				int(carrier.id) == controlled_id and not opponent_interference and not external_force:
+				var jog_relative := ball_plane - carrier_plane
+				if jog_relative.length() > DribblePhysics3D.JOG_MAX_BALL_DISTANCE:
+					ball_plane = carrier_plane + jog_relative.normalized() * DribblePhysics3D.JOG_MAX_BALL_DISTANCE
 	ball_plane.x = clampf(ball_plane.x, 0.12, Rules.PITCH_SIZE.x - 0.12)
 	ball_plane.y = clampf(ball_plane.y, 0.12, Rules.PITCH_SIZE.z - 0.12)
 	var ball_height := 0.08
@@ -546,6 +626,7 @@ func _reset_dribble_turn_state() -> void:
 	dribble_45_turn_pending_direction = Vector3.ZERO
 	dribble_turn_lock_timer = 0.0
 	dribble_turn_locked_direction = Vector3.ZERO
+	_clear_dribble_stop_roll()
 
 func _safe_dribble_contact_direction(carrier: Dictionary, requested_direction: Vector3) -> Vector3:
 	var requested := DribblePhysics3D.quantize_direction(requested_direction)
