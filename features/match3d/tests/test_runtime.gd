@@ -163,9 +163,11 @@ func _run() -> void:
 	var pre_anchor_ball_x: float = regression_game.ball_position.x
 	regression_game.dribble_touch_timer = 0.0
 	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
+	var turnaround_view := regression_game._views[regression_game.carrier_id] as Player3DView
 	_expect(regression_game.dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180 and
-		regression_game.dribble_turn_anchor_timer > 0.0 and regression_game.ball_velocity.length() < 0.01,
-		"180 degree cut anchors the ball before releasing a reverse touch")
+		regression_game.dribble_turn_anchor_timer > 0.0 and regression_game.ball_velocity.length() < 0.01 and
+		turnaround_view.is_playing_action("turnaround"),
+		"180 degree cut anchors the ball, clears its old velocity, and starts the turnaround clip")
 	_expect(is_equal_approx(regression_game.ball_position.x, pre_anchor_ball_x),
 		"180 degree cut keeps the ball at its contact position on the anchor's first frame")
 	regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)
@@ -178,8 +180,8 @@ func _run() -> void:
 		regression_game._step_players(1.0 / 60.0)
 	planted_carrier = regression_game._player_by_id(regression_game.carrier_id)
 	_expect(planted_carrier.position.is_equal_approx(planted_position) and planted_carrier.velocity.length() < 0.01 and
-		regression_game.dribble_turn_lock_timer > 0.0,
-		"180 degree cut plants the carrier and ignores new movement during the lock")
+		regression_game.dribble_turn_lock_timer > 0.0 and planted_carrier.facing.dot(Vector3.RIGHT) < 0.9,
+		"180 degree cut plants the carrier while visibly rotating through the locked turn")
 	var released_reverse := false
 	for _i in range(12):
 		regression_game._step_dribbling_ball(turn_carrier, 1.0 / 60.0)

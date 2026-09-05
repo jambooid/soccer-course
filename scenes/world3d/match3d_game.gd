@@ -73,6 +73,7 @@ var dribble_45_turn_commit_timer := 0.0
 var dribble_45_turn_pending_direction := Vector3.ZERO
 var dribble_turn_lock_timer := 0.0
 var dribble_turn_locked_direction := Vector3.ZERO
+var dribble_turn_start_direction := Vector3.ZERO
 var dribble_stop_roll_timer := 0.0
 var dribble_stop_roll_start := Vector2.ZERO
 var dribble_stop_roll_direction := Vector2.ZERO
@@ -241,7 +242,9 @@ func _step_players(delta: float) -> void:
 			player.velocity = Vector3.ZERO
 			player.movement_intent = false
 			if not dribble_turn_locked_direction.is_zero_approx():
-				player.facing = player.facing.lerp(dribble_turn_locked_direction, 0.62).normalized()
+				var turn_progress := 1.0 - dribble_turn_lock_timer / \
+					DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
+				player.facing = _turnaround_facing(turn_progress)
 			players[index] = player
 			continue
 		var requested_direction := _player_intent(player)
@@ -541,6 +544,10 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 					dribble_turn_anchor_offset = 0.24
 					dribble_turn_lock_timer = DribblePhysics3D.TURNAROUND_INPUT_LOCK_SECONDS
 					dribble_turn_locked_direction = contact_direction
+					dribble_turn_start_direction = DribblePhysics3D.from_pitch_plane(carry_direction_plane)
+					var carrier_view := _views.get(int(carrier.id)) as Player3DView
+					if carrier_view != null:
+						carrier_view.play_action("turnaround")
 				dribble_phase = DribblePhase.TURNAROUND_ANCHOR if dribble_last_turn_type == DribblePhysics3D.TurnType.DEGREE_180 else DribblePhase.TURN_ANCHOR
 				dribble_turn_anchor_start = ball_plane
 				dribble_turn_release_velocity = DribblePhysics3D.turn_touch_velocity(
@@ -626,7 +633,22 @@ func _reset_dribble_turn_state() -> void:
 	dribble_45_turn_pending_direction = Vector3.ZERO
 	dribble_turn_lock_timer = 0.0
 	dribble_turn_locked_direction = Vector3.ZERO
+	dribble_turn_start_direction = Vector3.ZERO
 	_clear_dribble_stop_roll()
+
+func _turnaround_facing(progress: float) -> Vector3:
+	var start := Coordinate3D.ground(dribble_turn_start_direction).normalized()
+	var target := Coordinate3D.ground(dribble_turn_locked_direction).normalized()
+	if start.is_zero_approx():
+		return target
+	if target.is_zero_approx():
+		return start
+	var signed_angle := atan2(start.cross(target).y, start.dot(target))
+	# Exact opposites have no cross-product sign. Always turn through the same
+	# side so this input remains visibly deterministic instead of snapping.
+	if absf(signed_angle) < 0.001 and start.dot(target) < 0.0:
+		signed_angle = PI
+	return start.rotated(Vector3.UP, signed_angle * clampf(progress, 0.0, 1.0)).normalized()
 
 func _safe_dribble_contact_direction(carrier: Dictionary, requested_direction: Vector3) -> Vector3:
 	var requested := DribblePhysics3D.quantize_direction(requested_direction)

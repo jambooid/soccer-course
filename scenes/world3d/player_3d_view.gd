@@ -5,10 +5,12 @@ const CharacterModelScene := preload("res://assets/player/Soccer Game Pack/Ch38_
 const IdleScene := preload("res://assets/player/Soccer Game Pack/offensive idle.fbx")
 const JogScene := preload("res://assets/player/Soccer Game Pack/jog forward.fbx")
 const DribbleScene := preload("res://down3d/Soccer Game Pack/Dribble.fbx")
+const TurnaroundScene := preload("res://assets/player/Soccer Game Pack/transition.fbx")
 const PassScene := preload("res://assets/player/Soccer Game Pack/kick soccerball.fbx")
 const ShotScene := preload("res://assets/player/Soccer Game Pack/soccer penalty kick.fbx")
 const TackleScene := preload("res://assets/player/Soccer Game Pack/soccer tackle.fbx")
 const KeeperIdleScene := preload("res://assets/player/Soccer Game Pack/goalkeeper idle.fbx")
+const TURNAROUND_PLAYBACK_SPEED := 3.8
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
 ## Keep this at one because the simulation already uses world metres.
@@ -43,6 +45,9 @@ func _create_character_model() -> void:
 		_add_clip(IdleScene, &"idle", true)
 		_add_clip(JogScene, &"jog", true)
 		_add_clip(DribbleScene, &"dribble", true, true)
+		# The short planted-foot transition reads as a deliberate cut, unlike a
+		# backwards running loop. Its horizontal root motion stays in simulation.
+		_add_clip(TurnaroundScene, &"turnaround", false, true)
 		_add_clip(PassScene, &"pass", false)
 		_add_clip(ShotScene, &"shot", false)
 		_add_clip(TackleScene, &"tackle", false)
@@ -154,6 +159,8 @@ func play_action(kind: String) -> void:
 		return
 	var next_action := StringName()
 	match kind:
+		"turnaround":
+			next_action = &"turnaround/clip"
 		"pass":
 			next_action = &"pass/clip"
 		"shot":
@@ -164,8 +171,15 @@ func play_action(kind: String) -> void:
 			return
 	if animation_player.has_animation(next_action):
 		_action_animation = next_action
-		animation_player.speed_scale = 1.0
+		# The source transition is longer than the gameplay plant. Compress it to
+		# the same 0.2 s input-lock window so reverse movement resumes on its exit.
+		animation_player.speed_scale = TURNAROUND_PLAYBACK_SPEED if kind == "turnaround" else 1.0
 		animation_player.play(next_action, 0.04)
+
+func is_playing_action(kind: String) -> bool:
+	if kind == "turnaround":
+		return _action_animation == &"turnaround/clip"
+	return false
 
 func _play_locomotion(immediate: bool = false) -> void:
 	if animation_player == null:
