@@ -467,10 +467,46 @@ func _run() -> void:
 	_expect(game.ball_position.y > 0.0 and game._ball_view.global_position.is_equal_approx(game._previous_ball_position),
 		"ball keeps canonical 3D physics coordinates while presentation interpolates its path")
 	var prior_controlled: int = game.controlled_id
-	Input.action_press("p1_through_pass")
+	Input.action_press("p1_switch")
 	game._process(1.0 / 60.0)
-	Input.action_release("p1_through_pass")
+	Input.action_release("p1_switch")
 	_expect(game.controlled_id != prior_controlled, "switch input transfers control")
+	var through_game := MatchScene.instantiate()
+	root.add_child(through_game)
+	await process_frame
+	through_game.kickoff_timer = 0.0
+	through_game.action_cooldown = 0.0
+	through_game.cpu_tackle_cooldown = 999.0
+	through_game.carrier_id = 9
+	through_game.controlled_id = 9
+	var through_carrier: Dictionary = through_game._player_by_id(9)
+	through_game.ball_position = through_carrier.position
+	Input.action_press("p1_through_pass")
+	through_game._process(1.0 / 60.0)
+	Input.action_release("p1_through_pass")
+	_expect(through_game.carrier_id == -1 and through_game._event_label.text == "THROUGH" and
+		through_game.ball_velocity.y > 2.0,
+		"I executes an attacking through pass with extra lead and lift")
+	through_game.free()
+	var defensive_switch_game := MatchScene.instantiate()
+	root.add_child(defensive_switch_game)
+	await process_frame
+	defensive_switch_game.kickoff_timer = 0.0
+	defensive_switch_game.carrier_id = 20
+	defensive_switch_game.controlled_id = 9
+	var switch_ball_carrier: Dictionary = defensive_switch_game._player_by_id(20)
+	var nearest_switch_player: Dictionary = defensive_switch_game._player_by_id(8)
+	switch_ball_carrier.position = Vector3(50.0, 0.0, 18.0)
+	nearest_switch_player.position = Vector3(49.0, 0.0, 18.0)
+	defensive_switch_game.players[20] = switch_ball_carrier
+	defensive_switch_game.players[8] = nearest_switch_player
+	defensive_switch_game.ball_position = switch_ball_carrier.position
+	Input.action_press("p1_switch")
+	defensive_switch_game._process(1.0 / 60.0)
+	Input.action_release("p1_switch")
+	_expect(defensive_switch_game.controlled_id == 8,
+		"U switches to the nearest available home player while defending")
+	defensive_switch_game.free()
 	for _i in range(6):
 		game._process(1.0 / 60.0)
 	_expect(game.ball_position != game._player_by_id(game.controlled_id).position, "released ball simulates independently")
@@ -552,6 +588,76 @@ func _run() -> void:
 	_expect(teammate_tackle_game.carrier_id == 8,
 		"an unselected home teammate can win the ball from a nearby CPU carrier")
 	teammate_tackle_game.free()
+	var pressure_game := MatchScene.instantiate()
+	root.add_child(pressure_game)
+	await process_frame
+	pressure_game.kickoff_timer = 0.0
+	pressure_game.controlled_id = 8
+	var pressure_carrier: Dictionary = pressure_game._player_by_id(20)
+	var pressure_defender: Dictionary = pressure_game._player_by_id(8)
+	pressure_carrier.position = Vector3(49.0, 0.0, 18.0)
+	pressure_carrier.facing = Vector3.LEFT
+	pressure_defender.position = Vector3(47.9, 0.0, 18.0)
+	pressure_defender.facing = Vector3.RIGHT
+	pressure_defender.defense = 82.0
+	pressure_game.players[20] = pressure_carrier
+	pressure_game.players[8] = pressure_defender
+	pressure_game.carrier_id = 20
+	pressure_game.ball_position = pressure_carrier.position
+	pressure_game._try_pressure(pressure_defender, pressure_carrier)
+	_expect(pressure_game.carrier_id == 8,
+		"user pressure can win possession without using the tackle action")
+	var pressure_view := pressure_game._views[8] as Player3DView
+	_expect(pressure_view.animation_player.current_animation == &"pressure/clip",
+		"pressure uses the goalkeeper sidestep action while tackle remains separate")
+	_expect(float(pressure_game._player_by_id(20).stumble_recovery) > 0.8,
+		"a carrier who loses a pressure duel enters a stumble recovery")
+	pressure_game.free()
+	var protected_game := MatchScene.instantiate()
+	root.add_child(protected_game)
+	await process_frame
+	protected_game.kickoff_timer = 0.0
+	var protected_carrier: Dictionary = protected_game._player_by_id(20)
+	var weak_defender: Dictionary = protected_game._player_by_id(8)
+	protected_carrier.position = Vector3(49.0, 0.0, 18.0)
+	protected_carrier.facing = Vector3.RIGHT
+	weak_defender.position = Vector3(47.9, 0.0, 18.0)
+	weak_defender.facing = Vector3.RIGHT
+	weak_defender.defense = 58.0
+	protected_game.players[20] = protected_carrier
+	protected_game.players[8] = weak_defender
+	protected_game.carrier_id = 20
+	protected_game.ball_position = protected_carrier.position
+	protected_game._try_pressure(weak_defender, protected_carrier)
+	_expect(protected_game.carrier_id == 20,
+		"a carrier facing away from a weak defender protects possession")
+	protected_game.free()
+	var rear_pressure_game := MatchScene.instantiate()
+	root.add_child(rear_pressure_game)
+	await process_frame
+	rear_pressure_game.kickoff_timer = 0.0
+	var rear_carrier: Dictionary = rear_pressure_game._player_by_id(20)
+	var rear_defender: Dictionary = rear_pressure_game._player_by_id(8)
+	rear_carrier.position = Vector3(49.0, 0.0, 18.0)
+	rear_carrier.facing = Vector3.RIGHT
+	rear_defender.position = Vector3(47.9, 0.0, 18.0)
+	rear_defender.facing = Vector3.RIGHT
+	rear_defender.defense = 58.0
+	rear_pressure_game.players[20] = rear_carrier
+	rear_pressure_game.players[8] = rear_defender
+	rear_pressure_game.carrier_id = 20
+	rear_pressure_game.ball_position = rear_carrier.position
+	for _i in range(50):
+		rear_defender = rear_pressure_game._player_by_id(8)
+		rear_defender.pressure_cooldown = 0.0
+		rear_pressure_game.players[8] = rear_defender
+		rear_pressure_game._try_pressure(rear_defender, rear_carrier)
+		rear_defender = rear_pressure_game._player_by_id(8)
+		if float(rear_defender.stumble_recovery) > 0.0:
+			break
+	_expect(float(rear_defender.stumble_recovery) > 0.0,
+		"sustained pressure from behind can make the defender stumble")
+	rear_pressure_game.free()
 	# 4-3-3 tactical layer: one defender presses, a second blocks the most
 	# dangerous lane, and the remaining back line stays ball-relative.
 	var tactics_game := MatchScene.instantiate()

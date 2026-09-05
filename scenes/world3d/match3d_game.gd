@@ -50,6 +50,8 @@ const PRESSER_JOCKEY_DISTANCE := 0.92
 const AI_TACKLE_DISTANCE := 1.45
 const AI_TACKLE_FACING_MIN := -0.35
 const TACKLE_RECOVERY_SECONDS := 0.62
+const STUMBLE_RECOVERY_SECONDS := 0.95
+const PRESSURE_COOLDOWN_SECONDS := 0.34
 const HUD_SCALE := 0.25
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
@@ -206,7 +208,7 @@ func _clamp_camera_focus(focus: Vector3) -> Vector3:
 func _process(delta: float) -> void:
 	# Input is sampled once per render frame, while gameplay advances in a
 	# deterministic 60 Hz loop. This keeps ball flight independent of V-sync.
-	for action in ["p1_pass", "p1_long_pass", "p1_shoot", "p1_through_pass", "p1_special"]:
+	for action in ["p1_pass", "p1_long_pass", "p1_shoot", "p1_through_pass", "p1_special", "p1_pressure", "p1_co_defense", "p1_switch"]:
 		_sampled_just_pressed[action] = Input.is_action_just_pressed(action)
 		_sampled_just_released[action] = Input.is_action_just_released(action)
 	_simulation_accumulator = minf(_simulation_accumulator + delta, 0.25)
@@ -238,6 +240,7 @@ func _simulate_tick(step: float) -> void:
 	_update_controlled_player()
 	_update_tactical_roles()
 	_step_players(step)
+	_handle_defensive_inputs(step)
 	if action_cooldown <= 0.0 and _action_just_pressed("p1_special"):
 		_attempt_tackle(_player_by_id(controlled_id))
 	_step_ball(step)
@@ -267,6 +270,9 @@ func _handle_kickoff_input() -> void:
 	if _action_just_pressed("p1_pass"):
 		kickoff_timer = 0.0
 		_kick_to_target(carrier, false, aim)
+	elif _action_just_pressed("p1_through_pass"):
+		kickoff_timer = 0.0
+		_kick_to_target(carrier, false, aim, true)
 	elif _action_just_pressed("p1_long_pass"):
 		kickoff_timer = 0.0
 		_kick_to_target(carrier, true, aim)
@@ -297,7 +303,9 @@ func _create_match() -> void:
 				"goalkeeper": index == 0, "technique": technique, "dribble_mode": DribblePhysics3D.Mode.JOG,
 				"cutback_cooldown": 0.0, "formation_index": index,
 				"formation_line": _formation_line(index), "ai_state": "formation",
-				"tackle_recovery": 0.0}
+				"tackle_recovery": 0.0, "stumble_recovery": 0.0,
+				"defense": 58.0 + float((index * 11) % 38), "pressure_cooldown": 0.0,
+				"pressure_exposure": 0.0}
 			players.append(entry)
 			var view := PlayerView.new() as Player3DView
 			view.name = "Home_%02d" % index if home else "Away_%02d" % index
@@ -320,7 +328,11 @@ func _step_players(delta: float) -> void:
 		var player_id := int(player.id)
 		var tackle_recovery := maxf(float(player.get("tackle_recovery", 0.0)) - delta, 0.0)
 		player.tackle_recovery = tackle_recovery
-		if tackle_recovery > 0.0:
+		var stumble_recovery := maxf(float(player.get("stumble_recovery", 0.0)) - delta, 0.0)
+		player.stumble_recovery = stumble_recovery
+		if stumble_recovery <= 0.0 and float(player.get("pressure_exposure", 0.0)) > 0.0:
+			player.pressure_exposure = maxf(float(player.pressure_exposure) - delta * 0.55, 0.0)
+		if tackle_recovery > 0.0 or stumble_recovery > 0.0:
 			# The tackle asset is a sliding/falling action. Hold the gameplay body
 			# and ball owner through its recovery instead of letting locomotion resume.
 			player.velocity = Vector3.ZERO
@@ -684,25 +696,139 @@ func _player_intent(player: Dictionary) -> Vector3:
 		var input := _input_direction()
 		if not input.is_zero_approx():
 			return input
+		var carrier := _player_by_id(carrier_id)
+		if Input.is_action_pressed("p1_pressure") and not carrier.is_empty() and \
+			bool(carrier.home) != bool(player.home):
+			return Coordinate3D.ground(carrier.position - player.position).normalized()
 		# A controlled player is fully manual. Do not fall through to the
 		# carrier/formation AI when the stick is released.
 		return Vector3.ZERO
 	if id == carrier_id:
 		return _cpu_carrier_intent(player)
 	var assignment: Dictionary = tactical_assignments.get(id, {})
+	if Input.is_action_pressed("p1_co_defense") and assignment.get("state", "") == "lane_cover":
+		var carrier := _player_by_id(carrier_id)
+		if not carrier.is_empty() and bool(carrier.home) != bool(player.home):
+			return Coordinate3D.ground(carrier.position - player.position).normalized()
 	var target: Vector3 = assignment.get("target", player.spawn)
 	return Coordinate3D.ground(target - player.position).normalized()
 
-func _handle_player_switch() -> void:
-	if not _action_just_pressed("p1_through_pass"):
+func _handle_defensive_inputs(delta: float) -> void:
+	for index in players.size():
+		var player := players[index]
+		player.pressure_cooldown = maxf(float(player.get("pressure_cooldown", 0.0)) - delta, 0.0)
+		players[index] = player
+	var carrier := _player_by_id(carrier_id)
+	if carrier.is_empty():
 		return
-	var direction := _input_direction()
-	var next_id := Rules.select_switch_target(players, controlled_id, direction, ball_position)
+	var controlled := _player_by_id(controlled_id)
+	if controlled.is_empty() or bool(controlled.home) == bool(carrier.home):
+		return
+	var pressure_held := Input.is_action_pressed("p1_pressure")
+	if pressure_held:
+		_try_pressure(controlled, carrier)
+	if Input.is_action_pressed("p1_co_defense"):
+		var secondary_id := _secondary_pressure_id(bool(controlled.home), carrier)
+		if secondary_id >= 0:
+			_try_pressure(_player_by_id(secondary_id), carrier)
+
+func _secondary_pressure_id(team_home: bool, carrier: Dictionary) -> int:
+	var assignment := _select_secondary_defender(team_home, carrier, _select_primary_presser(team_home, carrier))
+	return int(assignment.get("id", -1))
+
+func _try_pressure(defender: Dictionary, carrier: Dictionary) -> bool:
+	if defender.is_empty() or _is_tackle_recovering(defender) or _is_stumbling(defender):
+		return false
+	if float(defender.get("pressure_cooldown", 0.0)) > 0.0:
+		return false
+	var distance := Coordinate3D.ground(defender.position - carrier.position).length()
+	if distance > 1.65:
+		return false
+	var to_carrier := Coordinate3D.ground(carrier.position - defender.position).normalized()
+	var facing := Coordinate3D.ground(defender.facing).normalized()
+	var carrier_facing := Coordinate3D.ground(carrier.facing).normalized()
+	var front_factor := facing.dot(to_carrier)
+	var carrier_back_turn := carrier_facing.dot(to_carrier) > 0.35
+	var defender_behind := carrier_back_turn
+	var defender_value := float(defender.get("defense", 60.0))
+	# A carrier facing away from the defender protects the ball. Only a strong
+	# defender or a very poor touch should let pressure win from behind.
+	var success_threshold := 0.92 if carrier_back_turn else 0.68
+	if front_factor < -0.35:
+		# Chasing from behind is mostly pressure, not an instant steal. High
+		# defensive value can still win a mistimed touch.
+		success_threshold += 0.18 - defender_value * 0.0024
+	var pressure_score := defender_value * 0.01 + front_factor * 0.24
+	if pressure_score < success_threshold:
+		_set_pressure_cooldown(int(defender.id), PRESSURE_COOLDOWN_SECONDS)
+		if defender_behind:
+			var exposure := float(defender.get("pressure_exposure", 0.0)) + FIXED_TICK
+			_set_pressure_exposure(int(defender.id), exposure)
+			if exposure >= 0.78:
+				_add_stumble(int(defender.id), STUMBLE_RECOVERY_SECONDS)
+				_set_pressure_exposure(int(defender.id), 0.0)
+		return false
+	_win_pressure(defender, carrier)
+	return true
+
+func _win_pressure(defender: Dictionary, carrier: Dictionary) -> void:
+	_win_tackle(defender, false)
+
+func _set_pressure_cooldown(player_id: int, duration: float) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) == player_id:
+			player.pressure_cooldown = maxf(float(player.get("pressure_cooldown", 0.0)), duration)
+			players[index] = player
+			return
+
+func _set_pressure_exposure(player_id: int, exposure: float) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) == player_id:
+			player.pressure_exposure = maxf(exposure, 0.0)
+			players[index] = player
+			return
+
+func _add_stumble(player_id: int, duration: float) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) == player_id:
+			player.stumble_recovery = maxf(float(player.get("stumble_recovery", 0.0)), duration)
+			player.velocity = Vector3.ZERO
+			player.movement_intent = false
+			players[index] = player
+			return
+
+func _is_stumbling(player: Dictionary) -> bool:
+	return float(player.get("stumble_recovery", 0.0)) > 0.0
+
+func _handle_player_switch() -> void:
+	if not _action_just_pressed("p1_switch"):
+		return
+	var carrier := _player_by_id(carrier_id)
+	# U is a defensive switch. When our side has possession it remains inert so
+	# the same physical key cannot interrupt attacking play.
+	if not carrier.is_empty() and bool(carrier.home):
+		return
+	var next_id := _nearest_home_switch_target()
 	if next_id < 0:
 		return
 	controlled_id = next_id
 	_event_label.text = "SWITCH"
 	_event_timer = 0.3
+
+func _nearest_home_switch_target() -> int:
+	var nearest_id := -1
+	var nearest_distance := INF
+	for player: Dictionary in players:
+		if not bool(player.home) or int(player.id) == controlled_id:
+			continue
+		var distance := Coordinate3D.ground(player.position - ball_position).length_squared()
+		if distance < nearest_distance:
+			nearest_distance = distance
+			nearest_id = int(player.id)
+	return nearest_id
 
 func _step_ball(delta: float) -> void:
 	if carrier_id >= 0:
@@ -714,11 +840,8 @@ func _step_ball(delta: float) -> void:
 			_reset_dribble_turn_state()
 			_clear_shot_charge()
 			return
-		if _is_tackle_recovering(carrier):
+		if _is_tackle_recovering(carrier) or _is_stumbling(carrier):
 			_hold_tackle_recovery_ball(carrier)
-			return
-		if _resolve_ai_tackle(carrier):
-			_clear_shot_charge()
 			return
 		_handle_carrier_actions(carrier, delta)
 		if carrier_id >= 0:
@@ -1037,7 +1160,8 @@ func _resolve_cpu_tackle(carrier: Dictionary) -> void:
 	# Compatibility entry point for focused CPU and goalkeeper tests.
 	_resolve_ai_tackle(carrier)
 
-func _win_tackle(defender: Dictionary) -> void:
+func _win_tackle(defender: Dictionary, is_tackle: bool = true) -> void:
+	var previous_carrier_id := carrier_id
 	var facing := Coordinate3D.ground(defender.facing).normalized()
 	if facing.is_zero_approx():
 		facing = Vector3.RIGHT if bool(defender.home) else Vector3.LEFT
@@ -1047,15 +1171,20 @@ func _win_tackle(defender: Dictionary) -> void:
 	_reset_dribble_turn_state()
 	_set_ball_state(Coordinate3D.ground(defender.position) + facing * 0.42, Vector3.ZERO, true)
 	last_touch_home = bool(defender.home)
+	if previous_carrier_id >= 0 and previous_carrier_id != int(defender.id):
+		_add_stumble(previous_carrier_id, STUMBLE_RECOVERY_SECONDS)
 	_clear_shot_charge()
 	cpu_tackle_cooldown = 0.5
-	_set_tackle_recovery(int(defender.id))
-	_event_label.text = "TACKLE"
+	if is_tackle:
+		_set_tackle_recovery(int(defender.id))
+	else:
+		_set_pressure_cooldown(int(defender.id), PRESSURE_COOLDOWN_SECONDS)
+	_event_label.text = "TACKLE" if is_tackle else "PRESSURE"
 	_event_timer = 0.32
 	_play_sfx("tackle")
 	var defender_view := _views.get(int(defender.id)) as Player3DView
 	if defender_view != null:
-		defender_view.play_action("tackle")
+		defender_view.play_action("tackle" if is_tackle else "pressure")
 
 func _is_tackle_recovering(player: Dictionary) -> bool:
 	return float(player.get("tackle_recovery", 0.0)) > 0.0
@@ -1085,6 +1214,8 @@ func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 			aim = carrier.facing
 		if action_cooldown <= 0.0 and _action_just_pressed("p1_pass"):
 			_kick_to_target(carrier, false, aim)
+		elif action_cooldown <= 0.0 and _action_just_pressed("p1_through_pass"):
+			_kick_to_target(carrier, false, aim, true)
 		elif action_cooldown <= 0.0 and _action_just_pressed("p1_long_pass"):
 			_kick_to_target(carrier, true, aim)
 		elif action_cooldown <= 0.0 and Input.is_action_pressed("p1_shoot"):
@@ -1130,14 +1261,14 @@ func _kick_to_cpu_target(carrier: Dictionary, target: Dictionary) -> void:
 	if passer_view != null:
 		passer_view.play_action("pass")
 
-func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void:
+func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3, through_pass: bool = false) -> void:
 	var target := Rules.select_pass_target(players, int(carrier.id), bool(carrier.home), aim, ball_position)
 	if target.is_empty():
 		return
 	var target_velocity: Vector3 = target.velocity
-	var lead := target_velocity * (0.28 if long_pass else 0.16)
+	var lead := target_velocity * (0.28 if long_pass else (0.55 if through_pass else 0.16))
 	var launch_velocity: Vector3 = Rules.pass_velocity(ball_position, target.position + lead, long_pass)
-	launch_velocity.y = 7.8 if long_pass else 1.4
+	launch_velocity.y = 7.8 if long_pass else (2.6 if through_pass else 1.4)
 	var launch_position := ball_position
 	launch_position.y = 0.12
 	_set_ball_state(launch_position, launch_velocity, false)
@@ -1151,7 +1282,7 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3) -> void
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
 	action_cooldown = 0.22
-	_event_label.text = "LONG PASS" if long_pass else "PASS"
+	_event_label.text = "LONG PASS" if long_pass else ("THROUGH" if through_pass else "PASS")
 	_event_timer = 0.35
 	_play_sfx("pass")
 	var passer_view := _views.get(int(carrier.id)) as Player3DView
@@ -1247,6 +1378,8 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 		player.position = player.spawn
 		player.velocity = Vector3.ZERO
 		player.tackle_recovery = 0.0
+		player.stumble_recovery = 0.0
+		player.pressure_cooldown = 0.0
 		players[index] = player
 	var kickoff_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5)
 	_set_ball_state(kickoff_position, Vector3.ZERO, true)
@@ -1332,7 +1465,7 @@ func _create_hud() -> void:
 	var controls := _hud_label(10, HORIZONTAL_ALIGNMENT_LEFT, 0.8)
 	controls.position = Vector2(12, 340)
 	controls.size = Vector2(420, 16)
-	controls.text = "WASD MOVE   I SPRINT   K PASS   O LOB   J SHOOT   U TACKLE"
+	controls.text = "ATTACK  J SHOOT  K PASS  O LONG  I THROUGH  L SPEED\nDEFENSE  K PRESS  J COVER  O TACKLE  L SPEED  U SWITCH"
 	layer.add_child(controls)
 	_power_bar = ProgressBar.new()
 	_power_bar.position = Vector2(12, 326)

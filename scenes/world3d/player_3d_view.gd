@@ -10,6 +10,7 @@ const PassScene := preload("res://assets/player/Soccer Game Pack/kick soccerball
 const ShotScene := preload("res://assets/player/Soccer Game Pack/soccer penalty kick.fbx")
 const TackleScene := preload("res://assets/player/Soccer Game Pack/soccer tackle.fbx")
 const KeeperIdleScene := preload("res://assets/player/Soccer Game Pack/goalkeeper idle.fbx")
+const PressureScene := preload("res://assets/player/Soccer Game Pack/goalkeeper sidestep.fbx")
 const TURNAROUND_PLAYBACK_SPEED := 3.8
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
@@ -49,6 +50,7 @@ func _create_character_model() -> void:
 		_add_clip(PassScene, &"pass", false)
 		_add_clip(ShotScene, &"shot", false)
 		_add_clip(TackleScene, &"tackle", false)
+		_add_clip(PressureScene, &"pressure", false)
 		_add_clip(KeeperIdleScene, &"keeper_idle", true)
 		animation_player.animation_finished.connect(_on_animation_finished)
 		_play_locomotion(true)
@@ -165,6 +167,8 @@ func play_action(kind: String) -> void:
 			next_action = &"shot/clip"
 		"tackle":
 			next_action = &"tackle/clip"
+		"pressure":
+			next_action = &"pressure/clip"
 		_:
 			return
 	if animation_player.has_animation(next_action):
