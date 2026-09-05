@@ -50,6 +50,7 @@ const PRESSER_JOCKEY_DISTANCE := 0.92
 const AI_TACKLE_DISTANCE := 1.45
 const AI_TACKLE_FACING_MIN := -0.35
 const TACKLE_RECOVERY_SECONDS := 0.62
+const HUD_SCALE := 0.25
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
@@ -1313,29 +1314,29 @@ func _create_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var top_bar := ColorRect.new()
-	top_bar.size = Vector2(560, 78)
+	top_bar.size = Vector2(560, 78) * HUD_SCALE
 	top_bar.color = Color(0.03, 0.06, 0.12, 0.62)
 	layer.add_child(top_bar)
 	_score_label = _hud_label(30, HORIZONTAL_ALIGNMENT_CENTER)
-	_score_label.position = Vector2(0, 10)
-	_score_label.size = Vector2(560, 38)
+	_score_label.position = Vector2(0, 10) * HUD_SCALE
+	_score_label.size = Vector2(560, 38) * HUD_SCALE
 	layer.add_child(_score_label)
 	_clock_label = _hud_label(16, HORIZONTAL_ALIGNMENT_RIGHT)
-	_clock_label.position = Vector2(430, 54)
-	_clock_label.size = Vector2(110, 24)
+	_clock_label.position = Vector2(430, 54) * HUD_SCALE
+	_clock_label.size = Vector2(110, 24) * HUD_SCALE
 	layer.add_child(_clock_label)
-	_event_label = _hud_label(22, HORIZONTAL_ALIGNMENT_CENTER)
-	_event_label.position = Vector2(120, 276)
-	_event_label.size = Vector2(320, 34)
+	_event_label = _hud_label(22, HORIZONTAL_ALIGNMENT_LEFT, 0.55)
+	_event_label.position = Vector2(12, 300)
+	_event_label.size = Vector2(300, 22)
 	layer.add_child(_event_label)
-	var controls := _hud_label(10, HORIZONTAL_ALIGNMENT_LEFT)
-	controls.position = Vector2(12, 334)
-	controls.size = Vector2(536, 20)
+	var controls := _hud_label(10, HORIZONTAL_ALIGNMENT_LEFT, 0.8)
+	controls.position = Vector2(12, 340)
+	controls.size = Vector2(420, 16)
 	controls.text = "WASD MOVE   I SPRINT   K PASS   O LOB   J SHOOT   U TACKLE"
 	layer.add_child(controls)
 	_power_bar = ProgressBar.new()
-	_power_bar.position = Vector2(200, 310)
-	_power_bar.size = Vector2(160, 10)
+	_power_bar.position = Vector2(12, 326)
+	_power_bar.size = Vector2(160, 6)
 	_power_bar.max_value = SHOOT_CHARGE_SECONDS
 	_power_bar.show_percentage = false
 	_power_bar.modulate = Color(1.0, 0.82, 0.24)
@@ -1355,10 +1356,10 @@ func _play_sfx(name: String) -> void:
 	if player != null:
 		player.play()
 
-func _hud_label(font_size: int, alignment: HorizontalAlignment) -> Label:
+func _hud_label(font_size: int, alignment: HorizontalAlignment, scale: float = HUD_SCALE) -> Label:
 	var label := Label.new()
 	label.horizontal_alignment = alignment
-	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_font_size_override("font_size", maxi(1, roundi(font_size * scale)))
 	label.add_theme_color_override("font_color", Color.WHITE)
 	label.add_theme_color_override("font_shadow_color", Color(0.02, 0.04, 0.08, 0.95))
 	label.add_theme_constant_override("shadow_offset_x", 2)
