@@ -512,8 +512,46 @@ func _run() -> void:
 	game.ball_velocity = Vector3.ZERO
 	game.cpu_tackle_cooldown = 0.0
 	game.kickoff_timer = 0.0
+	game._update_tactical_roles()
+	var close_press_assignment: Dictionary = game.tactical_assignments[17]
+	_expect((close_press_assignment.target as Vector3).distance_to(game.ball_position) < 0.05,
+		"a close primary presser attacks the ball instead of backing off to a jockey point")
 	game._resolve_cpu_tackle(home_carrier)
 	_expect(game.carrier_id == 17, "CPU defender wins a close active tackle while facing the carrier")
+	_expect(game.ball_position.distance_to(game._player_by_id(17).position) < 0.6,
+		"a successful AI tackle secures the ball at the winning defender's foot")
+	var cpu_tackle_view := game._views[17] as Player3DView
+	_expect(cpu_tackle_view.animation_player.current_animation == &"tackle/clip",
+		"a successful AI tackle triggers the authored tackle animation")
+	var recovering_tackler: Dictionary = game._player_by_id(17)
+	var recovery_start: Vector3 = recovering_tackler.position
+	_expect(float(recovering_tackler.tackle_recovery) > 0.5,
+		"a successful tackle enters a short recovery window")
+	game._step_players(0.25)
+	recovering_tackler = game._player_by_id(17)
+	_expect((recovering_tackler.position as Vector3).is_equal_approx(recovery_start) and
+		float(recovering_tackler.tackle_recovery) > 0.0,
+		"a recovering tackler cannot immediately move after winning the ball")
+	var teammate_tackle_game := MatchScene.instantiate()
+	root.add_child(teammate_tackle_game)
+	await process_frame
+	teammate_tackle_game.kickoff_timer = 0.0
+	teammate_tackle_game.controlled_id = -1
+	var away_carrier: Dictionary = teammate_tackle_game._player_by_id(20)
+	var home_teammate: Dictionary = teammate_tackle_game._player_by_id(8)
+	away_carrier.position = Vector3(49.0, 0.0, 18.0)
+	home_teammate.position = Vector3(47.9, 0.0, 18.0)
+	home_teammate.facing = Vector3.RIGHT
+	teammate_tackle_game.players[20] = away_carrier
+	teammate_tackle_game.players[8] = home_teammate
+	teammate_tackle_game.carrier_id = 20
+	teammate_tackle_game.ball_position = away_carrier.position
+	teammate_tackle_game.cpu_tackle_cooldown = 0.0
+	teammate_tackle_game._update_tactical_roles()
+	teammate_tackle_game._resolve_cpu_tackle(away_carrier)
+	_expect(teammate_tackle_game.carrier_id == 8,
+		"an unselected home teammate can win the ball from a nearby CPU carrier")
+	teammate_tackle_game.free()
 	# 4-3-3 tactical layer: one defender presses, a second blocks the most
 	# dangerous lane, and the remaining back line stays ball-relative.
 	var tactics_game := MatchScene.instantiate()

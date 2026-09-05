@@ -45,7 +45,11 @@ const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 const FORMATION_BALL_X_WEIGHT := 0.32
 const FORMATION_BALL_Z_WEIGHT := 0.34
 const PRESSER_SWITCH_MARGIN := 1.18
-const PRESSER_JOCKEY_DISTANCE := 1.85
+const PRESSER_APPROACH_DISTANCE := 3.4
+const PRESSER_JOCKEY_DISTANCE := 0.92
+const AI_TACKLE_DISTANCE := 1.45
+const AI_TACKLE_FACING_MIN := -0.35
+const TACKLE_RECOVERY_SECONDS := 0.62
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
@@ -291,7 +295,8 @@ func _create_match() -> void:
 				"input_direction": Vector3.RIGHT if home else Vector3.LEFT,
 				"goalkeeper": index == 0, "technique": technique, "dribble_mode": DribblePhysics3D.Mode.JOG,
 				"cutback_cooldown": 0.0, "formation_index": index,
-				"formation_line": _formation_line(index), "ai_state": "formation"}
+				"formation_line": _formation_line(index), "ai_state": "formation",
+				"tackle_recovery": 0.0}
 			players.append(entry)
 			var view := PlayerView.new() as Player3DView
 			view.name = "Home_%02d" % index if home else "Away_%02d" % index
@@ -312,6 +317,15 @@ func _step_players(delta: float) -> void:
 	for index in players.size():
 		var player := players[index]
 		var player_id := int(player.id)
+		var tackle_recovery := maxf(float(player.get("tackle_recovery", 0.0)) - delta, 0.0)
+		player.tackle_recovery = tackle_recovery
+		if tackle_recovery > 0.0:
+			# The tackle asset is a sliding/falling action. Hold the gameplay body
+			# and ball owner through its recovery instead of letting locomotion resume.
+			player.velocity = Vector3.ZERO
+			player.movement_intent = false
+			players[index] = player
+			continue
 		var turnaround_locked := player_id == carrier_id and dribble_turn_lock_timer > 0.0
 		if turnaround_locked:
 			# The turnaround clip plants the supporting foot before launch. Freeze
@@ -558,7 +572,8 @@ func _select_primary_presser(team_home: bool, carrier: Dictionary) -> Dictionary
 	var best_score := INF
 	var candidate_scores: Dictionary = {}
 	for player: Dictionary in players:
-		if bool(player.home) != team_home or bool(player.goalkeeper) or int(player.id) == controlled_id:
+		if bool(player.home) != team_home or bool(player.goalkeeper) or int(player.id) == controlled_id or \
+			_is_tackle_recovering(player):
 			continue
 		var to_ball := Coordinate3D.ground(carrier.position - player.position)
 		var distance := to_ball.length()
@@ -629,8 +644,18 @@ func _presser_target(presser: Dictionary, carrier: Dictionary) -> Vector3:
 	var predicted_ball := Coordinate3D.ground(carrier.position + carrier.velocity * 0.18)
 	var own_goal := Vector3(0.0 if bool(presser.home) else Rules.PITCH_SIZE.x, 0.0,
 		Rules.PITCH_SIZE.z * 0.5)
-	return Coordinate3D.clamp_pitch(predicted_ball + (own_goal - predicted_ball).normalized() * PRESSER_JOCKEY_DISTANCE,
-		Rules.PLAYER_RADIUS)
+	var distance := Coordinate3D.ground(presser.position - predicted_ball).length()
+	if distance <= AI_TACKLE_DISTANCE:
+		# At tackling range, own the ball rather than orbiting to a jockey point.
+		return Coordinate3D.clamp_pitch(predicted_ball, Rules.PLAYER_RADIUS)
+	var goal_side := (own_goal - predicted_ball).normalized()
+	if distance <= PRESSER_APPROACH_DISTANCE:
+		# The jockey point sits inside tackling distance, so a close defender keeps
+		# closing down instead of stopping just outside the ball-winning threshold.
+		return Coordinate3D.clamp_pitch(predicted_ball + goal_side * PRESSER_JOCKEY_DISTANCE,
+			Rules.PLAYER_RADIUS)
+	# From range, lead a moving carrier but retain a modest goal-side angle.
+	return Coordinate3D.clamp_pitch(predicted_ball + goal_side * 0.72, Rules.PLAYER_RADIUS)
 
 func _cpu_attack_goal_target(player: Dictionary) -> Vector3:
 	return Vector3(Rules.PITCH_SIZE.x if bool(player.home) else 0.0, 0.0, Rules.PITCH_SIZE.z * 0.5)
@@ -688,9 +713,10 @@ func _step_ball(delta: float) -> void:
 			_reset_dribble_turn_state()
 			_clear_shot_charge()
 			return
-		if bool(carrier.home):
-			_resolve_cpu_tackle(carrier)
-		if carrier_id != int(carrier.id):
+		if _is_tackle_recovering(carrier):
+			_hold_tackle_recovery_ball(carrier)
+			return
+		if _resolve_ai_tackle(carrier):
 			_clear_shot_charge()
 			return
 		_handle_carrier_actions(carrier, delta)
@@ -984,37 +1010,71 @@ func _opponent_interfering(carrier: Dictionary, ball: Vector3) -> bool:
 			return true
 	return false
 
-func _resolve_cpu_tackle(carrier: Dictionary) -> void:
+func _resolve_ai_tackle(carrier: Dictionary) -> bool:
 	if cpu_tackle_cooldown > 0.0:
-		return
+		return false
 	var best: Dictionary = {}
 	var best_distance := INF
 	for player: Dictionary in players:
-		if bool(player.home) or bool(player.goalkeeper):
+		if bool(player.home) == bool(carrier.home) or bool(player.goalkeeper) or int(player.id) == controlled_id or \
+			_is_tackle_recovering(player):
 			continue
 		var distance := (player.position as Vector3).distance_to(Coordinate3D.ground(ball_position))
 		if distance < best_distance:
 			best_distance = distance
 			best = player
-	if best.is_empty() or best_distance > 1.45:
-		return
+	if best.is_empty() or best_distance > AI_TACKLE_DISTANCE:
+		return false
 	var approach: Vector3 = Coordinate3D.ground(carrier.position - best.position).normalized()
 	var facing: Vector3 = best.facing
-	if facing.dot(approach) < -0.35:
-		return
-	carrier_id = int(best.id)
+	if facing.dot(approach) < AI_TACKLE_FACING_MIN:
+		return false
+	_win_tackle(best)
+	return true
+
+func _resolve_cpu_tackle(carrier: Dictionary) -> void:
+	# Compatibility entry point for focused CPU and goalkeeper tests.
+	_resolve_ai_tackle(carrier)
+
+func _win_tackle(defender: Dictionary) -> void:
+	var facing := Coordinate3D.ground(defender.facing).normalized()
+	if facing.is_zero_approx():
+		facing = Vector3.RIGHT if bool(defender.home) else Vector3.LEFT
+	carrier_id = int(defender.id)
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	_reset_dribble_turn_state()
-	last_touch_home = false
+	_set_ball_state(Coordinate3D.ground(defender.position) + facing * 0.42, Vector3.ZERO, true)
+	last_touch_home = bool(defender.home)
 	_clear_shot_charge()
 	cpu_tackle_cooldown = 0.5
+	_set_tackle_recovery(int(defender.id))
 	_event_label.text = "TACKLE"
 	_event_timer = 0.32
 	_play_sfx("tackle")
-	var defender_view := _views.get(int(best.id)) as Player3DView
+	var defender_view := _views.get(int(defender.id)) as Player3DView
 	if defender_view != null:
 		defender_view.play_action("tackle")
+
+func _is_tackle_recovering(player: Dictionary) -> bool:
+	return float(player.get("tackle_recovery", 0.0)) > 0.0
+
+func _set_tackle_recovery(player_id: int) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) != player_id:
+			continue
+		player.tackle_recovery = TACKLE_RECOVERY_SECONDS
+		player.velocity = Vector3.ZERO
+		player.movement_intent = false
+		players[index] = player
+		return
+
+func _hold_tackle_recovery_ball(carrier: Dictionary) -> void:
+	var facing := Coordinate3D.ground(carrier.facing).normalized()
+	if facing.is_zero_approx():
+		facing = Vector3.RIGHT if bool(carrier.home) else Vector3.LEFT
+	_set_ball_state(Coordinate3D.ground(carrier.position) + facing * 0.42, Vector3.ZERO, true)
 
 func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 	var carrier_home := bool(carrier.home)
@@ -1127,19 +1187,11 @@ func _attempt_tackle(defender: Dictionary) -> void:
 	var carrier := _player_by_id(carrier_id)
 	if defender.is_empty() or carrier.is_empty():
 		return
-	if bool(defender.home) and not bool(carrier.home) and defender.position.distance_to(Coordinate3D.ground(ball_position)) < 1.55:
-		carrier_id = int(defender.id)
-		dribble_touch_timer = 0.0
-		dribble_loss_timer = 0.0
-		_reset_dribble_turn_state()
-		_clear_shot_charge()
-		last_touch_home = true
-		_event_label.text = "TACKLE"
-		_event_timer = 0.32
-		_play_sfx("tackle")
-		var tackler_view := _views.get(int(defender.id)) as Player3DView
-		if tackler_view != null:
-			tackler_view.play_action("tackle")
+	if _is_tackle_recovering(defender):
+		return
+	if bool(defender.home) != bool(carrier.home) and \
+		defender.position.distance_to(Coordinate3D.ground(ball_position)) < 1.55:
+		_win_tackle(defender)
 	action_cooldown = 0.35
 
 func _capture_free_ball() -> void:
@@ -1193,6 +1245,7 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 		var player := players[index]
 		player.position = player.spawn
 		player.velocity = Vector3.ZERO
+		player.tackle_recovery = 0.0
 		players[index] = player
 	var kickoff_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5)
 	_set_ball_state(kickoff_position, Vector3.ZERO, true)
