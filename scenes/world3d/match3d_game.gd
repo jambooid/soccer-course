@@ -781,6 +781,7 @@ func _sync_views() -> void:
 			continue
 		view.sync_world_position(player.position)
 		view.set_facing(player.facing)
+		view.set_motion(player.velocity, bool(player.get("goalkeeper", false)), int(player.id) == carrier_id)
 		view.set_selected(int(player.id) == controlled_id)
 		view.set_ball_carrier(int(player.id) == carrier_id)
 	if _ball_view != null:

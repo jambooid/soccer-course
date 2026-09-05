@@ -1,7 +1,14 @@
 class_name Player3DView
 extends Node3D
 
-const LowPolyPlayerScene := preload("res://assets/3d/generated/player.obj")
+const CharacterModelScene := preload("res://assets/player/Soccer Game Pack/Ch38_nonPBR.fbx")
+const IdleScene := preload("res://assets/player/Soccer Game Pack/offensive idle.fbx")
+const JogScene := preload("res://assets/player/Soccer Game Pack/jog forward.fbx")
+const DribbleScene := preload("res://down3d/Soccer Game Pack/Dribble.fbx")
+const PassScene := preload("res://assets/player/Soccer Game Pack/kick soccerball.fbx")
+const ShotScene := preload("res://assets/player/Soccer Game Pack/soccer penalty kick.fbx")
+const TackleScene := preload("res://assets/player/Soccer Game Pack/soccer tackle.fbx")
+const KeeperIdleScene := preload("res://assets/player/Soccer Game Pack/goalkeeper idle.fbx")
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
 ## Keep this at one because the simulation already uses world metres.
@@ -9,24 +16,78 @@ const LowPolyPlayerScene := preload("res://assets/3d/generated/player.obj")
 @export var body_radius := 0.32
 @export var body_height := 1.65
 
-var model: MeshInstance3D
-var shadow: MeshInstance3D
 var model_root: Node3D
-var animation_time := 0.0
+var animation_player: AnimationPlayer
+var shadow: MeshInstance3D
 var team_color := Color(0.12, 0.28, 0.88)
 var selection_ring: MeshInstance3D
 var carrier_marker: MeshInstance3D
-var action_timer := 0.0
-var action_sign := 1.0
+var _motion_speed := 0.0
+var _goalkeeper := false
+var _dribbling := false
+var _action_animation := StringName()
 
 func _ready() -> void:
-	model = MeshInstance3D.new()
-	model.mesh = LowPolyPlayerScene
-	model.scale = Vector3.ONE * 1.22
-	model.material_override = _make_material(team_color)
-	add_child(model)
+	_create_character_model()
+	_create_pitch_markers()
+
+func _create_character_model() -> void:
+	model_root = CharacterModelScene.instantiate() as Node3D
+	model_root.name = "CharacterModel"
+	# The imported character is 1.66 m tall. A small reduction avoids visual
+	# overlap while retaining the same pitch scale as the simulation.
+	model_root.scale = Vector3.ONE * 0.92
+	add_child(model_root)
+	animation_player = model_root.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if animation_player != null:
+		_add_clip(IdleScene, &"idle", true)
+		_add_clip(JogScene, &"jog", true)
+		_add_clip(DribbleScene, &"dribble", true, true)
+		_add_clip(PassScene, &"pass", false)
+		_add_clip(ShotScene, &"shot", false)
+		_add_clip(TackleScene, &"tackle", false)
+		_add_clip(KeeperIdleScene, &"keeper_idle", true)
+		animation_player.animation_finished.connect(_on_animation_finished)
+		_play_locomotion(true)
 	_apply_team_color()
 
+func _add_clip(source_scene: PackedScene, library_name: StringName, loop: bool,
+		lock_horizontal_root_motion: bool = false) -> void:
+	var source_root := source_scene.instantiate() as Node
+	var source_player := source_root.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if source_player == null:
+		source_root.free()
+		return
+	var source_clip := source_player.get_animation(&"mixamo_com")
+	if source_clip == null:
+		source_root.free()
+		return
+	var clip := source_clip.duplicate(true) as Animation
+	clip.loop_mode = Animation.LOOP_LINEAR if loop else Animation.LOOP_NONE
+	if lock_horizontal_root_motion:
+		_lock_horizontal_root_motion(clip)
+	var library := AnimationLibrary.new()
+	library.add_animation(&"clip", clip)
+	animation_player.add_animation_library(library_name, library)
+	source_root.free()
+
+func _lock_horizontal_root_motion(clip: Animation) -> void:
+	for track in clip.get_track_count():
+		if clip.track_get_type(track) != Animation.TYPE_POSITION_3D:
+			continue
+		var path := clip.track_get_path(track)
+		if path.get_subname_count() != 1 or path.get_subname(0) != &"mixamorig5_Hips":
+			continue
+		if clip.track_get_key_count(track) == 0:
+			continue
+		var origin := clip.track_get_key_value(track, 0) as Vector3
+		for key in clip.track_get_key_count(track):
+			var position := clip.track_get_key_value(track, key) as Vector3
+			position.x = origin.x
+			position.z = origin.z
+			clip.track_set_key_value(track, key, position)
+
+func _create_pitch_markers() -> void:
 	shadow = MeshInstance3D.new()
 	var shadow_mesh := CylinderMesh.new()
 	shadow_mesh.top_radius = body_radius * 1.15
@@ -73,6 +134,13 @@ func set_facing(direction: Vector3) -> void:
 		return
 	rotation.y = atan2(direction.x, direction.z)
 
+func set_motion(velocity: Vector3, goalkeeper: bool = false, dribbling: bool = false) -> void:
+	_motion_speed = Vector2(velocity.x, velocity.z).length()
+	_goalkeeper = goalkeeper
+	_dribbling = dribbling
+	if _action_animation.is_empty():
+		_play_locomotion()
+
 func set_selected(selected: bool) -> void:
 	if selection_ring != null:
 		selection_ring.visible = selected
@@ -82,18 +150,44 @@ func set_ball_carrier(active: bool) -> void:
 		carrier_marker.visible = active
 
 func play_action(kind: String) -> void:
-	action_timer = 0.18 if kind != "goal" else 0.32
-	action_sign = -1.0 if kind == "tackle" else 1.0
+	if animation_player == null:
+		return
+	var next_action := StringName()
+	match kind:
+		"pass":
+			next_action = &"pass/clip"
+		"shot":
+			next_action = &"shot/clip"
+		"tackle":
+			next_action = &"tackle/clip"
+		_:
+			return
+	if animation_player.has_animation(next_action):
+		_action_animation = next_action
+		animation_player.speed_scale = 1.0
+		animation_player.play(next_action, 0.04)
 
-func _process(delta: float) -> void:
-	animation_time += delta
-	if model != null:
-		model.position.y = sin(animation_time * 7.0) * 0.015
-		if action_timer > 0.0:
-			action_timer = maxf(action_timer - delta, 0.0)
-			model.rotation.z = sin((0.18 - action_timer) * 34.0) * 0.12 * action_sign
-		else:
-			model.rotation.z = 0.0
+func _play_locomotion(immediate: bool = false) -> void:
+	if animation_player == null:
+		return
+	var next_animation := &"keeper_idle/clip" if _goalkeeper and _motion_speed < 0.12 else &"idle/clip"
+	var playback_speed := 1.0
+	if _motion_speed >= 0.12:
+		next_animation = &"dribble/clip" if _dribbling else &"jog/clip"
+		# "strike foward jog" includes a kicking pose, so use the ordinary jog
+		# clip for both movement speeds and make sprinting read faster instead.
+		playback_speed = 1.34 if _motion_speed >= 6.8 else 1.0
+	if animation_player.current_animation == next_animation and animation_player.is_playing():
+		animation_player.speed_scale = playback_speed
+		return
+	animation_player.speed_scale = playback_speed
+	animation_player.play(next_animation, 0.0 if immediate else 0.14)
+
+func _on_animation_finished(animation_name: StringName) -> void:
+	if animation_name != _action_animation:
+		return
+	_action_animation = StringName()
+	_play_locomotion()
 
 func _make_material(color: Color, transparent := false) -> StandardMaterial3D:
 	var material := StandardMaterial3D.new()
@@ -104,5 +198,16 @@ func _make_material(color: Color, transparent := false) -> StandardMaterial3D:
 	return material
 
 func _apply_team_color() -> void:
-	if model != null:
-		model.material_override = _make_material(team_color)
+	if model_root == null:
+		return
+	for mesh_path in [NodePath("Skeleton3D/Ch38_Shirt"), NodePath("Skeleton3D/Ch38_Shorts"), NodePath("Skeleton3D/Ch38_Socks")]:
+		var mesh_instance := model_root.get_node_or_null(mesh_path) as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			var source_material := mesh_instance.get_active_material(surface) as BaseMaterial3D
+			if source_material == null:
+				continue
+			var tinted_material := source_material.duplicate() as BaseMaterial3D
+			tinted_material.albedo_color = team_color
+			mesh_instance.set_surface_override_material(surface, tinted_material)
