@@ -489,6 +489,36 @@ func _run() -> void:
 		through_game.ball_velocity.y > 2.0,
 		"I executes an attacking through pass with extra lead and lift")
 	through_game.free()
+	var receiving_game := MatchScene.instantiate()
+	root.add_child(receiving_game)
+	await process_frame
+	receiving_game.kickoff_timer = 0.0
+	receiving_game.cpu_tackle_cooldown = 999.0
+	var passer: Dictionary = receiving_game._player_by_id(9)
+	var receiver: Dictionary = receiving_game._player_by_id(8)
+	passer.position = Vector3(30.0, 0.0, 18.0)
+	passer.facing = Vector3.RIGHT
+	receiver.position = Vector3(42.0, 0.0, 18.0)
+	receiving_game.players[9] = passer
+	receiving_game.players[8] = receiver
+	for index in receiving_game.players.size():
+		if index == 8 or index == 9:
+			continue
+		var distant: Dictionary = receiving_game.players[index]
+		distant.position = Vector3(4.0, 0.0, 3.0)
+		receiving_game.players[index] = distant
+	receiving_game.carrier_id = 9
+	receiving_game.controlled_id = 9
+	receiving_game.ball_position = passer.position
+	receiving_game._kick_to_target(passer, false, Vector3.RIGHT)
+	_expect(receiving_game.pass_target_id == 8,
+		"directed pass stores the selected teammate as its intended receiver")
+	receiving_game.ball_position = receiver.position
+	receiving_game.ball_velocity = Vector3.ZERO
+	receiving_game._capture_free_ball()
+	_expect(receiving_game.carrier_id == 8 and receiving_game.controlled_id == 8,
+		"intended receiver takes possession and becomes the controlled player")
+	receiving_game.free()
 	var defensive_switch_game := MatchScene.instantiate()
 	root.add_child(defensive_switch_game)
 	await process_frame

@@ -48,6 +48,9 @@ const CAMERA_FOCUS_Z_MIN := 8.0
 # their feet outside the viewport while the camera was clamped at a near corner.
 # The pitch's authored stand apron absorbs this extra tracking range.
 const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 4.8
+const PASS_RECEIVE_ASSIST_SECONDS := 2.4
+const PASS_RECEIVE_CONTROL_SPEED := 14.0
+const PASS_RECEIVE_INTERCEPT_MARGIN := 0.34
 const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 const FORMATION_BALL_X_WEIGHT := 0.32
 const FORMATION_BALL_Z_WEIGHT := 0.34
@@ -79,6 +82,9 @@ var _sampled_just_pressed: Dictionary = {}
 var _sampled_just_released: Dictionary = {}
 var carrier_id := -1
 var controlled_id := -1
+var pass_target_id := -1
+var pass_target_position := Vector3.ZERO
+var pass_target_timer := 0.0
 var score_home := 0
 var score_away := 0
 var match_time := MATCH_SECONDS
@@ -741,6 +747,13 @@ func _cpu_carrier_intent(player: Dictionary) -> Vector3:
 
 func _player_intent(player: Dictionary) -> Vector3:
 	var id := int(player.id)
+	if id == pass_target_id and carrier_id < 0 and pass_target_timer > 0.0:
+		# A directed pass reserves one teammate as the receiver. The player runs
+		# to the intended point first, then adjusts toward the ball as it slows.
+		var receive_point := pass_target_position
+		if Coordinate3D.ground(ball_velocity).length() < PASS_RECEIVE_CONTROL_SPEED:
+			receive_point = Coordinate3D.ground(ball_position)
+		return Coordinate3D.ground(receive_point - player.position).normalized()
 	if id == controlled_id:
 		var input := _input_direction()
 		if not input.is_zero_approx():
@@ -1095,6 +1108,7 @@ func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 		dribble_loss_timer = maxf(dribble_loss_timer - delta * 2.0, 0.0)
 	if dribble_loss_timer >= 0.16:
 		carrier_id = -1
+		_clear_pass_target()
 		last_touch_home = bool(carrier.home)
 		dribble_touch_timer = 0.0
 		_event_label.text = "LOOSE TOUCH"
@@ -1218,6 +1232,7 @@ func _win_tackle(defender: Dictionary, is_tackle: bool = true) -> void:
 	if facing.is_zero_approx():
 		facing = Vector3.RIGHT if bool(defender.home) else Vector3.LEFT
 	carrier_id = int(defender.id)
+	_clear_pass_target()
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	_reset_dribble_turn_state()
@@ -1305,6 +1320,7 @@ func _kick_to_cpu_target(carrier: Dictionary, target: Dictionary) -> void:
 	dribble_loss_timer = 0.0
 	_reset_dribble_turn_state()
 	last_touch_home = bool(carrier.home)
+	_set_pass_target(target, target.position + lead)
 	action_cooldown = 0.22
 	_event_label.text = "PASS"
 	_event_timer = 0.35
@@ -1333,6 +1349,7 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3, through
 	_reset_dribble_turn_state()
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
+	_set_pass_target(target, target.position + lead)
 	action_cooldown = 0.22
 	_event_label.text = "LONG PASS" if long_pass else ("THROUGH" if through_pass else "PASS")
 	_event_timer = 0.35
@@ -1358,6 +1375,7 @@ func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) 
 	_reset_dribble_turn_state()
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
+	_clear_pass_target()
 	action_cooldown = 0.28
 	_event_label.text = "SHOT"
 	_event_timer = 0.42
@@ -1379,6 +1397,23 @@ func _attempt_tackle(defender: Dictionary) -> void:
 	action_cooldown = 0.35
 
 func _capture_free_ball() -> void:
+	pass_target_timer = maxf(pass_target_timer - FIXED_TICK, 0.0)
+	if pass_target_id >= 0 and pass_target_timer > 0.0:
+		var intended_receiver := _player_by_id(pass_target_id)
+		if not intended_receiver.is_empty() and bool(intended_receiver.home) == last_touch_home and \
+			Rules.can_ground_player_control_ball(intended_receiver.position, ball_position,
+				Rules.CONTROL_RADIUS * 1.45) and \
+			Coordinate3D.ground(ball_velocity).length() <= PASS_RECEIVE_CONTROL_SPEED:
+			var nearest_id := Rules.nearest_player_id(players, ball_position)
+			var nearest := _player_by_id(nearest_id)
+			var receiver_distance := Coordinate3D.ground(intended_receiver.position - ball_position).length()
+			var nearest_distance := Coordinate3D.ground(nearest.get("position", ball_position) - ball_position).length()
+			var opponent_has_clean_intercept := not nearest.is_empty() and \
+				bool(nearest.home) != bool(intended_receiver.home) and \
+				nearest_distance + PASS_RECEIVE_INTERCEPT_MARGIN < receiver_distance
+			if not opponent_has_clean_intercept:
+				_capture_ball_by(intended_receiver)
+				return
 	var candidate_id := Rules.nearest_player_id(players, ball_position)
 	var candidate := _player_by_id(candidate_id)
 	if candidate.is_empty() or not Rules.can_ground_player_control_ball(
@@ -1386,11 +1421,26 @@ func _capture_free_ball() -> void:
 		return
 	if bool(candidate.home) == last_touch_home and Coordinate3D.ground(ball_velocity).length() > 21.0:
 		return
-	carrier_id = candidate_id
+	_capture_ball_by(candidate)
+
+func _set_pass_target(target: Dictionary, target_position: Vector3) -> void:
+	pass_target_id = int(target.get("id", -1))
+	pass_target_position = Coordinate3D.clamp_pitch(Coordinate3D.ground(target_position), Rules.PLAYER_RADIUS)
+	pass_target_timer = PASS_RECEIVE_ASSIST_SECONDS
+
+func _clear_pass_target() -> void:
+	pass_target_id = -1
+	pass_target_position = Vector3.ZERO
+	pass_target_timer = 0.0
+
+func _capture_ball_by(player: Dictionary) -> void:
+	carrier_id = int(player.id)
+	controlled_id = carrier_id if bool(player.home) else controlled_id
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	_reset_dribble_turn_state()
-	last_touch_home = bool(candidate.home)
+	last_touch_home = bool(player.home)
+	_clear_pass_target()
 
 func _resolve_player_separation() -> void:
 	for first_index in players.size():
@@ -1431,6 +1481,7 @@ func _begin_boundary_restart(boundary_axis: String) -> void:
 	if match_flow == null or not Flow.is_live_phase(match_flow.phase):
 		return
 	var restart := Rules.boundary_restart(ball_position, boundary_axis, last_touch_home)
+	_clear_pass_target()
 	match_flow.begin_restart(int(restart.type), bool(restart.team_home), restart.position, str(restart.reason))
 	_sync_match_flow_state()
 
@@ -1522,6 +1573,7 @@ func _reset_kickoff(home_kicks_off: bool, update_flow := true) -> void:
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
 	dribble_touch_count = 0
+	_clear_pass_target()
 	_reset_dribble_turn_state()
 	# Put the kickoff taker on the spot. The old carried-ball code hid this
 	# formation mismatch by teleporting the ball to the player every frame.
