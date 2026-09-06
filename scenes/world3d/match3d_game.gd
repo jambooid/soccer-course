@@ -6,6 +6,13 @@ const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
 const BallPhysics3D := preload("res://utils/ball_physics_3d_constants.gd")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
 const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
+const Flow := preload("res://utils/match_flow.gd")
+const MatchFlowControllerScript := preload("res://utils/match_flow_controller.gd")
+const MatchEventScript := preload("res://utils/match_event.gd")
+const MatchSnapshotScript := preload("res://utils/match_snapshot.gd")
+const ReplayBufferScript := preload("res://utils/replay_buffer.gd")
+const CameraDirectorScript := preload("res://scenes/world3d/camera_director.gd")
+const MatchHUDScript := preload("res://scenes/world3d/match_hud.gd")
 const PlayerView := preload("res://scenes/world3d/player_3d_view.gd")
 const BallView := preload("res://scenes/world3d/ball_3d_view.gd")
 const PASS_SFX := preload("res://assets/sfx/pass.wav")
@@ -56,6 +63,8 @@ const HUD_SCALE := 0.25
 
 enum DribblePhase { FREE_ROLL, TURN_ANCHOR, TURNAROUND_ANCHOR }
 
+signal match_event_emitted(event: MatchEvent)
+
 var players: Array[Dictionary] = []
 var ball_position := Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5)
 var ball_velocity := Vector3.ZERO
@@ -74,6 +83,15 @@ var score_home := 0
 var score_away := 0
 var match_time := MATCH_SECONDS
 var kickoff_timer := KICKOFF_DELAY
+var match_flow: MatchFlowController
+var replay_buffer: ReplayBuffer
+var replay_frames: Array = []
+var replay_active := false
+var replay_cursor := 0
+var replay_tick_timer := 0.0
+var last_match_event: RefCounted
+var camera_director: RefCounted
+var _match_hud: CanvasLayer
 var restart_team_home := true
 var last_touch_home := true
 var action_cooldown := 0.0
@@ -123,9 +141,15 @@ var _sfx_players: Dictionary = {}
 var _power_bar: ProgressBar
 
 func _ready() -> void:
+	match_flow = MatchFlowControllerScript.new({"half_duration": MATCH_SECONDS * 0.5,
+		"stoppage_duration": 8.0, "presentation_duration": KICKOFF_DELAY,
+		"halftime_duration": 2.0})
+	replay_buffer = ReplayBufferScript.new(360)
+	camera_director = CameraDirectorScript.new()
 	_create_match()
 	_create_hud()
 	_create_audio()
+	match_event_emitted.connect(_on_match_event)
 	call_deferred("_frame_camera")
 
 func _frame_camera() -> void:
@@ -147,7 +171,12 @@ func _update_camera(delta: float) -> void:
 	# control stable, while fast loose balls get a quicker response. The far-side
 	# focus limit remains deliberately wider than the near-side limit so the
 	# camera can follow play into the upper half of the broadcast view.
+	if camera_director != null:
+		camera_director.advance(delta)
+		camera_director.set_replay(replay_active)
 	var desired_focus := _camera_desired_focus()
+	if camera_director != null:
+		desired_focus = _clamp_camera_focus(camera_director.focus_override(desired_focus))
 	var deadzone_focus := _camera_focus_after_deadzone(desired_focus)
 	camera_focus = camera_focus.lerp(deadzone_focus,
 		1.0 - exp(-_camera_follow_response() * delta))
@@ -217,19 +246,33 @@ func _process(delta: float) -> void:
 		_previous_ball_position = ball_position
 		_has_previous_ball_position = true
 		_simulate_tick(FIXED_TICK)
+	_advance_replay(delta)
 	_sync_views(true)
 	_update_camera(delta)
 	_update_hud()
 
 func _simulate_tick(step: float) -> void:
-	if kickoff_timer > 0.0:
-		_handle_kickoff_input()
-		kickoff_timer -= step
-		_event_timer = maxf(_event_timer - step, 0.0)
+	if match_flow == null:
 		return
-	match_time = maxf(match_time - step, 0.0)
-	if match_time <= 0.0:
-		_event_label.text = "FULL TIME"
+	if kickoff_timer <= 0.0 and match_flow.phase == Flow.Phase.KICKOFF:
+		match_flow.force_live()
+	if match_flow.phase == Flow.Phase.KICKOFF:
+		_handle_kickoff_input()
+		match_flow.advance(step)
+		_sync_match_flow_state()
+		_event_timer = maxf(_event_timer - step, 0.0)
+		_record_presentation_snapshot()
+		return
+	if not Flow.is_live_phase(match_flow.phase):
+		match_flow.advance(step)
+		_sync_match_flow_state()
+		_event_timer = maxf(_event_timer - step, 0.0)
+		_record_presentation_snapshot()
+		return
+	match_flow.advance(step)
+	_sync_match_flow_state()
+	if not Flow.is_live_phase(match_flow.phase):
+		_record_presentation_snapshot()
 		return
 	frame_count += 1
 	action_cooldown = maxf(action_cooldown - step, 0.0)
@@ -246,6 +289,7 @@ func _simulate_tick(step: float) -> void:
 	_step_ball(step)
 	_resolve_player_separation()
 	_simulation_tick += 1
+	_record_presentation_snapshot()
 
 func _action_just_pressed(action: String) -> bool:
 	var value := bool(_sampled_just_pressed.get(action, false))
@@ -268,17 +312,22 @@ func _handle_kickoff_input() -> void:
 	if aim.is_zero_approx():
 		aim = carrier.facing
 	if _action_just_pressed("p1_pass"):
-		kickoff_timer = 0.0
+		_accept_kickoff()
 		_kick_to_target(carrier, false, aim)
 	elif _action_just_pressed("p1_through_pass"):
-		kickoff_timer = 0.0
+		_accept_kickoff()
 		_kick_to_target(carrier, false, aim, true)
 	elif _action_just_pressed("p1_long_pass"):
-		kickoff_timer = 0.0
+		_accept_kickoff()
 		_kick_to_target(carrier, true, aim)
 	elif _action_just_pressed("p1_shoot"):
-		kickoff_timer = 0.0
+		_accept_kickoff()
 		_shoot(carrier, aim.z)
+
+func _accept_kickoff() -> void:
+	kickoff_timer = 0.0
+	if match_flow != null:
+		match_flow.phase_timer = 0.0
 
 func _create_match() -> void:
 	var formation := [
@@ -861,6 +910,9 @@ func _step_ball(delta: float) -> void:
 	if scorer != 0:
 		_score_goal(scorer > 0)
 		return
+	if bool(trajectory.get("boundary_hit", false)):
+		_begin_boundary_restart(str(trajectory.get("boundary_axis", "")))
+		return
 	_capture_free_ball()
 
 func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
@@ -1181,7 +1233,7 @@ func _win_tackle(defender: Dictionary, is_tackle: bool = true) -> void:
 		_set_pressure_cooldown(int(defender.id), PRESSURE_COOLDOWN_SECONDS)
 	_event_label.text = "TACKLE" if is_tackle else "PRESSURE"
 	_event_timer = 0.32
-	_play_sfx("tackle")
+	_emit_action_event("tackle" if is_tackle else "pressure", {"player_id": int(defender.id)})
 	var defender_view := _views.get(int(defender.id)) as Player3DView
 	if defender_view != null:
 		defender_view.play_action("tackle" if is_tackle else "pressure")
@@ -1256,7 +1308,7 @@ func _kick_to_cpu_target(carrier: Dictionary, target: Dictionary) -> void:
 	action_cooldown = 0.22
 	_event_label.text = "PASS"
 	_event_timer = 0.35
-	_play_sfx("pass")
+	_emit_action_event("pass", {"player_id": int(carrier.id)})
 	var passer_view := _views.get(int(carrier.id)) as Player3DView
 	if passer_view != null:
 		passer_view.play_action("pass")
@@ -1284,7 +1336,7 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3, through
 	action_cooldown = 0.22
 	_event_label.text = "LONG PASS" if long_pass else ("THROUGH" if through_pass else "PASS")
 	_event_timer = 0.35
-	_play_sfx("pass")
+	_emit_action_event("pass", {"player_id": int(carrier.id), "long": long_pass, "through": through_pass})
 	var passer_view := _views.get(int(carrier.id)) as Player3DView
 	if passer_view != null:
 		passer_view.play_action("pass")
@@ -1309,7 +1361,7 @@ func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) 
 	action_cooldown = 0.28
 	_event_label.text = "SHOT"
 	_event_timer = 0.42
-	_play_sfx("shot")
+	_emit_action_event("shot", {"player_id": int(carrier.id), "power": power})
 	camera_shake = maxf(camera_shake, 0.08)
 	var shooter_view := _views.get(int(carrier.id)) as Player3DView
 	if shooter_view != null:
@@ -1362,17 +1414,95 @@ func _update_controlled_player() -> void:
 	controlled_id = Rules.nearest_player_id(players, ball_position, 1)
 
 func _score_goal(home_scored: bool) -> void:
-	if home_scored:
-		score_home += 1
-	else:
-		score_away += 1
+	var scorer_id := carrier_id
+	var assist_id := -1
+	if match_flow == null or not match_flow.record_goal(home_scored, scorer_id, assist_id):
+		return
+	_sync_match_flow_state()
+	# Freeze the scored state on a deterministic kickoff tableau while the goal
+	# result/replay is shown. This keeps the next restart and all presentation
+	# consumers on the same positions without advancing live play.
+	_reset_kickoff(not home_scored, false)
 	_event_label.text = "GOAL!"
 	_event_timer = 1.6
-	_play_sfx("whistle")
 	camera_shake = maxf(camera_shake, 0.3)
-	_reset_kickoff(not home_scored)
 
-func _reset_kickoff(home_kicks_off: bool) -> void:
+func _begin_boundary_restart(boundary_axis: String) -> void:
+	if match_flow == null or not Flow.is_live_phase(match_flow.phase):
+		return
+	var restart := Rules.boundary_restart(ball_position, boundary_axis, last_touch_home)
+	match_flow.begin_restart(int(restart.type), bool(restart.team_home), restart.position, str(restart.reason))
+	_sync_match_flow_state()
+
+func _sync_match_flow_state() -> void:
+	if match_flow == null:
+		return
+	score_home = match_flow.score_home
+	score_away = match_flow.score_away
+	match_time = match_flow.clock
+	kickoff_timer = maxf(match_flow.phase_timer, 0.0) if match_flow.phase == Flow.Phase.KICKOFF or \
+		match_flow.phase == Flow.Phase.GOAL_RESULT else 0.0
+	for event in match_flow.consume_events():
+		last_match_event = event.copy()
+		match_event_emitted.emit(last_match_event)
+		if camera_director != null:
+			camera_director.consume_event(last_match_event)
+		match event.name:
+			"goal":
+				if _event_label != null:
+					_event_label.text = "GOAL!"
+				_event_timer = maxf(_event_timer, match_flow.presentation_duration)
+				_begin_replay()
+			"restart_ready":
+				var restart: Dictionary = event.payload
+				_reset_kickoff(bool(restart.get("team_home", restart_team_home)), false)
+			"restart":
+				_prepare_set_piece(event.payload)
+			"halftime":
+				_swap_attacking_sides()
+				if _event_label != null:
+					_event_label.text = "HALF TIME"
+				_event_timer = match_flow.halftime_duration
+			"stoppage_time":
+				if _event_label != null:
+					_event_label.text = "LOSS TIME"
+				_event_timer = match_flow.stoppage_duration
+			"full_time":
+				if _event_label != null:
+					_event_label.text = "FULL TIME"
+				_event_timer = 999.0
+
+func _prepare_set_piece(restart: Dictionary) -> void:
+	var position := restart.get("position", ball_position) as Vector3
+	_set_ball_state(position, Vector3.ZERO, true)
+	carrier_id = Rules.nearest_player_id(players, position, 1 if bool(restart.get("team_home", true)) else -1)
+	controlled_id = carrier_id if bool(restart.get("team_home", true)) else controlled_id
+	if _event_label != null:
+		_event_label.text = Flow.restart_name(int(restart.get("type", Flow.RestartType.INDIRECT)))
+	_event_timer = match_flow.presentation_duration
+
+func _swap_attacking_sides() -> void:
+	for index in players.size():
+		var player := players[index]
+		var spawn := player.spawn as Vector3
+		player.spawn = Vector3(Rules.PITCH_SIZE.x - spawn.x, 0.0, spawn.z)
+		player.position = player.spawn
+		player.facing = Vector3.LEFT if bool(player.home) else Vector3.RIGHT
+		players[index] = player
+
+func _record_presentation_snapshot() -> void:
+	if replay_buffer != null:
+		replay_buffer.append(MatchSnapshotScript.new(build_presentation_snapshot()))
+
+func _begin_replay() -> void:
+	if replay_buffer == null:
+		return
+	replay_frames = replay_buffer.snapshot_frames(180)
+	replay_active = replay_frames.size() >= 12
+	replay_cursor = 0
+	replay_tick_timer = 0.0
+
+func _reset_kickoff(home_kicks_off: bool, update_flow := true) -> void:
 	for index in players.size():
 		var player := players[index]
 		player.position = player.spawn
@@ -1407,6 +1537,10 @@ func _reset_kickoff(home_kicks_off: bool) -> void:
 	last_touch_home = home_kicks_off
 	restart_team_home = home_kicks_off
 	kickoff_timer = KICKOFF_DELAY
+	if update_flow and match_flow != null:
+		match_flow.begin_restart(Flow.RestartType.KICKOFF, home_kicks_off,
+			Vector3(Rules.PITCH_SIZE.x * 0.5, 0.0, Rules.PITCH_SIZE.z * 0.5), "KICKOFF")
+		_sync_match_flow_state()
 
 func _player_by_id(id: int) -> Dictionary:
 	for player: Dictionary in players:
@@ -1424,6 +1558,9 @@ func _set_ball_state(position: Vector3, velocity: Vector3, grounded: bool = fals
 	ball_grounded = grounded
 
 func _sync_views(interpolate_ball := false) -> void:
+	if replay_active and replay_cursor < replay_frames.size():
+		_sync_replay_views(replay_frames[replay_cursor])
+		return
 	for player: Dictionary in players:
 		var view := _views.get(int(player.id)) as Player3DView
 		if view == null:
@@ -1443,38 +1580,30 @@ func _sync_views(interpolate_ball := false) -> void:
 			presented_ball_position = _previous_ball_position.lerp(ball_position, interpolation_weight)
 		_ball_view.sync_world_position(presented_ball_position, ball_velocity)
 
+func _sync_replay_views(snapshot) -> void:
+	var data: Dictionary = snapshot.to_dict()
+	for player_data: Dictionary in data.players:
+		var view := _views.get(int(player_data.get("id", -1))) as Player3DView
+		if view == null:
+			continue
+		view.sync_world_position(player_data.get("position", Vector3.ZERO) as Vector3)
+		view.set_facing(player_data.get("facing", Vector3.RIGHT) as Vector3)
+		view.set_motion(player_data.get("velocity", Vector3.ZERO) as Vector3,
+			bool(player_data.get("goalkeeper", false)), int(player_data.get("id", -1)) == snapshot.carrier_id)
+		view.set_selected(int(player_data.get("id", -1)) == snapshot.selected_player_id)
+		view.set_ball_carrier(int(player_data.get("id", -1)) == snapshot.carrier_id)
+	if _ball_view != null:
+		var replay_ball: Dictionary = data.ball
+		_ball_view.sync_world_position(replay_ball.get("position", Vector3.ZERO) as Vector3,
+			replay_ball.get("velocity", Vector3.ZERO) as Vector3)
+
 func _create_hud() -> void:
-	var layer := CanvasLayer.new()
-	add_child(layer)
-	var top_bar := ColorRect.new()
-	top_bar.size = Vector2(560, 78) * HUD_SCALE
-	top_bar.color = Color(0.03, 0.06, 0.12, 0.62)
-	layer.add_child(top_bar)
-	_score_label = _hud_label(30, HORIZONTAL_ALIGNMENT_CENTER)
-	_score_label.position = Vector2(0, 10) * HUD_SCALE
-	_score_label.size = Vector2(560, 38) * HUD_SCALE
-	layer.add_child(_score_label)
-	_clock_label = _hud_label(16, HORIZONTAL_ALIGNMENT_RIGHT)
-	_clock_label.position = Vector2(430, 54) * HUD_SCALE
-	_clock_label.size = Vector2(110, 24) * HUD_SCALE
-	layer.add_child(_clock_label)
-	_event_label = _hud_label(22, HORIZONTAL_ALIGNMENT_LEFT, 0.55)
-	_event_label.position = Vector2(12, 300)
-	_event_label.size = Vector2(300, 22)
-	layer.add_child(_event_label)
-	var controls := _hud_label(10, HORIZONTAL_ALIGNMENT_LEFT, 0.8)
-	controls.position = Vector2(12, 340)
-	controls.size = Vector2(420, 16)
-	controls.text = "ATTACK  J SHOOT  K PASS  O LONG  I THROUGH  L SPEED\nDEFENSE  K PRESS  J COVER  O TACKLE  L SPEED  U SWITCH"
-	layer.add_child(controls)
-	_power_bar = ProgressBar.new()
-	_power_bar.position = Vector2(12, 326)
-	_power_bar.size = Vector2(160, 6)
-	_power_bar.max_value = SHOOT_CHARGE_SECONDS
-	_power_bar.show_percentage = false
-	_power_bar.modulate = Color(1.0, 0.82, 0.24)
-	_power_bar.visible = false
-	layer.add_child(_power_bar)
+	_match_hud = MatchHUDScript.new()
+	add_child(_match_hud)
+	_score_label = _match_hud.score_label
+	_clock_label = _match_hud.clock_label
+	_event_label = _match_hud.event_label
+	_power_bar = _match_hud.power_bar
 
 func _create_audio() -> void:
 	for entry in [["pass", PASS_SFX], ["shot", SHOT_SFX], ["tackle", TACKLE_SFX], ["whistle", WHISTLE_SFX]]:
@@ -1489,6 +1618,24 @@ func _play_sfx(name: String) -> void:
 	if player != null:
 		player.play()
 
+func _emit_action_event(name: String, payload: Dictionary) -> void:
+	var event := MatchEventScript.new(name, _simulation_tick, payload)
+	last_match_event = event
+	if camera_director != null:
+		camera_director.consume_event(event)
+	match_event_emitted.emit(event)
+
+func _on_match_event(event) -> void:
+	match event.name:
+		"goal", "halftime", "full_time":
+			_play_sfx("whistle")
+		"pass":
+			_play_sfx("pass")
+		"shot":
+			_play_sfx("shot")
+		"tackle", "pressure":
+			_play_sfx("tackle")
+
 func _hud_label(font_size: int, alignment: HorizontalAlignment, scale: float = HUD_SCALE) -> Label:
 	var label := Label.new()
 	label.horizontal_alignment = alignment
@@ -1500,18 +1647,17 @@ func _hud_label(font_size: int, alignment: HorizontalAlignment, scale: float = H
 	return label
 
 func _update_hud() -> void:
-	if _score_label == null:
+	if _match_hud == null:
 		return
-	_score_label.text = "BLUE  %d - %d  RED" % [score_home, score_away]
-	var seconds := ceili(match_time)
-	_clock_label.text = "%d:%02d" % [seconds / 60, seconds % 60]
-	if _power_bar != null:
-		_power_bar.value = shot_charge
-		_power_bar.visible = shot_charging
-	if kickoff_timer > 0.0 and _event_timer <= 0.0:
+	if replay_active and _event_timer <= 0.0:
+		_event_label.text = "REPLAY"
+	elif match_flow != null and match_flow.phase == Flow.Phase.STOPPAGE_TIME:
+		_event_label.text = "LOSS TIME"
+	elif kickoff_timer > 0.0 and _event_timer <= 0.0:
 		_event_label.text = "KICK OFF"
 	elif _event_timer <= 0.0 and match_time > 0.0:
 		_event_label.text = ""
+	_match_hud.update_from_snapshot(build_presentation_snapshot(), shot_charging, shot_charge, SHOOT_CHARGE_SECONDS)
 
 func _input_direction() -> Vector3:
 	var input := Input.get_vector("p1_left", "p1_right", "p1_up", "p1_down")
@@ -1520,10 +1666,30 @@ func _input_direction() -> Vector3:
 func build_presentation_snapshot() -> Dictionary:
 	## Copy-only boundary for interpolation/debug renderers.
 	var player_snapshot: Array[Dictionary] = []
+	var radar_snapshot: Array[Dictionary] = []
 	for player: Dictionary in players:
 		player_snapshot.append({"id": int(player.id), "home": bool(player.home),
-			"position": player.position, "facing": player.facing})
-	return {"tick": _simulation_tick, "players": player_snapshot,
+			"position": player.position, "facing": player.facing,
+			"velocity": player.velocity, "goalkeeper": bool(player.get("goalkeeper", false))})
+		radar_snapshot.append({"id": int(player.id), "home": bool(player.home),
+			"position": player.position})
+	return {"tick": _simulation_tick, "phase": match_flow.phase if match_flow != null else Flow.Phase.KICKOFF,
+		"half": match_flow.half if match_flow != null else 1, "clock": match_time,
+		"score_home": score_home, "score_away": score_away, "selected_player_id": controlled_id,
+		"carrier_id": carrier_id, "event_label": _event_label.text if _event_label != null else "",
+		"players": player_snapshot, "radar": radar_snapshot,
 		"ball": {"position": ball_position, "velocity": ball_velocity,
 			"bounce_count": ball_bounce_count,
 			"grounded": ball_grounded, "flight_time": ball_flight_time}}
+
+func _advance_replay(delta: float) -> void:
+	if not replay_active:
+		return
+	replay_tick_timer += maxf(delta, 0.0) * 2.0
+	while replay_tick_timer >= FIXED_TICK:
+		replay_tick_timer -= FIXED_TICK
+		replay_cursor += 1
+		if replay_cursor >= replay_frames.size():
+			replay_active = false
+			replay_frames.clear()
+			return

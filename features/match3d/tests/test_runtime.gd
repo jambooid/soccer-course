@@ -4,6 +4,7 @@ const MatchScene := preload("res://scenes/world3d/match3d_game.tscn")
 const BallView := preload("res://scenes/world3d/ball_3d_view.gd")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
 const Rules := preload("res://utils/match3d_rules.gd")
+const Flow := preload("res://utils/match_flow.gd")
 
 var passed := 0
 var failed := 0
@@ -536,6 +537,12 @@ func _run() -> void:
 			break
 	_expect(game.score_away == 1 and game.kickoff_timer > 0.0, "goal increments score and restarts kickoff")
 	_expect(game._event_label.text == "GOAL!", "goal feedback is not hidden by kickoff text")
+	# The remaster flow intentionally freezes live simulation during the goal
+	# result/replay window. Resume the fixture explicitly before the following
+	# isolated pressing checks.
+	game.match_flow.phase = Flow.Phase.FIRST_HALF
+	game.replay_active = false
+	game._event_timer = 0.0
 	var home_carrier: Dictionary = game._player_by_id(9)
 	var cpu_defender: Dictionary = game._player_by_id(17)
 	home_carrier.position = Vector3(30.0, 0.0, 18.0)

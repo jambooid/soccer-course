@@ -9,9 +9,12 @@ Make the default runtime a playable 11v11 low-poly 3D match with the fast,
 readable priorities of WE2000: immediate movement, assisted passes, deliberately
 tiered kick speeds, a broadcast camera, and simple deterministic match rules.
 
-The first scope is one local match: blue human team against red CPU. Menus,
-tournaments, fouls, offside, substitutions, advanced keeper animation, and
-online play remain outside this module.
+The current vertical slice is one local match: blue human team against red CPU.
+It now includes a deterministic first-half/halftime/second-half/stoppage/full-
+time timeline, goal-to-kickoff flow, boundary restart classification, broadcast
+HUD, camera direction, and snapshot-based replay. Menus, tournaments, fouls,
+offside, substitutions, advanced keeper animation, and online play remain
+outside this module.
 
 ## WE2000 Reference
 
@@ -37,6 +40,14 @@ online play remain outside this module.
 - [x] Runtime input smoke test confirms movement and pass release through the
   actual match controller.
 - [x] Kickoff actions respond immediately during the countdown.
+- [x] Match phases, goal records, restart payloads, and presentation snapshots
+  have an explicit deterministic contract.
+- [x] Goals pause live simulation, record bounded historical snapshots, and
+  return through a kickoff-ready tableau without mutating the score in replay.
+- [x] The HUD shows score, half, clock, selected player, radar, and dead-ball
+  labels within the 560x360 internal safe area.
+- [x] Camera direction exposes broadcast, goal focus, replay, and set-piece
+  states while retaining the bounded broadcast follow shot.
 - [ ] Manual input and feel validation is pending a human play session.
 
 ## Mechanism
@@ -60,6 +71,8 @@ Run the focused suite with:
 ```sh
 godot --headless --path . -s features/match3d/tests/test_physics.gd
 godot --headless --path . -s features/match3d/tests/test_runtime.gd
+godot --headless --path . -s features/match3d/tests/test_match_flow.gd
+godot --headless --path . -s features/match3d/tests/test_broadcast_presentation.gd
 ```
 
 Run the manual scene with:
@@ -79,4 +92,7 @@ the remaining checks are subjective input feel and sustained performance.
 - [P2] This prototype uses simple formation steering and no goalkeeper-specific
   save animation; it is intended as the first playable match loop, not a full
   production simulation.
-- [P2] The match duration is fixed at three minutes and no pause menu exists.
+- [P2] The match timeline uses fixed vertical-slice timings (90 second halves,
+  8 seconds of stoppage); settings and pause menus are not yet implemented.
+- [P2] Replay uses prior-frame history only. It provides a safe fallback when
+  insufficient history exists but does not yet include authored alternate cuts.

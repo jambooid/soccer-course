@@ -2,6 +2,7 @@ class_name Match3DRules
 extends RefCounted
 
 const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
+const Flow := preload("res://utils/match_flow.gd")
 
 ## All gameplay state is expressed in world-space Vector3 values. Players
 ## move on X/Z while the ball alone uses Y for height.
@@ -136,6 +137,24 @@ static func goal_scoring_team(ball_position: Vector3) -> int:
 	if ball_position.x > PITCH_SIZE.x:
 		return 1
 	return 0
+
+static func boundary_restart(ball_position: Vector3, boundary_axis: String,
+		last_touch_home: bool) -> Dictionary:
+	var position := Coordinate3D.clamp_pitch(Coordinate3D.ground(ball_position))
+	if boundary_axis == "z":
+		return {"type": Flow.RestartType.THROW_IN, "team_home": not last_touch_home,
+			"position": position, "reason": "TOUCHLINE"}
+	var left_goal_line := ball_position.x <= PITCH_SIZE.x * 0.5
+	var defending_home := left_goal_line
+	if last_touch_home == defending_home:
+		position.x = 0.0 if left_goal_line else PITCH_SIZE.x
+		position.z = 0.0 if position.z < PITCH_SIZE.z * 0.5 else PITCH_SIZE.z
+		return {"type": Flow.RestartType.CORNER, "team_home": not defending_home,
+			"position": position, "reason": "DEFENDER_LAST_TOUCH"}
+	position.x = 5.5 if left_goal_line else PITCH_SIZE.x - 5.5
+	position.z = PITCH_SIZE.z * 0.5
+	return {"type": Flow.RestartType.GOAL_KICK, "team_home": defending_home,
+		"position": position, "reason": "ATTACKER_LAST_TOUCH"}
 
 static func can_ground_player_control_ball(player_position: Vector3,
 		ball_position: Vector3, radius: float = CONTROL_RADIUS,

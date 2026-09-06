@@ -19,3 +19,21 @@
 - [ ] GOAL/SHOT/PASS/TACKLE feedback remains visible for its short feedback window.
 - [ ] Score and match timer update correctly; full time freezes play.
 - [ ] Debug output has no errors and 22-player gameplay sustains 60 FPS.
+# WE2000 Remaster Vertical Slice Validation
+
+Automated verification completed on 2026-09-06:
+
+- [x] `test_physics.gd`: 26 passed, 0 failed
+- [x] `test_runtime.gd`: 89 passed, 0 failed
+- [x] `test_match_flow.gd`: 23 passed, 0 failed
+- [x] `test_broadcast_presentation.gd`: 7 passed, 0 failed
+- [x] Strict OpenSpec validation for `we2000-remaster-vertical-slice`
+
+Manual validation still required in a real OpenGL window at 1280x720:
+
+- [ ] Play from kickoff through a goal, goal focus/replay, and kickoff restart.
+- [ ] Force a touchline exit, corner, and goal kick; confirm event labels and
+  restart takers are readable.
+- [ ] Reach halftime, verify team directions swap, then reach stoppage/full time.
+- [ ] Check score, clock, selected-player panel, and radar never overlap or
+  clip during normal play and dead-ball framing.

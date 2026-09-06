@@ -27,6 +27,9 @@ func consume_snapshot(snapshot: Dictionary) -> void:
 	_current_snapshot = snapshot.duplicate(true)
 	_ensure_player_views()
 
+func consume_replay_snapshot(snapshot) -> void:
+	consume_snapshot(snapshot.to_dict())
+
 func _process(delta: float) -> void:
 	var source := get_node_or_null(snapshot_source)
 	if source != null and source.has_method("build_presentation_snapshot"):
