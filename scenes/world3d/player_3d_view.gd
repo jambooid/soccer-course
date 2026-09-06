@@ -11,6 +11,8 @@ const ShotScene := preload("res://assets/player/Soccer Game Pack/soccer penalty 
 const TackleScene := preload("res://assets/player/Soccer Game Pack/soccer tackle.fbx")
 const KeeperIdleScene := preload("res://assets/player/Soccer Game Pack/goalkeeper idle.fbx")
 const PressureScene := preload("res://assets/player/Soccer Game Pack/goalkeeper sidestep.fbx")
+const KeeperCatchScene := preload("res://assets/player/Soccer Game Pack/goalkeeper catch.fbx")
+const KeeperDiveScene := preload("res://assets/player/Soccer Game Pack/goalkeeper diving save.fbx")
 const TURNAROUND_PLAYBACK_SPEED := 3.8
 
 ## Match3D gameplay coordinates are already in pitch/world units (85 x 36).
@@ -51,6 +53,8 @@ func _create_character_model() -> void:
 		_add_clip(ShotScene, &"shot", false)
 		_add_clip(TackleScene, &"tackle", false)
 		_add_clip(PressureScene, &"pressure", false)
+		_add_clip(KeeperCatchScene, &"keeper_collect", false)
+		_add_clip(KeeperDiveScene, &"keeper_dive", false)
 		_add_clip(KeeperIdleScene, &"keeper_idle", true)
 		animation_player.animation_finished.connect(_on_animation_finished)
 		_play_locomotion(true)
@@ -169,6 +173,10 @@ func play_action(kind: String) -> void:
 			next_action = &"tackle/clip"
 		"pressure":
 			next_action = &"pressure/clip"
+		"keeper_collect":
+			next_action = &"keeper_collect/clip"
+		"keeper_dive":
+			next_action = &"keeper_dive/clip"
 		_:
 			return
 	if animation_player.has_animation(next_action):
@@ -179,9 +187,7 @@ func play_action(kind: String) -> void:
 		animation_player.play(next_action, 0.04)
 
 func is_playing_action(kind: String) -> bool:
-	if kind == "turnaround":
-		return _action_animation == &"turnaround/clip"
-	return false
+	return _action_animation == StringName("%s/clip" % kind)
 
 func _play_locomotion(immediate: bool = false) -> void:
 	if animation_player == null:

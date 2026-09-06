@@ -5,6 +5,7 @@ const BallView := preload("res://scenes/world3d/ball_3d_view.gd")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
 const Rules := preload("res://utils/match3d_rules.gd")
 const Flow := preload("res://utils/match_flow.gd")
+const FeelRules := preload("res://utils/match_feel_rules.gd")
 
 var passed := 0
 var failed := 0
@@ -513,12 +514,138 @@ func _run() -> void:
 	receiving_game._kick_to_target(passer, false, Vector3.RIGHT)
 	_expect(receiving_game.pass_target_id == 8,
 		"directed pass stores the selected teammate as its intended receiver")
+	_expect(str((receiving_game.action_intents.get(8, {}) as Dictionary).get("action", "")) == "receive",
+		"directed pass buffers the selected receiver's next contact")
+	receiving_game._update_tactical_roles()
+	_expect(str((receiving_game.tactical_assignments.get(8, {}) as Dictionary).get("state", "")) == "receive_run" and
+		str((receiving_game.tactical_assignments.get(20, {}) as Dictionary).get("state", "")) == "defensive_shape",
+		"receiver commits to the pass while unreachable defenders retain formation")
 	receiving_game.ball_position = receiver.position
 	receiving_game.ball_velocity = Vector3.ZERO
 	receiving_game._capture_free_ball()
 	_expect(receiving_game.carrier_id == 8 and receiving_game.controlled_id == 8,
 		"intended receiver takes possession and becomes the controlled player")
+	var interaction_names: Array = []
+	for metric: Dictionary in receiving_game.calibration_metrics:
+		interaction_names.append(str(metric.get("action", "")))
+	_expect(interaction_names.has("pass") and interaction_names.has("possession_change") and
+		interaction_names.has("receive") and interaction_names.has("first_touch") and
+		not JSON.stringify(receiving_game.calibration_metrics).is_empty(),
+		"directed pass outcomes emit serializable pass, possession, receive, and first-touch metrics")
+	var metric_count: int = receiving_game.calibration_metrics.size()
+	receiving_game._emit_calibrated_interaction("receive", 7, 6, Vector3.RIGHT, "receive")
+	receiving_game._emit_calibrated_interaction("receive", 7, 6, Vector3.RIGHT, "receive")
+	_expect(receiving_game.calibration_metrics.size() == metric_count + 1,
+		"the same interaction outcome cannot be emitted twice in one fixed tick")
+	receiving_game._update_tactical_roles()
+	_expect(str((receiving_game.tactical_assignments.get(8, {}) as Dictionary).get("state", "")) != "receive_run",
+		"receiver run ends immediately after the pass is received")
 	receiving_game.free()
+	var interception_game := MatchScene.instantiate()
+	root.add_child(interception_game)
+	await process_frame
+	interception_game.kickoff_timer = 0.0
+	interception_game.cpu_tackle_cooldown = 999.0
+	var interception_passer: Dictionary = interception_game._player_by_id(9)
+	var interception_receiver: Dictionary = interception_game._player_by_id(8)
+	var interceptor: Dictionary = interception_game._player_by_id(20)
+	interception_passer.position = Vector3(30.0, 0.0, 18.0)
+	interception_passer.facing = Vector3.RIGHT
+	interception_receiver.position = Vector3(42.0, 0.0, 18.0)
+	interception_receiver.tackle_recovery = 0.32
+	interceptor.position = Vector3(42.0, 0.0, 18.0)
+	interception_game.players[9] = interception_passer
+	interception_game.players[8] = interception_receiver
+	interception_game.players[20] = interceptor
+	for index in interception_game.players.size():
+		if index == 8 or index == 9 or index == 20:
+			continue
+		var distant_interceptor: Dictionary = interception_game.players[index]
+		distant_interceptor.position = Vector3(4.0, 0.0, 3.0)
+		interception_game.players[index] = distant_interceptor
+	interception_game.carrier_id = 9
+	interception_game.controlled_id = 9
+	interception_game.ball_position = interception_passer.position
+	interception_game._kick_to_target(interception_passer, false, Vector3.RIGHT)
+	interception_game._update_tactical_roles()
+	_expect(str((interception_game.tactical_assignments.get(20, {}) as Dictionary).get("state", "")) == "pass_intercept",
+		"only the deterministic early interceptor leaves its tactical role for the pass")
+	interception_game.ball_position = interceptor.position
+	interception_game.ball_velocity = Vector3.ZERO
+	interception_game._capture_free_ball()
+	_expect(interception_game.carrier_id == 20 and interception_game.pass_target_id == -1,
+		"an opponent with a valid earlier arrival cancels receiver assistance and intercepts")
+	interception_game.free()
+	var first_touch_game := MatchScene.instantiate()
+	root.add_child(first_touch_game)
+	await process_frame
+	var touch_carrier: Dictionary = first_touch_game._player_by_id(9)
+	touch_carrier.position = Vector3(42.0, 0.0, 18.0)
+	touch_carrier.facing = Vector3.RIGHT
+	first_touch_game.players[9] = touch_carrier
+	first_touch_game.carrier_id = 9
+	first_touch_game.controlled_id = 9
+	first_touch_game.ball_position = touch_carrier.position
+	var back_defender: Dictionary = first_touch_game._player_by_id(20)
+	back_defender.position = Vector3(40.9, 0.0, 18.0)
+	back_defender.facing = Vector3.RIGHT
+	first_touch_game.players[20] = back_defender
+	first_touch_game._begin_first_touch(touch_carrier, FeelRules.first_touch_state(touch_carrier,
+		touch_carrier.position, Vector3.RIGHT * 10.0, 0.0, first_touch_game._simulation_tick))
+	first_touch_game._attempt_tackle(back_defender)
+	_expect(first_touch_game.carrier_id == 9,
+		"a protected first touch rejects an immediate tackle from behind")
+	var front_defender: Dictionary = first_touch_game._player_by_id(21)
+	front_defender.position = Vector3(43.1, 0.0, 18.0)
+	front_defender.facing = Vector3.LEFT
+	first_touch_game.players[21] = front_defender
+	first_touch_game._attempt_tackle(front_defender)
+	_expect(first_touch_game.carrier_id == 21 and first_touch_game.first_touch_state.is_empty(),
+		"a front-side tackle can win the ball during the first-touch contact window")
+	first_touch_game.carrier_id = 9
+	first_touch_game.controlled_id = 9
+	first_touch_game.ball_position = touch_carrier.position
+	first_touch_game.players[9] = touch_carrier
+	first_touch_game._begin_first_touch(touch_carrier, FeelRules.first_touch_state(touch_carrier,
+		touch_carrier.position, Vector3.RIGHT * 10.0, 0.0, first_touch_game._simulation_tick))
+	first_touch_game._simulation_tick = int(first_touch_game.first_touch_state.end_tick)
+	first_touch_game._attempt_tackle(back_defender)
+	_expect(first_touch_game.carrier_id == 20,
+		"a tackle after the bounded first-touch window resolves with normal contact rules")
+	first_touch_game.free()
+	var goalkeeper_game := MatchScene.instantiate()
+	root.add_child(goalkeeper_game)
+	await process_frame
+	var away_keeper: Dictionary = goalkeeper_game._player_by_id(11)
+	away_keeper.position = Vector3(81.0, 0.0, 18.0)
+	goalkeeper_game.players[11] = away_keeper
+	goalkeeper_game.carrier_id = -1
+	goalkeeper_game.ball_position = Vector3(82.0, 0.4, 18.2)
+	goalkeeper_game.ball_velocity = Vector3.RIGHT * 20.0
+	_expect(goalkeeper_game._resolve_goalkeeper_outcome() and goalkeeper_game.carrier_id == 11 and
+		int(goalkeeper_game._player_by_id(11).keeper_recovery_ticks) > 0,
+		"a reachable low shot is collected by the deterministic goalkeeper outcome")
+	var keeper_view := goalkeeper_game._views[11] as Player3DView
+	var goalkeeper_event_count := 0
+	for metric: Dictionary in goalkeeper_game.calibration_metrics:
+		if str(metric.get("action", "")) == "goalkeeper_collect":
+			goalkeeper_event_count += 1
+	_expect(keeper_view.is_playing_action("keeper_collect") and goalkeeper_game._event_label.text == "SAVE" and
+		goalkeeper_game.camera_director.shot == goalkeeper_game.camera_director.Shot.GOAL_FOCUS and
+		goalkeeper_game._sfx_players.has("tackle"),
+		"goalkeeper collection is visible in the player view, HUD, camera, and audio path")
+	_expect(not goalkeeper_game._resolve_goalkeeper_outcome() and goalkeeper_game.calibration_metrics.filter(
+		func(metric: Dictionary) -> bool: return str(metric.get("action", "")) == "goalkeeper_collect").size() == goalkeeper_event_count,
+		"a resolved goalkeeper collection emits its outcome exactly once")
+	goalkeeper_game.carrier_id = -1
+	away_keeper = goalkeeper_game._player_by_id(11)
+	away_keeper.keeper_recovery_ticks = 0
+	goalkeeper_game.players[11] = away_keeper
+	goalkeeper_game.ball_position = Vector3(82.0, 0.4, 22.1)
+	goalkeeper_game.ball_velocity = Vector3.RIGHT * 20.0
+	_expect(not goalkeeper_game._resolve_goalkeeper_outcome() and goalkeeper_game.carrier_id == -1,
+		"a configured goalkeeper coverage gap leaves the shot unblocked")
+	goalkeeper_game.free()
 	var defensive_switch_game := MatchScene.instantiate()
 	root.add_child(defensive_switch_game)
 	await process_frame
@@ -768,8 +895,43 @@ func _run() -> void:
 	_expect(charge_game.ball_velocity.y > 0.0,
 		"charged shot launches with an explicit vertical 3D component")
 	charge_game.free()
+	var buffered_action_game := MatchScene.instantiate()
+	root.add_child(buffered_action_game)
+	await process_frame
+	buffered_action_game.kickoff_timer = 0.0
+	buffered_action_game.match_flow.force_live()
+	buffered_action_game.carrier_id = 9
+	buffered_action_game.controlled_id = 9
+	buffered_action_game.cpu_tackle_cooldown = 999.0
+	var buffered_carrier: Dictionary = buffered_action_game._player_by_id(9)
+	buffered_carrier.position = Vector3(30.0, 0.0, 18.0)
+	buffered_carrier.facing = Vector3.RIGHT
+	buffered_action_game.players[9] = buffered_carrier
+	buffered_action_game.ball_position = buffered_carrier.position
+	buffered_action_game.action_cooldown = buffered_action_game.FIXED_TICK * 2.0
+	buffered_action_game._queue_action_intent(9, "pass", Vector3.RIGHT)
+	for _i in range(3):
+		buffered_action_game._simulate_tick(buffered_action_game.FIXED_TICK)
+	_expect(buffered_action_game.carrier_id == -1 and buffered_action_game.ball_velocity.x > 0.0,
+		"a buffered pass waits for its earliest valid contact and preserves sampled direction")
+	buffered_action_game.free()
+	var expired_action_game := MatchScene.instantiate()
+	root.add_child(expired_action_game)
+	await process_frame
+	expired_action_game.kickoff_timer = 0.0
+	expired_action_game.match_flow.force_live()
+	expired_action_game.carrier_id = 9
+	expired_action_game.controlled_id = 9
+	expired_action_game.action_cooldown = 1.0
+	expired_action_game._queue_action_intent(9, "pass", Vector3.RIGHT, 1)
+	for _i in range(4):
+		expired_action_game._simulate_tick(expired_action_game.FIXED_TICK)
+	_expect(expired_action_game.carrier_id == 9 and expired_action_game.action_intents.is_empty(),
+		"a pass buffered beyond its expiry is discarded without a later kick")
+	expired_action_game.free()
 	game.free()
 	await _test_render_cadence_determinism()
+	await _test_calibrated_cadence_determinism()
 	print("=== 3D Match Runtime Tests ===")
 	print("Results: %d passed, %d failed" % [passed, failed])
 	quit(0 if failed == 0 else 1)
@@ -799,6 +961,91 @@ func _test_render_cadence_determinism() -> void:
 		"render cadence produces the same 3D ball velocity")
 	low_rate.free()
 	high_rate.free()
+
+func _test_calibrated_cadence_determinism() -> void:
+	var simulations: Array = []
+	for _i in range(3):
+		var simulation := MatchScene.instantiate()
+		root.add_child(simulation)
+		simulations.append(simulation)
+	await process_frame
+	for simulation in simulations:
+		simulation.kickoff_timer = 0.0
+		simulation.match_flow.force_live()
+		simulation.cpu_tackle_cooldown = 999.0
+		var passer: Dictionary = simulation._player_by_id(9)
+		var receiver: Dictionary = simulation._player_by_id(8)
+		passer.position = Vector3(30.0, 0.0, 18.0)
+		passer.facing = Vector3.RIGHT
+		receiver.position = Vector3(42.0, 0.0, 18.0)
+		simulation.players[9] = passer
+		simulation.players[8] = receiver
+		for index in simulation.players.size():
+			if index == 8 or index == 9:
+				continue
+			var distant: Dictionary = simulation.players[index]
+			distant.position = Vector3(4.0, 0.0, 3.0)
+			simulation.players[index] = distant
+		simulation.carrier_id = 9
+		simulation.controlled_id = 9
+		simulation.ball_position = passer.position
+		# Hold the pass for one fixed tick so every cadence must consume the same
+		# buffered intent before the receiving race and first touch can begin.
+		simulation.action_cooldown = simulation.FIXED_TICK
+		simulation._queue_action_intent(9, "pass", Vector3.RIGHT)
+	for _i in range(60):
+		simulations[0]._process(1.0 / 30.0)
+	for _i in range(120):
+		simulations[1]._process(1.0 / 60.0)
+	for _i in range(240):
+		simulations[2]._process(1.0 / 120.0)
+	var baseline = simulations[0]
+	for candidate in [simulations[1], simulations[2]]:
+		_expect(candidate._simulation_tick == baseline._simulation_tick and
+			candidate.carrier_id == baseline.carrier_id and candidate.ball_position.is_equal_approx(baseline.ball_position),
+			"calibrated pass possession and snapshot match at 30/60/120 Hz")
+		_expect(JSON.stringify(candidate.calibration_metrics) == JSON.stringify(baseline.calibration_metrics),
+			"action buffer, arrival race, and first-touch metrics match at 30/60/120 Hz")
+	for simulation in simulations:
+		simulation.free()
+	var goalkeeper_simulations: Array = []
+	for _i in range(3):
+		var simulation := MatchScene.instantiate()
+		root.add_child(simulation)
+		goalkeeper_simulations.append(simulation)
+	await process_frame
+	for simulation in goalkeeper_simulations:
+		simulation.kickoff_timer = 0.0
+		simulation.match_flow.force_live()
+		simulation.cpu_tackle_cooldown = 999.0
+		var keeper: Dictionary = simulation._player_by_id(11)
+		keeper.position = Vector3(81.0, 0.0, 18.0)
+		simulation.players[11] = keeper
+		for index in simulation.players.size():
+			if index == 11:
+				continue
+			var distant: Dictionary = simulation.players[index]
+			distant.position = Vector3(4.0, 0.0, 3.0)
+			simulation.players[index] = distant
+		simulation.carrier_id = -1
+		simulation.ball_position = Vector3(82.0, 0.4, 18.2)
+		simulation.ball_velocity = Vector3.RIGHT * 20.0
+	for _i in range(1):
+		goalkeeper_simulations[0]._process(1.0 / 30.0)
+	for _i in range(2):
+		goalkeeper_simulations[1]._process(1.0 / 60.0)
+	for _i in range(4):
+		goalkeeper_simulations[2]._process(1.0 / 120.0)
+	var goalkeeper_baseline = goalkeeper_simulations[0]
+	for candidate in [goalkeeper_simulations[1], goalkeeper_simulations[2]]:
+		_expect(candidate._simulation_tick == goalkeeper_baseline._simulation_tick and
+			candidate.carrier_id == goalkeeper_baseline.carrier_id and
+			candidate.ball_position.is_equal_approx(goalkeeper_baseline.ball_position),
+			"goalkeeper possession and snapshot match at 30/60/120 Hz")
+		_expect(JSON.stringify(candidate.calibration_metrics) == JSON.stringify(goalkeeper_baseline.calibration_metrics),
+			"goalkeeper outcome metrics match at 30/60/120 Hz")
+	for simulation in goalkeeper_simulations:
+		simulation.free()
 
 func _has_origin_locked_hips_track(clip: Animation) -> bool:
 	if clip == null:

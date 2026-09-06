@@ -19,6 +19,12 @@ func consume_event(event) -> void:
 			shot = Shot.SET_PIECE
 			hold_timer = 0.8
 			focus_position = event.payload.get("position", Vector3.ZERO) as Vector3
+		"goalkeeper_collect", "goalkeeper_parry", "goalkeeper_dive":
+			shot = Shot.GOAL_FOCUS
+			hold_timer = 0.42
+			var focus: Array = event.payload.get("focus_position", [])
+			if focus.size() == 3:
+				focus_position = Vector3(float(focus[0]), float(focus[1]), float(focus[2]))
 		"full_time":
 			shot = Shot.GOAL_FOCUS
 			hold_timer = 1.2

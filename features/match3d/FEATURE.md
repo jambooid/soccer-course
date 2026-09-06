@@ -64,6 +64,26 @@ goals and possession are resolved by explicit thresholds.
 | Short / long / shot | 27 / 35 / 48 m/s | Distinct decisions at a glance |
 | Control radius | 1.18 m | Forgiving first touch without magnetic capture |
 
+## Match-Feel Calibration Baseline
+
+All gameplay state advances at 60 Hz. Rendering interpolates those snapshots,
+so 30, 60, and 120 Hz presentation must not change possession or metrics.
+
+| Parameter | Value | Intent |
+| --- | ---: | --- |
+| Action buffer | 12 ticks (200 ms) | A pass, shot, tackle, or receive pressed before contact resolves at its first legal window. |
+| Directed-receive reservation | 2.4 s | The selected teammate runs to the predicted receiving area before normal formation steering resumes. |
+| Receiver assist / interception margin | 2 / 2 ticks | Assistance wins close arrivals, but a defender must arrive clearly earlier to intercept. |
+| First-touch duration | 3-18 ticks | Incoming speed, technique, and pressure visibly separate trap, settle, and contested loose outcomes. |
+| Ground-pass control speed | <= 14.0 m/s | A receiver can only claim a directed pass after it becomes controllable. |
+| Goalkeeper save zone / recovery | 3.2 m / 18 ticks | Saves are committed only when the ball is reachable and the keeper is not recovering. |
+| Goalkeeper collect / dive / gap radius | 1.35 / 3.25 / 3.55 m | Low close shots collect, wider reachable shots parry or dive, and authored gaps stay scoreable. |
+
+The seeded scenario suite measures short pass, through pass, long pass, first
+touch, interception, shielding, tackle, low save, and coverage-gap shot. The
+runtime suite also compares buffered pass reception and goalkeeper collection
+at 30, 60, and 120 Hz.
+
 ## Tests
 
 Run the focused suite with:
@@ -71,6 +91,7 @@ Run the focused suite with:
 ```sh
 godot --headless --path . -s features/match3d/tests/test_physics.gd
 godot --headless --path . -s features/match3d/tests/test_runtime.gd
+godot --headless --path . -s features/match3d/tests/test_feel_scenarios.gd
 godot --headless --path . -s features/match3d/tests/test_match_flow.gd
 godot --headless --path . -s features/match3d/tests/test_broadcast_presentation.gd
 ```
@@ -89,9 +110,8 @@ the remaining checks are subjective input feel and sustained performance.
 
 - [P1] Automated scene load and a one-frame render pass; subjective input feel
   and sustained performance still need a human play session.
-- [P2] This prototype uses simple formation steering and no goalkeeper-specific
-  save animation; it is intended as the first playable match loop, not a full
-  production simulation.
+- [P2] Goalkeeper collection and dive now have deterministic presentation
+  actions, but their visual timing still requires real-window play validation.
 - [P2] The match timeline uses fixed vertical-slice timings (90 second halves,
   8 seconds of stoppage); settings and pause menus are not yet implemented.
 - [P2] Replay uses prior-frame history only. It provides a safe fallback when

@@ -73,7 +73,7 @@ func _add_demo_player_view(player: Dictionary, view_name: String, color: Color) 
 	add_child(view)
 	_views[int(player.id)] = view
 
-func _reset_kickoff(_home_kicks_off: bool) -> void:
+func _reset_kickoff(_home_kicks_off: bool, _update_flow := true) -> void:
 	for index in players.size():
 		var player := players[index]
 		player.position = DEMO_START if int(player.id) == DEMO_PLAYER_ID else DEMO_KEEPER_START

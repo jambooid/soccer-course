@@ -12,6 +12,12 @@
 - [ ] Pass/shoot during the kickoff countdown responds immediately.
 - [ ] Holding J fills the shot bar and releasing J launches the charged shot.
 - [ ] A roughly aimed short pass finds a forward teammate.
+- [ ] A buffered pass entered just before a first touch resolves once at the
+  first legal contact, with the originally sampled direction.
+- [ ] The selected receiver runs into the intended lane and takes control when
+  it arrives first; an earlier defender can still intercept.
+- [ ] First-touch trap, settle, and pressured loose-ball outcomes are visually
+  distinguishable and do not feel like automatic possession.
 - [ ] Long pass visibly carries farther and higher than short pass.
 - [ ] Shots are visibly fastest and score only through the goal mouth.
 - [ ] A nearby blue player can take the ball from a red carrier with tackle.
@@ -19,6 +25,18 @@
 - [ ] GOAL/SHOT/PASS/TACKLE feedback remains visible for its short feedback window.
 - [ ] Score and match timer update correctly; full time freezes play.
 - [ ] Debug output has no errors and 22-player gameplay sustains 60 FPS.
+
+# Match-Feel Calibration Validation
+
+Automated calibration completed on 2026-09-06:
+
+- [x] Fixed-tick action buffers, receiving races, first touches, and goalkeeper
+  outcome records match at 30, 60, and 120 Hz.
+- [x] Seeded short pass, through pass, long pass, first touch, interception,
+  shielding, tackle, low-save, and coverage-gap scenarios report their budgets.
+- [x] Real-window 1280x720 review completed against `../we2000_replay.mkv`:
+  assisted pass, first touch, tackle, and goalkeeper feedback remain intentional
+  without automatic possession; no baseline tuning delta was identified.
 # WE2000 Remaster Vertical Slice Validation
 
 Automated verification completed on 2026-09-06:

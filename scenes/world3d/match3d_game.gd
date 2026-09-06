@@ -5,6 +5,7 @@ const Rules := preload("res://utils/match3d_rules.gd")
 const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
 const BallPhysics3D := preload("res://utils/ball_physics_3d_constants.gd")
 const DribblePhysics3D := preload("res://utils/dribble_physics_3d.gd")
+const MatchFeelRules := preload("res://utils/match_feel_rules.gd")
 const Coordinate3D := preload("res://utils/pitch_coordinate_3d.gd")
 const Flow := preload("res://utils/match_flow.gd")
 const MatchFlowControllerScript := preload("res://utils/match_flow_controller.gd")
@@ -51,6 +52,10 @@ const CAMERA_FOCUS_Z_MAX := Rules.PITCH_SIZE.z - 4.8
 const PASS_RECEIVE_ASSIST_SECONDS := 2.4
 const PASS_RECEIVE_CONTROL_SPEED := 14.0
 const PASS_RECEIVE_INTERCEPT_MARGIN := 0.34
+const ACTION_BUFFER_TICKS := 12
+const FIRST_TOUCH_SHIELD_TICKS := 3
+const GOALKEEPER_SAVE_ZONE := 3.2
+const GOALKEEPER_RECOVERY_TICKS := 18
 const JOG_DRIBBLE_TOP_SPEED := Rules.PITCH_SIZE.x * 0.5 / 10.0
 const FORMATION_BALL_X_WEIGHT := 0.32
 const FORMATION_BALL_Z_WEIGHT := 0.34
@@ -85,6 +90,11 @@ var controlled_id := -1
 var pass_target_id := -1
 var pass_target_position := Vector3.ZERO
 var pass_target_timer := 0.0
+var pass_source_id := -1
+var pass_launch_tick := -1
+var action_intents: Dictionary = {}
+var shot_charge_actor_id := -1
+var shot_charge_direction := Vector3.ZERO
 var score_home := 0
 var score_away := 0
 var match_time := MATCH_SECONDS
@@ -136,6 +146,10 @@ var dribble_stop_roll_distance := 0.0
 var dribble_stop_roll_carrier_start := Vector3.ZERO
 var dribble_stop_roll_ball_target := Vector2.ZERO
 var tactical_assignments: Dictionary = {}
+var calibration_metrics: Array = []
+var _interaction_keys_by_tick: Dictionary = {}
+var _interaction_metric_tick := -1
+var first_touch_state: Dictionary = {}
 var primary_presser_by_team: Dictionary = {"home": -1, "away": -1}
 var _views: Dictionary = {}
 var _ball_view: Ball3DView
@@ -285,13 +299,14 @@ func _simulate_tick(step: float) -> void:
 	cpu_action_cooldown = maxf(cpu_action_cooldown - step, 0.0)
 	cpu_tackle_cooldown = maxf(cpu_tackle_cooldown - step, 0.0)
 	_event_timer = maxf(_event_timer - step, 0.0)
+	_expire_action_intents()
 	_handle_player_switch()
 	_update_controlled_player()
+	_buffer_controlled_actions(step)
 	_update_tactical_roles()
 	_step_players(step)
 	_handle_defensive_inputs(step)
-	if action_cooldown <= 0.0 and _action_just_pressed("p1_special"):
-		_attempt_tackle(_player_by_id(controlled_id))
+	_consume_buffered_tackle()
 	_step_ball(step)
 	_resolve_player_separation()
 	_simulation_tick += 1
@@ -306,6 +321,68 @@ func _action_just_released(action: String) -> bool:
 	var value := bool(_sampled_just_released.get(action, false))
 	_sampled_just_released[action] = false
 	return value
+
+func _queue_action_intent(actor_id: int, action: String, direction: Vector3,
+		buffer_ticks: int = ACTION_BUFFER_TICKS, extra: Dictionary = {}) -> void:
+	if actor_id < 0:
+		return
+	var intent := MatchFeelRules.make_action_intent(action, direction, _simulation_tick, buffer_ticks)
+	intent.actor_id = actor_id
+	for key in extra:
+		intent[key] = extra[key]
+	action_intents[actor_id] = MatchFeelRules.queue_action_intent(action_intents.get(actor_id, {}), intent)
+
+func _expire_action_intents() -> void:
+	for actor_id in action_intents.keys():
+		var intent: Dictionary = action_intents.get(actor_id, {})
+		if MatchFeelRules.intent_is_expired(intent, _simulation_tick):
+			action_intents.erase(actor_id)
+
+func _consume_action_intent(actor_id: int, action: String) -> Dictionary:
+	var intent: Dictionary = action_intents.get(actor_id, {})
+	var window := MatchFeelRules.contact_window(action, _simulation_tick, _simulation_tick)
+	var result := MatchFeelRules.consume_intent_at_window(intent, _simulation_tick, window)
+	if bool(result.get("consumed", false)) or bool(result.get("expired", false)):
+		action_intents.erase(actor_id)
+	return result.get("intent", {}) if bool(result.get("consumed", false)) else {}
+
+func _buffer_controlled_actions(delta: float) -> void:
+	var controlled := _player_by_id(controlled_id)
+	if controlled.is_empty():
+		return
+	var aim := _input_direction()
+	if aim.is_zero_approx():
+		aim = controlled.facing
+	if _action_just_pressed("p1_pass"):
+		_queue_action_intent(controlled_id, "pass", aim)
+	elif _action_just_pressed("p1_through_pass"):
+		_queue_action_intent(controlled_id, "through_pass", aim)
+	elif _action_just_pressed("p1_long_pass"):
+		_queue_action_intent(controlled_id, "long_pass", aim)
+	elif _action_just_pressed("p1_special"):
+		_queue_action_intent(controlled_id, "tackle", aim)
+	if _action_just_pressed("p1_shoot"):
+		shot_charging = true
+		shot_charge = 0.0
+		shot_charge_actor_id = controlled_id
+		shot_charge_direction = aim
+	if shot_charging and shot_charge_actor_id == controlled_id and Input.is_action_pressed("p1_shoot"):
+		shot_charge = minf(shot_charge + maxf(delta, 0.0), SHOOT_CHARGE_SECONDS)
+	if shot_charging and _action_just_released("p1_shoot"):
+		_queue_action_intent(shot_charge_actor_id, "shoot", shot_charge_direction,
+			ACTION_BUFFER_TICKS, {"power": shot_charge / SHOOT_CHARGE_SECONDS})
+		_clear_shot_charge()
+
+func _consume_buffered_tackle() -> void:
+	if action_cooldown > 0.0:
+		return
+	var controlled := _player_by_id(controlled_id)
+	var carrier := _player_by_id(carrier_id)
+	if controlled.is_empty() or carrier.is_empty() or bool(controlled.home) == bool(carrier.home):
+		return
+	var intent := _consume_action_intent(controlled_id, "tackle")
+	if not intent.is_empty():
+		_attempt_tackle(controlled)
 
 func _handle_kickoff_input() -> void:
 	if carrier_id < 0:
@@ -359,6 +436,7 @@ func _create_match() -> void:
 				"cutback_cooldown": 0.0, "formation_index": index,
 				"formation_line": _formation_line(index), "ai_state": "formation",
 				"tackle_recovery": 0.0, "stumble_recovery": 0.0,
+				"keeper_recovery_ticks": 0,
 				"defense": 58.0 + float((index * 11) % 38), "pressure_cooldown": 0.0,
 				"pressure_exposure": 0.0}
 			players.append(entry)
@@ -385,9 +463,10 @@ func _step_players(delta: float) -> void:
 		player.tackle_recovery = tackle_recovery
 		var stumble_recovery := maxf(float(player.get("stumble_recovery", 0.0)) - delta, 0.0)
 		player.stumble_recovery = stumble_recovery
+		player.keeper_recovery_ticks = maxi(int(player.get("keeper_recovery_ticks", 0)) - 1, 0)
 		if stumble_recovery <= 0.0 and float(player.get("pressure_exposure", 0.0)) > 0.0:
 			player.pressure_exposure = maxf(float(player.pressure_exposure) - delta * 0.55, 0.0)
-		if tackle_recovery > 0.0 or stumble_recovery > 0.0:
+		if tackle_recovery > 0.0 or stumble_recovery > 0.0 or int(player.keeper_recovery_ticks) > 0:
 			# The tackle asset is a sliding/falling action. Hold the gameplay body
 			# and ball owner through its recovery instead of letting locomotion resume.
 			player.velocity = Vector3.ZERO
@@ -530,12 +609,35 @@ func _update_tactical_roles() -> void:
 	tactical_assignments.clear()
 	var carrier := _player_by_id(carrier_id)
 	if carrier.is_empty():
+		if pass_target_id >= 0 and pass_target_timer > 0.0:
+			_assign_directed_pass_tactics()
+			return
 		_assign_loose_ball_tactics(true)
 		_assign_loose_ball_tactics(false)
 		return
 	var possession_home := bool(carrier.home)
 	_assign_team_tactics(possession_home, carrier, true)
 	_assign_team_tactics(not possession_home, carrier, false)
+
+func _assign_directed_pass_tactics() -> void:
+	var receiver := _player_by_id(pass_target_id)
+	if receiver.is_empty():
+		_assign_loose_ball_tactics(true)
+		_assign_loose_ball_tactics(false)
+		return
+	var race := _directed_pass_arrival_race(receiver)
+	var interception_id := int(race.get("winner_id", -1)) if \
+		str(race.get("outcome", "")) == "interception" else -1
+	for player: Dictionary in players:
+		if int(player.id) == pass_target_id:
+			_set_tactical_assignment(player, "receive_run", pass_target_position)
+			continue
+		if int(player.id) == interception_id:
+			_set_tactical_assignment(player, "pass_intercept", pass_target_position)
+			continue
+		var attacking := bool(player.home) == last_touch_home
+		_set_tactical_assignment(player, "offensive_support" if attacking else "defensive_shape",
+			_formation_target(player, pass_target_position, attacking))
 
 func _assign_loose_ball_tactics(team_home: bool) -> void:
 	var closest_id := Rules.nearest_player_id(players, ball_position, 1 if team_home else -1)
@@ -813,6 +915,9 @@ func _try_pressure(defender: Dictionary, carrier: Dictionary) -> bool:
 	var carrier_back_turn := carrier_facing.dot(to_carrier) > 0.35
 	var defender_behind := carrier_back_turn
 	var defender_value := float(defender.get("defense", 60.0))
+	if _first_touch_is_shielded(defender, carrier):
+		_set_pressure_cooldown(int(defender.id), PRESSURE_COOLDOWN_SECONDS)
+		return false
 	# A carrier facing away from the defender protects the ball. Only a strong
 	# defender or a very poor touch should let pressure win from behind.
 	var success_threshold := 0.92 if carrier_back_turn else 0.68
@@ -905,6 +1010,9 @@ func _step_ball(delta: float) -> void:
 		if _is_tackle_recovering(carrier) or _is_stumbling(carrier):
 			_hold_tackle_recovery_ball(carrier)
 			return
+		if _first_touch_is_active_for(int(carrier.id)):
+			_step_first_touch(carrier)
+			return
 		_handle_carrier_actions(carrier, delta)
 		if carrier_id >= 0:
 			_step_dribbling_ball(carrier, delta)
@@ -919,6 +1027,8 @@ func _step_ball(delta: float) -> void:
 	ball_grounded = bool(trajectory.get("grounded", false))
 	if bool(trajectory.get("bounced", false)):
 		ball_bounce_count += 1
+	if _resolve_goalkeeper_outcome():
+		return
 	var scorer := Rules.goal_scoring_team(ball_position)
 	if scorer != 0:
 		_score_goal(scorer > 0)
@@ -927,6 +1037,63 @@ func _step_ball(delta: float) -> void:
 		_begin_boundary_restart(str(trajectory.get("boundary_axis", "")))
 		return
 	_capture_free_ball()
+
+func _resolve_goalkeeper_outcome() -> bool:
+	var horizontal := Coordinate3D.ground(ball_velocity)
+	if horizontal.length_squared() < 0.01:
+		return false
+	var defending_left := horizontal.x < 0.0
+	var goal_x := 0.0 if defending_left else Rules.PITCH_SIZE.x
+	if absf(goal_x - ball_position.x) > GOALKEEPER_SAVE_ZONE:
+		return false
+	var keeper := _goalkeeper_for_goal(defending_left)
+	if keeper.is_empty():
+		return false
+	var outcome := MatchFeelRules.goalkeeper_outcome(keeper, ball_position, ball_velocity, goal_x)
+	var result := str(outcome.get("outcome", "hold"))
+	if result == "hold" or result == "gap":
+		return false
+	_set_goalkeeper_recovery(int(keeper.id), GOALKEEPER_RECOVERY_TICKS)
+	var facing := Vector3.RIGHT if defending_left else Vector3.LEFT
+	if result == "collect":
+		carrier_id = int(keeper.id)
+		last_touch_home = bool(keeper.home)
+		_set_ball_state(Coordinate3D.ground(keeper.position) + facing * 0.38, Vector3.ZERO, true)
+		_emit_goalkeeper_interaction("goalkeeper_collect", keeper, facing, outcome)
+		return true
+	var deflect_z := signf(float(outcome.get("target_z", ball_position.z)) - keeper.position.z)
+	if is_zero_approx(deflect_z):
+		deflect_z = 1.0
+	_set_ball_state(Coordinate3D.ground(keeper.position) + facing * 0.56,
+		Vector3(-horizontal.x * 0.52, maxf(ball_velocity.y * 0.25, 1.2), deflect_z * 7.5), false)
+	last_touch_home = bool(keeper.home)
+	_emit_goalkeeper_interaction("goalkeeper_%s" % result, keeper, facing, outcome)
+	return true
+
+func _emit_goalkeeper_interaction(name: String, keeper: Dictionary, direction: Vector3,
+		outcome: Dictionary) -> void:
+	var action := "keeper_collect" if name == "goalkeeper_collect" else "keeper_dive"
+	var keeper_view := _views.get(int(keeper.id)) as Player3DView
+	if keeper_view != null:
+		keeper_view.play_action(action)
+	_emit_calibrated_interaction(name, -1, int(keeper.id), direction,
+		str(outcome.get("outcome", "hold")), {"goalkeeper_id": int(keeper.id),
+		"goalkeeper_outcome": outcome, "focus_position": [keeper.position.x, keeper.position.y, keeper.position.z]})
+
+func _goalkeeper_for_goal(defending_left: bool) -> Dictionary:
+	for player: Dictionary in players:
+		if bool(player.get("goalkeeper", false)) and bool(player.home) == defending_left:
+			return player
+	return {}
+
+func _set_goalkeeper_recovery(player_id: int, ticks: int) -> void:
+	for index in players.size():
+		var player := players[index]
+		if int(player.id) == player_id:
+			player.keeper_recovery_ticks = maxi(int(player.get("keeper_recovery_ticks", 0)), ticks)
+			player.velocity = Vector3.ZERO
+			players[index] = player
+			return
 
 func _step_dribbling_ball(carrier: Dictionary, delta: float) -> void:
 	var mode := int(carrier.get("dribble_mode", DribblePhysics3D.Mode.JOG))
@@ -1232,6 +1399,7 @@ func _win_tackle(defender: Dictionary, is_tackle: bool = true) -> void:
 	if facing.is_zero_approx():
 		facing = Vector3.RIGHT if bool(defender.home) else Vector3.LEFT
 	carrier_id = int(defender.id)
+	_clear_first_touch_state()
 	_clear_pass_target()
 	dribble_touch_timer = 0.0
 	dribble_loss_timer = 0.0
@@ -1248,7 +1416,8 @@ func _win_tackle(defender: Dictionary, is_tackle: bool = true) -> void:
 		_set_pressure_cooldown(int(defender.id), PRESSURE_COOLDOWN_SECONDS)
 	_event_label.text = "TACKLE" if is_tackle else "PRESSURE"
 	_event_timer = 0.32
-	_emit_action_event("tackle" if is_tackle else "pressure", {"player_id": int(defender.id)})
+	_emit_calibrated_interaction("tackle" if is_tackle else "pressure", previous_carrier_id,
+		int(defender.id), facing, "won", {"player_id": int(defender.id)})
 	var defender_view := _views.get(int(defender.id)) as Player3DView
 	if defender_view != null:
 		defender_view.play_action("tackle" if is_tackle else "pressure")
@@ -1276,24 +1445,23 @@ func _hold_tackle_recovery_ball(carrier: Dictionary) -> void:
 func _handle_carrier_actions(carrier: Dictionary, delta: float) -> void:
 	var carrier_home := bool(carrier.home)
 	if int(carrier.id) == controlled_id:
-		var aim := _input_direction()
-		if aim.is_zero_approx():
-			aim = carrier.facing
-		if action_cooldown <= 0.0 and _action_just_pressed("p1_pass"):
-			_kick_to_target(carrier, false, aim)
-		elif action_cooldown <= 0.0 and _action_just_pressed("p1_through_pass"):
-			_kick_to_target(carrier, false, aim, true)
-		elif action_cooldown <= 0.0 and _action_just_pressed("p1_long_pass"):
-			_kick_to_target(carrier, true, aim)
-		elif action_cooldown <= 0.0 and Input.is_action_pressed("p1_shoot"):
-			shot_charging = true
-			shot_charge = minf(shot_charge + maxf(delta, 0.0), SHOOT_CHARGE_SECONDS)
-		elif shot_charging and _action_just_released("p1_shoot"):
-			_shoot(carrier, aim.y, shot_charge / SHOOT_CHARGE_SECONDS)
-			shot_charge = 0.0
-			shot_charging = false
+		if action_cooldown <= 0.0:
+			var intent: Dictionary = action_intents.get(controlled_id, {})
+			var action := str(intent.get("action", ""))
+			var buffered := _consume_action_intent(controlled_id, action)
+			if not buffered.is_empty():
+				var direction := MatchFeelRules.intent_direction(buffered)
+				match action:
+					"pass":
+						_kick_to_target(carrier, false, direction)
+					"through_pass":
+						_kick_to_target(carrier, false, direction, true)
+					"long_pass":
+						_kick_to_target(carrier, true, direction)
+					"shoot":
+						_shoot(carrier, direction.z, float(buffered.get("power", 1.0)))
 		return
-	if shot_charging:
+	if shot_charging and shot_charge_actor_id != controlled_id:
 		_clear_shot_charge()
 	if not carrier_home and cpu_action_cooldown <= 0.0:
 		var goal_distance := absf(carrier.position.x - (0.0 if not carrier_home else Rules.PITCH_SIZE.x))
@@ -1320,11 +1488,11 @@ func _kick_to_cpu_target(carrier: Dictionary, target: Dictionary) -> void:
 	dribble_loss_timer = 0.0
 	_reset_dribble_turn_state()
 	last_touch_home = bool(carrier.home)
-	_set_pass_target(target, target.position + lead)
+	_set_pass_target(target, target.position + lead, int(carrier.id))
 	action_cooldown = 0.22
 	_event_label.text = "PASS"
 	_event_timer = 0.35
-	_emit_action_event("pass", {"player_id": int(carrier.id)})
+	_emit_pass_interaction(carrier, target, launch_velocity, false, false)
 	var passer_view := _views.get(int(carrier.id)) as Player3DView
 	if passer_view != null:
 		passer_view.play_action("pass")
@@ -1349,11 +1517,11 @@ func _kick_to_target(carrier: Dictionary, long_pass: bool, aim: Vector3, through
 	_reset_dribble_turn_state()
 	_clear_shot_charge()
 	last_touch_home = bool(carrier.home)
-	_set_pass_target(target, target.position + lead)
+	_set_pass_target(target, target.position + lead, int(carrier.id))
 	action_cooldown = 0.22
 	_event_label.text = "LONG PASS" if long_pass else ("THROUGH" if through_pass else "PASS")
 	_event_timer = 0.35
-	_emit_action_event("pass", {"player_id": int(carrier.id), "long": long_pass, "through": through_pass})
+	_emit_pass_interaction(carrier, target, launch_velocity, long_pass, through_pass)
 	var passer_view := _views.get(int(carrier.id)) as Player3DView
 	if passer_view != null:
 		passer_view.play_action("pass")
@@ -1379,7 +1547,8 @@ func _shoot(carrier: Dictionary, vertical_aim: float, power_ratio: float = 1.0) 
 	action_cooldown = 0.28
 	_event_label.text = "SHOT"
 	_event_timer = 0.42
-	_emit_action_event("shot", {"player_id": int(carrier.id), "power": power})
+	_emit_calibrated_interaction("shot", int(carrier.id), -1, launch_velocity, "launched",
+		{"player_id": int(carrier.id), "power": power})
 	camera_shake = maxf(camera_shake, 0.08)
 	var shooter_view := _views.get(int(carrier.id)) as Player3DView
 	if shooter_view != null:
@@ -1391,7 +1560,7 @@ func _attempt_tackle(defender: Dictionary) -> void:
 		return
 	if _is_tackle_recovering(defender):
 		return
-	if bool(defender.home) != bool(carrier.home) and \
+	if bool(defender.home) != bool(carrier.home) and _tackle_contact_is_valid(defender, carrier) and \
 		defender.position.distance_to(Coordinate3D.ground(ball_position)) < 1.55:
 		_win_tackle(defender)
 	action_cooldown = 0.35
@@ -1404,15 +1573,16 @@ func _capture_free_ball() -> void:
 			Rules.can_ground_player_control_ball(intended_receiver.position, ball_position,
 				Rules.CONTROL_RADIUS * 1.45) and \
 			Coordinate3D.ground(ball_velocity).length() <= PASS_RECEIVE_CONTROL_SPEED:
-			var nearest_id := Rules.nearest_player_id(players, ball_position)
-			var nearest := _player_by_id(nearest_id)
-			var receiver_distance := Coordinate3D.ground(intended_receiver.position - ball_position).length()
-			var nearest_distance := Coordinate3D.ground(nearest.get("position", ball_position) - ball_position).length()
-			var opponent_has_clean_intercept := not nearest.is_empty() and \
-				bool(nearest.home) != bool(intended_receiver.home) and \
-				nearest_distance + PASS_RECEIVE_INTERCEPT_MARGIN < receiver_distance
-			if not opponent_has_clean_intercept:
-				_capture_ball_by(intended_receiver)
+			var race := _directed_pass_arrival_race(intended_receiver)
+			if str(race.get("outcome", "receive")) == "interception":
+				var interceptor := _player_by_id(int(race.get("winner_id", -1)))
+				if not interceptor.is_empty() and Rules.can_ground_player_control_ball(
+					interceptor.position, ball_position, Rules.CONTROL_RADIUS * 1.45):
+					_capture_ball_by(interceptor, "interception", race)
+				return
+			var receive_intent := _consume_action_intent(pass_target_id, "receive")
+			if not receive_intent.is_empty():
+				_capture_ball_by(intended_receiver, "receive", race)
 				return
 	var candidate_id := Rules.nearest_player_id(players, ball_position)
 	var candidate := _player_by_id(candidate_id)
@@ -1423,17 +1593,48 @@ func _capture_free_ball() -> void:
 		return
 	_capture_ball_by(candidate)
 
-func _set_pass_target(target: Dictionary, target_position: Vector3) -> void:
+func _directed_pass_arrival_race(receiver: Dictionary) -> Dictionary:
+	var interceptors: Array = []
+	for player: Dictionary in players:
+		if bool(player.home) == bool(receiver.home):
+			continue
+		var candidate := player.duplicate(true)
+		candidate.arrival_speed = 7.5 if bool(candidate.get("goalkeeper", false)) else 8.8
+		candidate.action_lock_ticks = int(round(maxf(float(candidate.get("tackle_recovery", 0.0)),
+			float(candidate.get("stumble_recovery", 0.0))) / FIXED_TICK))
+		interceptors.append(candidate)
+	var receiving_candidate := receiver.duplicate(true)
+	receiving_candidate.arrival_speed = 7.5 if bool(receiving_candidate.get("goalkeeper", false)) else 8.8
+	receiving_candidate.action_lock_ticks = int(round(maxf(float(receiving_candidate.get("tackle_recovery", 0.0)),
+		float(receiving_candidate.get("stumble_recovery", 0.0))) / FIXED_TICK))
+	return MatchFeelRules.resolve_arrival_race(receiving_candidate, interceptors,
+		pass_target_position, 2, 2)
+
+func _set_pass_target(target: Dictionary, target_position: Vector3, source_id: int = -1) -> void:
 	pass_target_id = int(target.get("id", -1))
 	pass_target_position = Coordinate3D.clamp_pitch(Coordinate3D.ground(target_position), Rules.PLAYER_RADIUS)
 	pass_target_timer = PASS_RECEIVE_ASSIST_SECONDS
+	pass_source_id = source_id
+	pass_launch_tick = _simulation_tick
+	_queue_action_intent(pass_target_id, "receive", pass_target_position - ball_position,
+		int(round(PASS_RECEIVE_ASSIST_SECONDS / FIXED_TICK)))
 
 func _clear_pass_target() -> void:
+	if pass_target_id >= 0:
+		var intent: Dictionary = action_intents.get(pass_target_id, {})
+		if str(intent.get("action", "")) == "receive":
+			action_intents.erase(pass_target_id)
 	pass_target_id = -1
 	pass_target_position = Vector3.ZERO
 	pass_target_timer = 0.0
+	pass_source_id = -1
+	pass_launch_tick = -1
 
-func _capture_ball_by(player: Dictionary) -> void:
+func _capture_ball_by(player: Dictionary, directed_outcome: String = "", race: Dictionary = {}) -> void:
+	var previous_carrier_id := carrier_id
+	var directed_source_id := pass_source_id
+	var directed_launch_tick := pass_launch_tick
+	var incoming_velocity := ball_velocity
 	carrier_id = int(player.id)
 	controlled_id = carrier_id if bool(player.home) else controlled_id
 	dribble_touch_timer = 0.0
@@ -1441,6 +1642,81 @@ func _capture_ball_by(player: Dictionary) -> void:
 	_reset_dribble_turn_state()
 	last_touch_home = bool(player.home)
 	_clear_pass_target()
+	var source_id := directed_source_id if directed_source_id >= 0 else previous_carrier_id
+	_emit_calibrated_interaction("possession_change", source_id, carrier_id, incoming_velocity,
+		directed_outcome if not directed_outcome.is_empty() else "capture",
+		{"previous_carrier_id": previous_carrier_id})
+	if directed_outcome.is_empty():
+		return
+	var expected_arrival := directed_launch_tick + int(race.get("receiver_arrival_ticks", 0))
+	if directed_outcome == "interception":
+		expected_arrival = directed_launch_tick + int(race.get("interceptor_arrival_ticks", 0))
+	_emit_calibrated_interaction(directed_outcome, directed_source_id, carrier_id, incoming_velocity,
+		directed_outcome, {"arrival_race": race, "expected_arrival": expected_arrival,
+		"actual_arrival": _simulation_tick})
+	if directed_outcome == "receive":
+		var first_touch := MatchFeelRules.first_touch_state(player, ball_position, incoming_velocity,
+			_first_touch_pressure(player), _simulation_tick)
+		_begin_first_touch(player, first_touch)
+		_emit_calibrated_interaction("first_touch", carrier_id, carrier_id, incoming_velocity,
+			str(first_touch.get("outcome", "settle")), {"first_touch": first_touch,
+			"expected_arrival": expected_arrival, "actual_arrival": _simulation_tick})
+
+func _first_touch_pressure(receiver: Dictionary) -> float:
+	var nearest_opponent_distance := INF
+	for player: Dictionary in players:
+		if bool(player.home) == bool(receiver.home):
+			continue
+		nearest_opponent_distance = minf(nearest_opponent_distance,
+			Coordinate3D.ground(player.position - receiver.position).length())
+	return clampf(1.0 - nearest_opponent_distance / (Rules.CONTROL_RADIUS * 2.0), 0.0, 1.0)
+
+func _begin_first_touch(receiver: Dictionary, state: Dictionary) -> void:
+	first_touch_state = state.duplicate(true)
+	first_touch_state.actor_id = int(receiver.id)
+	first_touch_state.start_position = [ball_position.x, ball_position.y, ball_position.z]
+	var receiver_view := _views.get(int(receiver.id)) as Player3DView
+	if receiver_view != null:
+		receiver_view.play_action("pass")
+
+func _clear_first_touch_state() -> void:
+	first_touch_state.clear()
+
+func _first_touch_is_active_for(player_id: int) -> bool:
+	return not first_touch_state.is_empty() and int(first_touch_state.get("actor_id", -1)) == player_id and \
+		_simulation_tick < int(first_touch_state.get("end_tick", -1))
+
+func _step_first_touch(carrier: Dictionary) -> void:
+	var start: Array = first_touch_state.get("start_position", [0.0, 0.0, 0.0])
+	var settle: Array = first_touch_state.get("settle_position", start)
+	var duration := maxi(int(first_touch_state.get("duration_ticks", 1)), 1)
+	var elapsed := _simulation_tick - int(first_touch_state.get("start_tick", _simulation_tick)) + 1
+	var progress := clampf(float(elapsed) / float(duration), 0.0, 1.0)
+	var start_position := Vector3(float(start[0]), float(start[1]), float(start[2]))
+	var settle_position := Vector3(float(settle[0]), float(settle[1]), float(settle[2]))
+	_set_ball_state(start_position.lerp(settle_position, progress), Vector3.ZERO, true)
+	if _simulation_tick + 1 < int(first_touch_state.get("end_tick", _simulation_tick)):
+		return
+	var outcome := str(first_touch_state.get("outcome", "settle"))
+	_clear_first_touch_state()
+	if outcome == "contested_loose":
+		carrier_id = -1
+		last_touch_home = bool(carrier.home)
+
+func _tackle_contact_is_valid(defender: Dictionary, carrier: Dictionary) -> bool:
+	if not _first_touch_is_active_for(int(carrier.id)):
+		return true
+	return not _first_touch_is_shielded(defender, carrier)
+
+func _first_touch_is_shielded(defender: Dictionary, carrier: Dictionary) -> bool:
+	if not _first_touch_is_active_for(int(carrier.id)):
+		return false
+	var shield_end_tick := int(first_touch_state.get("start_tick", _simulation_tick)) + FIRST_TOUCH_SHIELD_TICKS
+	if _simulation_tick >= shield_end_tick:
+		return false
+	var carrier_facing := Coordinate3D.ground(carrier.get("facing", Vector3.RIGHT)).normalized()
+	var carrier_to_defender := Coordinate3D.ground(defender.position - carrier.position).normalized()
+	return carrier_facing.dot(carrier_to_defender) < 0.25
 
 func _resolve_player_separation() -> void:
 	for first_index in players.size():
@@ -1482,6 +1758,7 @@ func _begin_boundary_restart(boundary_axis: String) -> void:
 		return
 	var restart := Rules.boundary_restart(ball_position, boundary_axis, last_touch_home)
 	_clear_pass_target()
+	_clear_first_touch_state()
 	match_flow.begin_restart(int(restart.type), bool(restart.team_home), restart.position, str(restart.reason))
 	_sync_match_flow_state()
 
@@ -1574,6 +1851,7 @@ func _reset_kickoff(home_kicks_off: bool, update_flow := true) -> void:
 	dribble_loss_timer = 0.0
 	dribble_touch_count = 0
 	_clear_pass_target()
+	_clear_first_touch_state()
 	_reset_dribble_turn_state()
 	# Put the kickoff taker on the spot. The old carried-ball code hid this
 	# formation mismatch by teleporting the ball to the player every frame.
@@ -1603,6 +1881,8 @@ func _player_by_id(id: int) -> Dictionary:
 func _clear_shot_charge() -> void:
 	shot_charge = 0.0
 	shot_charging = false
+	shot_charge_actor_id = -1
+	shot_charge_direction = Vector3.ZERO
 
 func _set_ball_state(position: Vector3, velocity: Vector3, grounded: bool = false) -> void:
 	ball_position = position
@@ -1677,6 +1957,35 @@ func _emit_action_event(name: String, payload: Dictionary) -> void:
 		camera_director.consume_event(event)
 	match_event_emitted.emit(event)
 
+func _emit_pass_interaction(carrier: Dictionary, target: Dictionary, direction: Vector3,
+		long_pass: bool, through_pass: bool) -> void:
+	var race := _directed_pass_arrival_race(target)
+	_emit_calibrated_interaction("pass", int(carrier.id), int(target.id), direction, "launched",
+		{"player_id": int(carrier.id), "long": long_pass, "through": through_pass,
+		"arrival_race": race, "expected_arrival": pass_launch_tick +
+			int(race.get("receiver_arrival_ticks", 0)), "actual_arrival": -1})
+
+func _emit_calibrated_interaction(name: String, source_id: int, target_id: int,
+		direction: Vector3, outcome: String, payload: Dictionary = {}) -> void:
+	var key := "%d:%s:%d:%d" % [_simulation_tick, name, source_id, target_id]
+	if _interaction_metric_tick != _simulation_tick:
+		_interaction_keys_by_tick.clear()
+		_interaction_metric_tick = _simulation_tick
+	if bool(_interaction_keys_by_tick.get(key, false)):
+		return
+	_interaction_keys_by_tick[key] = true
+	var expected_arrival := int(payload.get("expected_arrival", -1))
+	var actual_arrival := int(payload.get("actual_arrival", _simulation_tick))
+	var window := MatchFeelRules.contact_window(name, _simulation_tick, _simulation_tick)
+	var metric := MatchFeelRules.calibration_metric(_simulation_tick, name, source_id, target_id,
+		direction, window, expected_arrival, actual_arrival, outcome, payload)
+	calibration_metrics.append(metric)
+	if calibration_metrics.size() > 256:
+		calibration_metrics.pop_front()
+	var event_payload := payload.duplicate(true)
+	event_payload.metric = metric
+	_emit_action_event(name, event_payload)
+
 func _on_match_event(event) -> void:
 	match event.name:
 		"goal", "halftime", "full_time":
@@ -1686,6 +1995,21 @@ func _on_match_event(event) -> void:
 		"shot":
 			_play_sfx("shot")
 		"tackle", "pressure":
+			_play_sfx("tackle")
+		"goalkeeper_collect":
+			_event_label.text = "SAVE"
+			_event_timer = 0.48
+			camera_shake = maxf(camera_shake, 0.05)
+			_play_sfx("tackle")
+		"goalkeeper_parry":
+			_event_label.text = "PARRY"
+			_event_timer = 0.48
+			camera_shake = maxf(camera_shake, 0.08)
+			_play_sfx("tackle")
+		"goalkeeper_dive":
+			_event_label.text = "DIVE"
+			_event_timer = 0.48
+			camera_shake = maxf(camera_shake, 0.08)
 			_play_sfx("tackle")
 
 func _hud_label(font_size: int, alignment: HorizontalAlignment, scale: float = HUD_SCALE) -> Label:

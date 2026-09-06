@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Rules := preload("res://utils/match3d_rules.gd")
+const FeelRules := preload("res://utils/match_feel_rules.gd")
 const Pitch3D := preload("res://scenes/world3d/pitch_3d.gd")
 const BallTrajectory3DScript := preload("res://utils/ball_trajectory_3d.gd")
 
@@ -30,6 +31,10 @@ func run_suite() -> Dictionary:
 	_test_visible_goal_matches_scoring_mouth()
 	_test_visible_goal_front_frames_are_on_goal_lines()
 	_test_goal_depth_extends_outside_pitch()
+	_test_action_intent_contact_windows()
+	_test_arrival_race_and_receive_area()
+	_test_first_touch_and_metric_records()
+	_test_goalkeeper_outcome_table()
 	print("Results: %d passed, %d failed" % [passed, failed])
 	return {"passed": passed, "failed": failed}
 
@@ -194,3 +199,79 @@ func _test_goal_depth_extends_outside_pitch() -> void:
 	pitch.free()
 	_expect(has_left_rear_frame and has_right_rear_frame,
 		"goal nets and rear frames extend outside the playable pitch")
+
+func _test_action_intent_contact_windows() -> void:
+	var intent := FeelRules.make_action_intent("pass", Vector3(0.6, 0.0, -0.8), 120, 6)
+	var window := FeelRules.contact_window("pass", 123, 123)
+	var held := FeelRules.consume_intent_at_window(intent, 122, window)
+	var consumed := FeelRules.consume_intent_at_window(intent, 123, window)
+	var expired := FeelRules.consume_intent_at_window(intent, 127, window)
+	var stored_direction: Array = consumed.intent.direction
+	_expect(not bool(held.consumed) and bool(consumed.consumed) and
+		is_equal_approx(float(stored_direction[0]), 0.6) and
+		is_equal_approx(float(stored_direction[2]), -0.8),
+		"single-slot intent retains its sampled direction until the first compatible contact")
+	_expect(bool(expired.expired) and (expired.intent as Dictionary).is_empty(),
+		"expired buffered input has no later effect")
+
+func _test_arrival_race_and_receive_area() -> void:
+	var receiver := {"id": 8, "home": true, "position": Vector3(12.0, 0.0, 18.0),
+		"velocity": Vector3.RIGHT * 5.0, "arrival_speed": 8.0}
+	var target := FeelRules.predict_receive_area(receiver.position, receiver.velocity,
+		Vector3(8.0, 0.0, 18.0), Vector3.RIGHT * 20.0)
+	var late_interceptor := {"id": 20, "home": false, "position": Vector3(18.0, 0.0, 18.0), "arrival_speed": 8.0}
+	var early_interceptor := {"id": 21, "home": false, "position": Vector3(14.0, 0.0, 18.0), "arrival_speed": 12.0}
+	var receiver_wins := FeelRules.resolve_arrival_race(receiver, [late_interceptor], target, 2, 2)
+	var interceptor_wins := FeelRules.resolve_arrival_race(
+		{"id": 8, "home": true, "position": Vector3(12.0, 0.0, 18.0), "arrival_speed": 8.0},
+		[{"id": 21, "home": false, "position": Vector3(19.4, 0.0, 18.0), "arrival_speed": 12.0}],
+		Vector3(20.0, 0.0, 18.0), 2, 2)
+	var tied := FeelRules.resolve_arrival_race({"id": 9, "home": true, "position": Vector3.ZERO,
+		"arrival_speed": 8.0}, [{"id": 3, "home": false, "position": Vector3.ZERO,
+		"arrival_speed": 8.0}], Vector3(10.0, 0.0, 0.0), 0, 0)
+	_expect(target.x > receiver.position.x and int(receiver_wins.winner_id) == 8,
+		"predicted receiving area leads a moving closer receiver")
+	_expect(interceptor_wins.outcome == "interception" and int(interceptor_wins.winner_id) == 21,
+		"a clearly earlier interceptor wins the directed-pass arrival race")
+	_expect(bool(tied.tie) and int((tied.candidates as Array)[0].id) == 3 and
+		int(tied.winner_id) == 9,
+		"equal arrivals retain stable candidate ordering while the receiver keeps an unassisted tie")
+
+func _test_first_touch_and_metric_records() -> void:
+	var receiver := {"id": 8, "facing": Vector3.RIGHT, "technique": 70.0}
+	var trap := FeelRules.first_touch_state(receiver, Vector3(20.0, 0.0, 18.0), Vector3.RIGHT * 2.0, 0.0, 40)
+	var settle := FeelRules.first_touch_state(receiver, Vector3(20.0, 0.0, 18.0), Vector3.RIGHT * 18.0, 0.0, 40)
+	var pressured := FeelRules.first_touch_state(receiver, Vector3(20.0, 0.0, 18.0), Vector3.RIGHT * 8.0, 0.9, 40)
+	var metric := FeelRules.calibration_metric(44, "receive", 4, 8, Vector3.RIGHT,
+		FeelRules.contact_window("receive", 43, 45), 52, 54, "settle", {"first_touch": settle})
+	var encoded := JSON.stringify(metric)
+	_expect(trap.outcome == "trap" and settle.outcome == "settle" and
+		pressured.outcome == "contested_loose" and int(settle.duration_ticks) > int(trap.duration_ticks),
+		"low-speed, high-speed, and pressured receptions create distinct bounded first-touch outcomes")
+	_expect(not encoded.is_empty() and int(metric.arrival_delta) == 2 and
+		(metric.direction as Array) == [1.0, 0.0, 0.0],
+		"calibration metrics are serializable records with arrival and direction data")
+
+func _test_goalkeeper_outcome_table() -> void:
+	var keeper := {"position": Vector3(84.0, 0.0, 18.0), "keeper_recovery_ticks": 0}
+	var collect := FeelRules.goalkeeper_outcome(keeper, Vector3(80.0, 0.4, 18.3), Vector3.RIGHT * 20.0,
+		Rules.PITCH_SIZE.x)
+	var late := FeelRules.goalkeeper_outcome(keeper, Vector3(84.2, 0.4, 18.0), Vector3.RIGHT * 30.0,
+		Rules.PITCH_SIZE.x)
+	var gap := FeelRules.goalkeeper_outcome(keeper, Vector3(80.0, 0.4, 22.1), Vector3.RIGHT * 20.0,
+		Rules.PITCH_SIZE.x)
+	var parry := FeelRules.goalkeeper_outcome(keeper, Vector3(80.0, 0.4, 20.0), Vector3.RIGHT * 20.0,
+		Rules.PITCH_SIZE.x)
+	var dive := FeelRules.goalkeeper_outcome(keeper, Vector3(80.0, 1.8, 20.0), Vector3.RIGHT * 20.0,
+		Rules.PITCH_SIZE.x)
+	var recovering_keeper := keeper.duplicate(true)
+	recovering_keeper.keeper_recovery_ticks = 8
+	var recovering := FeelRules.goalkeeper_outcome(recovering_keeper, Vector3(80.0, 0.4, 18.0),
+		Vector3.RIGHT * 20.0, Rules.PITCH_SIZE.x)
+	_expect(collect.outcome == "collect", "a reachable low shot produces a deterministic goalkeeper collection")
+	_expect(parry.outcome == "parry" and dive.outcome == "dive",
+		"edge low shots parry while reachable high shots select a dive")
+	_expect(late.outcome == "hold" and bool(late.late), "a late goalkeeper dive is rejected")
+	_expect(recovering.outcome == "hold" and bool(recovering.late),
+		"a recovering goalkeeper cannot begin a second impossible save")
+	_expect(gap.outcome == "gap" and bool(gap.gap_hit), "configured goalkeeper coverage gaps remain scoreable")
